@@ -1,6 +1,7 @@
 import os
 import base64
 import io
+import subprocess
 import pyautogui
 from enum import Enum
 from typing import Optional, Tuple, Dict, Union, NamedTuple
@@ -129,6 +130,8 @@ Respond ONLY with this JSON format and nothing else.""",
             # Extract coordinates from response
             response_text = response.content[0].text
             try:
+                # Strip any code block markers from response text before parsing
+                response_text = response_text.strip('`').replace('json\n', '')
                 response_data = json.loads(response_text)
                 x = response_data['action']['coordinates']['x']
                 y = response_data['action']['coordinates']['y']
@@ -180,3 +183,20 @@ def get_coordinates_for_prompt(prompt: str) -> Optional[Tuple[int, int]]:
     else:
         print("Failed to get coordinates from Claude")
         return None
+
+
+def wait_for_focus(app_name, timeout=10):
+    """Wait until the specified app is frontmost."""
+    script = f'''
+    tell application "System Events"
+        repeat until (name of first application process whose frontmost is true) is "{app_name}"
+            delay 0.5
+        end repeat
+    end tell
+    '''
+    try:
+        subprocess.run(["osascript", "-e", script], timeout=timeout)
+    except subprocess.TimeoutExpired:
+        print(f"Timed out waiting for {app_name} to become active.")
+        return False
+    return True

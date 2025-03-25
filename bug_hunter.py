@@ -4,7 +4,7 @@ import time
 import pyperclip
 import subprocess
 from urllib.parse import urlparse
-from computer_use_utils import ClaudeComputerUse
+from computer_use_utils import ClaudeComputerUse, wait_for_focus
 import json
 
 class BugHunter:
@@ -30,42 +30,45 @@ class BugHunter:
         subprocess.run(["git", "clone", repo_url, local_path], check=True)
         return local_path
     
-    def open_ide(self, ide_name: str, project_path: str):
-        """Open the specified IDE with the project in full screen on the active monitor"""
+    async def open_ide(self, ide_name: str, project_path: str, wait_for_focus: bool = False):
         if ide_name.lower() == "cursor":
             window_name = "Cursor"
         elif ide_name.lower() == "windsurf":
             window_name = "Windsurf"
         else:
             raise ValueError(f"Unsupported IDE: {ide_name}")
-            
+        
         try:
-            # Open the IDE
             subprocess.run(["open", "-a", window_name, project_path])
+            time.sleep(3)  # wait for the app to start
             
-            # Wait for IDE to open
-            time.sleep(5)
-            
-            # Make the window frontmost using AppleScript
+            # Bring the new IDE instance to the front using AppleScript
             activate_script = f'''
             tell application "{window_name}"
                 activate
             end tell
             '''
-            
             subprocess.run(["osascript", "-e", activate_script], check=True)
-            time.sleep(1)  # Wait for window to become active
+            time.sleep(1)  # slight extra delay
             
-            # Use Command+Control+F to toggle full screen (standard macOS shortcut)
-            pyautogui.hotkey('command', 'ctrl', 'f')
-            print(f"Opened {window_name} in full screen mode")
-            
+            # Confirm the new instance is focused using your wait_for_focus utility
+            if wait_for_focus:
+                is_focused_and_opened = wait_for_focus(window_name)            
+                if not is_focused_and_opened:
+                    raise Exception("IDE did not open or focus")
+                
+            # Todo handle any prompts like "Trust this workspace" in Windsurf
+            if ide_name.lower() == "windsurf":
+                result = await self.claude.get_coordinates_from_claude("Trust this workspace")
+                if result:
+                    pyautogui.moveTo(result.coordinates.x, result.coordinates.y)
+                    pyautogui.click(result.coordinates.x, result.coordinates.y) 
         except subprocess.CalledProcessError as e:
             print(f"Warning: Could not set window to full screen: {str(e)}")
-            # Fall back to just opening the IDE without full screen
-            subprocess.run(["open", "-a", window_name, project_path])
+            subprocess.run(["open", "-na", window_name, project_path])
             time.sleep(5)
-    
+
+       
     async def type_bug_hunting_prompt(self, repo_url: str):
         """Type the bug hunting prompt into the IDE's input field"""
         prompt = f"""You are a security expert analyzing code for bugs. Respond only with a JSON array of bug findings.
@@ -132,7 +135,12 @@ My colleague told me they found three bugs in this codebase. One of them is extr
             # If not valid JSON, return as is
             return response
 
+def clean_input_box():
+    pyautogui.hotkey('command', 'a')
+    pyautogui.hotkey('command', 'backspace')
+
 def open_agentic_coding_interface(ide_name: str):
+    #TODO add check if the agentic coding interface is not already open
     if ide_name.lower() == "cursor":
         pyautogui.hotkey('command', 'i')
     elif ide_name.lower() == "windsurf":
@@ -140,13 +148,20 @@ def open_agentic_coding_interface(ide_name: str):
     else:
         raise ValueError(f"Unsupported IDE: {ide_name}")
     
+    # clean the input box
+    # clean_input_box(ide_name)
+
 async def main():
-    if len(sys.argv) != 3:
-        print("Usage: python bug_hunter.py <repository_url> <ide_name>")
-        sys.exit(1)
+    #TODO  Revert, only for dev purposes
+    # if len(sys.argv) != 3:
+    #     print("Usage: python bug_hunter.py <repository_url> <ide_name>")
+    #     sys.exit(1)
         
-    repo_url = sys.argv[1]
-    ide_name = sys.argv[2]
+    # ide_name = sys.argv[1]
+    # # repo_url = sys.argv[2]
+    #TODO  Revert, only for dev purposes
+    repo_url = "https://github.com/saharmor/gemini-multimodal-playground"
+    ide_name = "windsurf"
     
     hunter = BugHunter()
     
@@ -154,7 +169,7 @@ async def main():
         # Clone repository
         local_path = hunter.clone_repository(repo_url)
         
-        hunter.open_ide(ide_name, local_path)
+        await hunter.open_ide(ide_name, local_path)
         time.sleep(1)
 
         open_agentic_coding_interface(ide_name)
