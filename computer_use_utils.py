@@ -4,11 +4,12 @@ import io
 import subprocess
 import pyautogui
 from enum import Enum
-from typing import Optional, Tuple, Dict, Union, NamedTuple
+from typing import Optional, Tuple
 from dotenv import load_dotenv
-import re
 import json
 from dataclasses import dataclass
+from mss import mss
+from PIL import Image
 
 load_dotenv()
 
@@ -53,22 +54,9 @@ class ClaudeComputerUse:
             # Real screen coordinates -> Claude's coordinate system
             return round(x / x_scaling_factor), round(y / y_scaling_factor)
     
-    def take_screenshot(self) -> str:
-        # Capture screenshot using PyAutoGUI - no region parameter to capture entire screen
-        screenshot = pyautogui.screenshot()
-        
-        # Resize to target dimensions
-        screenshot = screenshot.resize((self.target_width, self.target_height))
-        
-        # Save to in-memory buffer
-        img_buffer = io.BytesIO()
-        screenshot.save(img_buffer, format="PNG", optimize=True)
-        img_buffer.seek(0)
-        
-        # Return base64 encoded image
-        return base64.b64encode(img_buffer.read()).decode()
     
-    async def get_coordinates_from_claude(self, prompt: str) -> Optional[ComputerUseAction]:
+    
+    async def get_coordinates_from_claude(self, prompt: str, support_non_existing_elements: bool = False) -> Optional[ComputerUseAction]:
         """Get coordinates and action type from Claude based on a natural language prompt
         
         Returns:
@@ -89,23 +77,29 @@ class ClaudeComputerUse:
             client = Anthropic(api_key=api_key)
             
             # Take a screenshot
-            base64_image = self.take_screenshot()
+            base64_image = take_screenshot(self.target_width, self.target_height, encode_base64=True, save_to_file=True)
             
             # Create the message with the screenshot and prompt
-            response = client.messages.create(
-                model="claude-3-7-sonnet-20250219",
-                max_tokens=1000,
-                system="""You are a UI Element Detection AI. Analyze screenshots to locate UI elements and output in JSON format with these exact keys:
+            system_prompt = """You are a UI Element Detection AI. Analyze screenshots to locate UI elements and output in JSON format with these exact keys:
 {
     "action": {
         "type": "click" or "type" (use "click" for buttons/links, "type" for text inputs),
         "coordinates": {
             "x": number (horizontal position),
             "y": number (vertical position)
-        }
+        },
     }
-}
-Respond ONLY with this JSON format and nothing else.""",
+}"""
+
+            if support_non_existing_elements:
+                system_prompt = system_prompt + """ If the requested UI element is not found in the screenshot, respond with None. Otherwise, respond ONLY with the JSON format above and nothing else."""
+            else:
+                system_prompt = system_prompt + """ Respond ONLY with the JSON format above and nothing else."""
+
+            response = client.messages.create(
+                model="claude-3-7-sonnet-20250219",
+                max_tokens=1000,
+                system=system_prompt,
                 messages=[
                     {
                         "role": "user",
@@ -129,6 +123,7 @@ Respond ONLY with this JSON format and nothing else.""",
             
             # Extract coordinates from response
             response_text = response.content[0].text
+
             try:
                 # Strip any code block markers from response text before parsing
                 response_text = response_text.strip('`').replace('json\n', '')
@@ -139,7 +134,7 @@ Respond ONLY with this JSON format and nothing else.""",
                 
                 # Convert string action type to enum
                 action_type = ActionType(action_type_str)
-                
+
                 # Scale coordinates from API format to screen format
                 scaled_x, scaled_y = self.scale_coordinates(ScalingSource.API, x, y)
                 
@@ -200,3 +195,36 @@ def wait_for_focus(app_name, timeout=10):
         print(f"Timed out waiting for {app_name} to become active.")
         return False
     return True
+
+def take_screenshot(target_width, target_height, encode_base64: bool = False, monitor_number: int = 0, save_to_file: bool = False) -> str:
+    """
+    Capture screenshot using mss library with multi-monitor support.
+    
+    Args:
+        monitor_number (int, optional): The monitor number to capture (0-based index).
+                                        If None, captures the entire screen across all monitors.
+    """
+    with mss() as sct:
+        if monitor_number < 0 or monitor_number >= len(sct.monitors):
+            raise ValueError(f"Invalid monitor number. Available monitors: 0-{len(sct.monitors)-1}")
+        # Capture specific monitor (add 1 since monitors[0] is the virtual screen)
+        screenshot = sct.grab(sct.monitors[monitor_number + 1])
+        
+        # Convert to PIL Image for resizing
+        screenshot = Image.frombytes('RGB', screenshot.size, screenshot.rgb)
+        
+        # Resize to target dimensions
+        screenshot = screenshot.resize((target_width, target_height))
+        
+        if save_to_file:
+            screenshot.save("screenshot.png")
+
+        # Save to in-memory buffer
+        img_buffer = io.BytesIO()
+        screenshot.save(img_buffer, format="PNG", optimize=True)
+        img_buffer.seek(0)
+        
+        if encode_base64:# Return base64 encoded image
+            return base64.b64encode(img_buffer.read()).decode()
+        else:
+            return img_buffer
