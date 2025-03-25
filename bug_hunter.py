@@ -39,7 +39,7 @@ INTERFACE_CONFIG = {
             "You are analyzing a screenshot of the Cursor AI coding assistant interface. You only care about the right panel. IGNORE ALL THE REST OF THE SCREENSHOT. " 
                 "Determine the Cursor's current state based on visual cues in the right pane of the image. "
                     "Return the following state for the following scenarios: "
-                    "'user_input_required' if there is a Cancel and Run buttons as the last message in the right pane, above the input box"
+                    "'user_input_required' if there is a Cancel and Run buttons as the last message in the right pane, above the input box. Don't return this state even if the last message ends with a question to the user."
                     "'done' if there is a thumbs-up or thumbs-down icon in the right handside pane"
                     "'still_working' if there is a 'Generating' text in the right handside pane"
                     "IMPORTANT: Respond with a JSON object containing exactly these two keys: "
@@ -137,25 +137,26 @@ class BugHunter:
     
     async def type_bug_hunting_prompt(self, input_field_coordinates: tuple, repo_url: str):
         """Type the bug hunting prompt into the IDE's input field"""
-        prompt = f"""You are a security expert analyzing code for bugs. Respond only with a JSON array of bug findings.
+        prompt = f"""You are a world-class develope analyzing code for bugs. Respond only with a JSON array of bug findings.
 
 <output_format>
 {{
     "bugs": [
         {{
-            "package_name": "string",
-            "file": "string",
+            "file": "string", 
             "lines": "string (clickable link to {repo_url}/blob/main/FILE#L1-L2)",
             "bug_type": "string (security/memory/efficiency/etc)",
             "description": "string",
-            "implications": "string",
+            "implications": "string", 
             "fix": "string"
         }}
     ]
 }}
 </output_format>
 
-My colleague told me they found three bugs in this codebase. One of them is extremely severe. Find those bugs and return them in the specified JSON format above. Make sure the lines field generates clickable GitHub links."""
+
+My colleague told me they found three bugs in this codebase. One of them is extremely severe. Find those bugs and return them in the specified JSON format above. Make sure the lines field generates clickable GitHub links.
+ONLY RETURN THE JSON ARRAY. NOTHING ELSE."""
         
 
         # Move to the input field
@@ -200,30 +201,25 @@ def clean_input_box():
     pyautogui.hotkey('command', 'a')
     pyautogui.hotkey('command', 'backspace')
 
-def open_agentic_coding_interface(ide_name: str):
+def open_agentic_coding_interface():
     #TODO add check if the agentic coding interface is not already open
-    if ide_name.lower() == "cursor":
-        pyautogui.hotkey('command', 'i')
-    elif ide_name.lower() == "windsurf":
-        pyautogui.hotkey('command', 'l')
-    else:
-        raise ValueError(f"Unsupported IDE: {ide_name}")
+    pyautogui.hotkey('command', 'l')
     
     # clean the input box
     # clean_input_box(ide_name)
 
 async def main():
-    # TODO  Revert, only for dev purposes
-    if len(sys.argv) != 3:
-        print("Usage: python bug_hunter.py <repository_url> <ide_name>")
-        sys.exit(1)
+    # # TODO  Revert, only for dev purposes
+    # if len(sys.argv) != 3:
+    #     print("Usage: python bug_hunter.py <repository_url> <ide_name>")
+    #     sys.exit(1)
         
-    ide_name = sys.argv[1]
-    repo_url = sys.argv[2]
+    # ide_name = sys.argv[1]
+    # repo_url = sys.argv[2]
     
-    # #TODO  Revert, only for dev purposes
-    # repo_url = "https://github.com/saharmor/gemini-multimodal-playground"
-    # ide_name = "cursor"
+    #TODO  Revert, only for dev purposes
+    repo_url = "https://github.com/saharmor/gemini-multimodal-playground"
+    ide_name = "cursor"
     
     hunter = BugHunter()
     
@@ -234,7 +230,7 @@ async def main():
         await hunter.open_ide(ide_name, local_path)
         time.sleep(1)
 
-        open_agentic_coding_interface(ide_name)
+        open_agentic_coding_interface()
         time.sleep(1)
 
         # Get the coordinates of the input field
