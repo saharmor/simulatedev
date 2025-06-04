@@ -2,7 +2,7 @@
 """
 SimulateDev - AI Coding Agent Orchestrator
 
-This tool allows you to run various AI coding agents (Cursor, Windsurf, Cloud Code) 
+This tool allows you to run various AI coding agents (Cursor, Windsurf, Claude Code) 
 on any GitHub repository with a custom prompt, and automatically create pull requests.
 
 Usage:
@@ -17,7 +17,6 @@ import argparse
 import asyncio
 import os
 import sys
-from enum import Enum
 from typing import Optional
 from dataclasses import dataclass
 
@@ -25,19 +24,14 @@ from clone_repo import clone_repository
 from bug_hunter import BugHunter
 from computer_use_utils import ClaudeComputerUse
 from github_integration import GitHubIntegration
-
-
-class CodingAgent(Enum):
-    CURSOR = "cursor"
-    WINDSURF = "windsurf"
-    CLOUD_CODE = "cloud_code"  # TODO: Implement Cloud Code support
+from coding_agents import AgentFactory, CodingAgentType
 
 
 @dataclass
 class ProjectRequest:
     repo_url: str
     prompt: str
-    agent: CodingAgent
+    agent: CodingAgentType
     target_dir: Optional[str] = None
     create_pr: bool = True
 
@@ -90,27 +84,22 @@ class SimulateDev:
             
             # Step 3: Open IDE
             print(f"\nOpening {request.agent.value.title()}...")
-            await self.bug_hunter.open_ide(request.agent.value, repo_path, should_wait_for_focus=True)
+            await self.bug_hunter.open_ide(request.agent, repo_path, should_wait_for_focus=True)
             print(f"SUCCESS: {request.agent.value.title()} opened successfully")
             
-            # Step 4: Get input field and send prompt
+            # Step 4: Send prompt to agent (using new agent class system)
             print(f"\nSending prompt to {request.agent.value.title()}...")
-            input_coords = await self.bug_hunter.get_input_field_coordinates(request.agent.value)
-            if not input_coords:
-                print("ERROR: Could not locate input field")
-                return False
-            
-            await self.send_custom_prompt(input_coords, request.prompt)
+            await self.bug_hunter.send_prompt_to_agent(request.agent, request.prompt)
             print("SUCCESS: Prompt sent successfully")
             
             # Step 5: Wait for completion
             print(f"\nWaiting for {request.agent.value.title()} to complete...")
-            await self.wait_for_completion(request.agent.value)
+            await self.bug_hunter.wait_for_agent_completion(request.agent, timeout_seconds=300)
             print("SUCCESS: Agent completed the task")
             
             # Step 6: Extract results
             print("\nExtracting results...")
-            results = await self.bug_hunter.get_last_message(request.agent.value)
+            results = await self.bug_hunter.get_last_message(request.agent)
             print("SUCCESS: Results extracted")
             
             # Step 7: Create pull request
@@ -139,42 +128,6 @@ class SimulateDev:
         except Exception as e:
             print(f"ERROR: Error during processing: {str(e)}")
             return False
-    
-    async def send_custom_prompt(self, input_coords, prompt: str):
-        """Send a custom prompt to the IDE input field"""
-        import pyautogui
-        import time
-        
-        # Move to input field and click
-        print(f"Moving to input field at ({input_coords.coordinates.x}, {input_coords.coordinates.y})...")
-        pyautogui.moveTo(input_coords.coordinates.x, input_coords.coordinates.y, duration=1.0)
-        time.sleep(0.5)
-        pyautogui.click(input_coords.coordinates.x, input_coords.coordinates.y)
-        time.sleep(1.0)
-        
-        # Type the prompt
-        print("Typing custom prompt...")
-        lines = prompt.split('\n')
-        for i, line in enumerate(lines):
-            pyautogui.write(line)
-            if i < len(lines) - 1:
-                pyautogui.hotkey('shift', 'enter')
-        
-        pyautogui.press('enter')
-        time.sleep(1.0)
-    
-    async def wait_for_completion(self, agent_name: str):
-        """Wait for the agent to complete processing"""
-        from ide_completion_detector import wait_until_ide_finishes
-        from bug_hunter import INTERFACE_CONFIG
-        
-        if agent_name in INTERFACE_CONFIG:
-            interface_state_prompt = INTERFACE_CONFIG[agent_name]["interface_state_prompt"]
-            await wait_until_ide_finishes(agent_name, interface_state_prompt, timeout_in_seconds=300)
-        else:
-            print(f"WARNING: No interface config found for {agent_name}, using generic wait...")
-            import time
-            time.sleep(30)  # Generic fallback
 
 
 def parse_arguments():
@@ -186,7 +139,7 @@ def parse_arguments():
 Examples:
   python main.py https://github.com/user/repo "Fix responsive table design" cursor
   python main.py https://github.com/user/repo "Add error handling" windsurf
-  python main.py https://github.com/user/repo "Optimize performance" cloud_code
+  python main.py https://github.com/user/repo "Optimize performance" claude_code
   
   # Skip pull request creation
   python main.py https://github.com/user/repo "Fix bugs" cursor --no-pr
@@ -205,7 +158,7 @@ Examples:
     
     parser.add_argument(
         "agent",
-        choices=[agent.value for agent in CodingAgent],
+        choices=[agent.value for agent in CodingAgentType],
         help="The AI coding agent to use"
     )
     
@@ -228,11 +181,14 @@ async def main():
     try:
         args = parse_arguments()
         
+        # Convert string to enum
+        agent_type = CodingAgentType(args.agent)
+        
         # Create project request
         request = ProjectRequest(
             repo_url=args.repo_url,
             prompt=args.prompt,
-            agent=CodingAgent(args.agent),
+            agent=agent_type,
             target_dir=args.target_dir,
             create_pr=not args.no_pr
         )

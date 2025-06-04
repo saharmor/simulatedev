@@ -174,3 +174,4 @@ cython_debug/
 .pypirc
 scanned_repos/
 screenshot.png
+.DS_Store
