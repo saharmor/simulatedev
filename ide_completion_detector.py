@@ -264,7 +264,7 @@ def analyze_ide_state(image_path, interface_state_analysis_prompt):
                 img = img.convert("RGB")
             
             # Get Gemini model
-            model = genai.GenerativeModel('gemini-2.0-flash-lite')
+            model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20')
             
             # Get response from Gemini
             response = model.generate_content([interface_state_analysis_prompt, img])
