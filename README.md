@@ -2,11 +2,11 @@
 
 > Use cutting-edge AI IDEs such as Cursor and Windsurf as an API
 
-SimulateDev is an automation tool that allows you to run AI coding agents (Cursor, Windsurf, Cloud Code) on any GitHub repository with a custom prompt, and automatically create pull requests with the changes.
+SimulateDev is an automation tool that allows you to run AI coding agents (Cursor, Windsurf, Claude Code) on any GitHub repository with a custom prompt, and automatically create pull requests with the changes.
 
 ## Features
 
-- **Multi-Agent Support**: Works with Cursor, Windsurf, and Cloud Code (coming soon)
+- **Multi-Agent Support**: Works with Cursor, Windsurf, and Claude Code (coming soon)
 - **Automated Workflow**: Clone → Analyze → Implement → Create PR
 - **Custom Prompts**: Send any coding task to your preferred AI agent
 - **Visual UI Detection**: Uses Claude Computer Use for precise UI interaction
@@ -85,6 +85,9 @@ python main.py https://github.com/user/repo "Fix responsive table design for mob
 # Add error handling with Windsurf
 python main.py https://github.com/user/repo "Add comprehensive error handling to API endpoints" windsurf
 
+# Optimize with Claude Code
+python main.py https://github.com/user/repo "Optimize database queries" claude_code
+
 # Skip pull request creation
 python main.py https://github.com/user/repo "Optimize database queries" cursor --no-pr
 ```
@@ -105,7 +108,7 @@ python main.py https://github.com/user/repo "Optimize database queries" cursor -
 |-------|--------|-------|
 | Cursor | Supported | Full integration |
 | Windsurf | Supported | Full integration |  
-| Cloud Code | Coming Soon | In development |
+| Claude Code | Coming Soon | In development |
 
 ## Advanced Usage
 
@@ -171,7 +174,7 @@ python computer_use_utils.py
 
 ## Roadmap
 
-- [ ] **Cloud Code Integration**: Add support for Google Cloud Code
+- [ ] **Claude Code Integration**: Add support for Google Cloud Code
 - [ ] **Web Interface**: Build a web UI for easier usage
 - [ ] **Batch Processing**: Process multiple repositories at once
 - [ ] **Custom Agents**: Support for other AI coding tools
