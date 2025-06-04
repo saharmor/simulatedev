@@ -83,6 +83,10 @@ graph LR
 
 ### Basic Usage
 
+### General Coding Tasks
+
+For custom coding tasks with user-defined prompts:
+
 ```bash
 python main.py <repo_url> <prompt> <agent>
 ```
@@ -93,14 +97,47 @@ python main.py <repo_url> <prompt> <agent>
 # Fix responsive design issues with Cursor
 python main.py https://github.com/user/repo "Fix responsive table design for mobile devices" cursor
 
-# Add error handling with Windsurf
+# Add error handling with Windsurf  
 python main.py https://github.com/user/repo "Add comprehensive error handling to API endpoints" windsurf
 
-# Optimize with Claude Code
+# Custom optimization task
 python main.py https://github.com/user/repo "Optimize database queries" claude_code
+```
+
+### Specialized Workflows
+
+For predefined specialized workflows, use the workflows CLI:
+
+```bash
+python workflows_cli.py <workflow> <repo_url> <agent>
+```
+
+**Available Workflows:**
+
+| Workflow | Description | Example |
+|----------|-------------|---------|
+| `bugs` | Find and fix bugs and security issues | `python workflows_cli.py bugs https://github.com/user/repo cursor` |
+| `optimize` | Performance optimizations and improvements | `python workflows_cli.py optimize https://github.com/user/repo windsurf` |
+| `refactor` | Code quality improvements and refactoring | `python workflows_cli.py refactor https://github.com/user/repo cursor` |
+| `low-hanging` | Quick wins and easy improvements | `python workflows_cli.py low-hanging https://github.com/user/repo windsurf` |
+
+**Examples:**
+
+```bash
+# Hunt for bugs and security issues
+python workflows_cli.py bugs https://github.com/user/repo cursor
+
+# Find performance optimization opportunities  
+python workflows_cli.py optimize https://github.com/user/repo windsurf
+
+# Improve code quality and maintainability
+python workflows_cli.py refactor https://github.com/user/repo cursor
+
+# Find easy wins and quick improvements
+python workflows_cli.py low-hanging https://github.com/user/repo windsurf
 
 # Skip pull request creation
-python main.py https://github.com/user/repo "Optimize database queries" cursor --no-pr
+python workflows_cli.py bugs https://github.com/user/repo cursor --no-pr
 ```
 
 ## Configuration
@@ -178,15 +215,36 @@ python main.py https://github.com/user/repo "Refactor code" cursor
 
 ```
 simulatedev/
-├── main.py                    # Main orchestrator
-├── bug_hunter.py             # IDE interaction logic
-├── clone_repo.py             # Repository cloning
-├── computer_use_utils.py     # Claude Computer Use integration
-├── ide_completion_detector.py # IDE state monitoring
-├── github_integration.py     # GitHub API operations
-├── requirements.txt          # Dependencies
-└── scanned_repos/           # Cloned repositories
+├── main.py                       # Main CLI for general coding tasks
+├── workflows_cli.py              # CLI for specialized workflows (bugs, optimize, etc.)
+├── agent_orchestrator.py         # High-level agent workflow coordination  
+├── workflows/                    # Specialized workflow modules
+│   ├── __init__.py              # Package initialization
+│   ├── bug_hunting.py           # Bug discovery and fixing workflows
+│   ├── code_optimization.py     # Performance and refactoring workflows
+│   └── general_coding.py        # General user-defined coding tasks
+├── coding_agents.py             # Agent abstraction layer (Cursor, Windsurf, Claude Code)
+├── clone_repo.py                # Repository cloning utilities
+├── computer_use_utils.py        # Claude Computer Use integration
+├── ide_completion_detector.py   # IDE state monitoring
+├── github_integration.py        # GitHub API operations and PR creation
+├── requirements.txt             # Dependencies
+└── scanned_repos/              # Cloned repositories
 ```
+
+### Module Responsibilities
+
+- **`main.py`**: Entry point for general coding tasks with user-defined prompts
+- **`workflows_cli.py`**: Entry point for specialized predefined workflows
+- **`agent_orchestrator.py`**: High-level orchestration for agent workflows (IDE management, prompt sending, response handling)
+- **`workflows/`**: Package containing specialized workflow modules:
+  - **`bug_hunting.py`**: Bug discovery and security issue fixing
+  - **`code_optimization.py`**: Performance optimizations, refactoring, and code quality improvements
+  - **`general_coding.py`**: Enhanced general-purpose coding task handling
+- **`coding_agents.py`**: Clean abstraction layer for different AI coding agents
+- **`github_integration.py`**: Git operations and GitHub API integration
+- **`computer_use_utils.py`**: Claude Computer Use for screen automation
+- **`ide_completion_detector.py`**: Monitors IDE state to detect task completion
 
 ### Running Tests
 
