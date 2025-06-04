@@ -75,39 +75,32 @@ class SimulateDev:
             
             print(f"SUCCESS: Repository cloned to: {repo_path}")
             
-            # Step 2: Setup Git for PR creation (before making changes)
-            if request.create_pr:
-                print("\nSetting up Git configuration...")
-                if not self.github_integration.setup_git_config(repo_path):
-                    print("WARNING: Git setup failed, continuing without PR creation")
-                    request.create_pr = False
-            
-            # Step 3: Open IDE
+            # Step 2: Open IDE
             print(f"\nOpening {request.agent.value.title()}...")
             await self.bug_hunter.open_ide(request.agent, repo_path, should_wait_for_focus=True)
             print(f"SUCCESS: {request.agent.value.title()} opened successfully")
             
-            # Step 4: Send prompt to agent (using new agent class system)
+            # Step 3: Send prompt to agent (using new agent class system)
             print(f"\nSending prompt to {request.agent.value.title()}...")
             await self.bug_hunter.send_prompt_to_agent(request.agent, request.prompt)
             print("SUCCESS: Prompt sent successfully")
             
-            # Step 5: Wait for completion
+            # Step 4: Wait for completion
             print(f"\nWaiting for {request.agent.value.title()} to complete...")
             await self.bug_hunter.wait_for_agent_completion(request.agent, timeout_seconds=300)
             print("SUCCESS: Agent completed the task")
             
-            # Step 6: Extract results
+            # Step 5: Extract results
             print("\nExtracting results...")
             results = await self.bug_hunter.get_last_message(request.agent)
             print("SUCCESS: Results extracted")
             
-            # Step 7: Create pull request
+            # Step 6: Create pull request (includes all git operations)
             if request.create_pr:
-                print("\nCreating pull request...")
-                pr_url = self.github_integration.full_workflow(
+                print("\nProcessing changes and creating pull request...")
+                pr_url = self.github_integration.smart_workflow(
                     repo_path=repo_path,
-                    repo_url=request.repo_url,
+                    original_repo_url=request.repo_url,
                     prompt=request.prompt,
                     agent_name=request.agent.value
                 )

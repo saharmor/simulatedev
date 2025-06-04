@@ -67,8 +67,19 @@ class CodingAgent(ABC):
         """Optional keyboard shortcut to open the agent interface"""
         return None
     
-    def open_interface(self):
-        """Open the agent interface using keyboard shortcut if available"""
+    async def open_interface(self):
+        """Open the agent interface using keyboard shortcut if available, but first check if it's already open"""
+        # First, check if the interface is already open by looking for the input field
+        print(f"Checking if {self.agent_name} interface is already open...")
+        try:
+            input_coords = await self.get_input_field_coordinates()
+            if input_coords:
+                print(f"SUCCESS: {self.agent_name} interface is already open")
+                return
+        except Exception as e:
+            print(f"INFO: {self.agent_name} interface not detected, will try to open it")
+        
+        # Interface is not open, try to open it with keyboard shortcut
         if self.keyboard_shortcut:
             print(f"Opening {self.agent_name} interface with shortcut: {self.keyboard_shortcut}")
             if self.keyboard_shortcut == "cmd+l":
@@ -77,7 +88,19 @@ class CodingAgent(ABC):
                 pyautogui.hotkey('command', 'k')
             elif self.keyboard_shortcut == "cmd+i":
                 pyautogui.hotkey('command', 'i')
-            time.sleep(1)
+            time.sleep(2)  # Wait a bit longer for interface to open
+            
+            # Verify the interface opened by checking for input field again
+            try:
+                input_coords = await self.get_input_field_coordinates()
+                if input_coords:
+                    print(f"SUCCESS: {self.agent_name} interface opened successfully")
+                else:
+                    print(f"WARNING: Could not verify {self.agent_name} interface opened")
+            except Exception as e:
+                print(f"WARNING: Could not verify {self.agent_name} interface opened: {str(e)}")
+        else:
+            print(f"INFO: No keyboard shortcut available for {self.agent_name}")
     
     async def get_input_field_coordinates(self):
         """Get the coordinates of the input field"""
@@ -100,7 +123,7 @@ class CodingAgent(ABC):
     async def send_prompt(self, prompt: str):
         """Send a prompt to the agent"""
         # Open interface first if needed
-        self.open_interface()
+        await self.open_interface()
         
         # Get input field coordinates
         input_coords = await self.get_input_field_coordinates()
