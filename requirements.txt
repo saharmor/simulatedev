@@ -9,3 +9,4 @@ pytweening==1.2.0
 pygetwindow==0.0.9
 pymsgbox==1.0.9 
 google-generativeai
+requests>=2.31.0
