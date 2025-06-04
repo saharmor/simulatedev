@@ -21,7 +21,7 @@ from typing import Optional
 from dataclasses import dataclass
 
 from clone_repo import clone_repository
-from bug_hunter import BugHunter
+from workflows.general_coding import GeneralCodingWorkflow
 from computer_use_utils import ClaudeComputerUse
 from github_integration import GitHubIntegration
 from coding_agents import AgentFactory, CodingAgentType
@@ -40,7 +40,7 @@ class SimulateDev:
     """Main orchestrator for AI coding agent automation"""
     
     def __init__(self):
-        self.bug_hunter = BugHunter()
+        self.workflow_orchestrator = GeneralCodingWorkflow()
         self.github_integration = GitHubIntegration()
         self.base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scanned_repos")
         os.makedirs(self.base_dir, exist_ok=True)
@@ -71,28 +71,28 @@ class SimulateDev:
                     print("ERROR: Failed to clone repository")
                     return False
             else:
-                repo_path = self.bug_hunter.clone_repository(request.repo_url)
+                repo_path = self.workflow_orchestrator.clone_repository(request.repo_url)
             
             print(f"SUCCESS: Repository cloned to: {repo_path}")
             
             # Step 2: Open IDE
             print(f"\nOpening {request.agent.value.title()}...")
-            await self.bug_hunter.open_ide(request.agent, repo_path, should_wait_for_focus=True)
+            await self.workflow_orchestrator.open_ide(request.agent, repo_path, should_wait_for_focus=True)
             print(f"SUCCESS: {request.agent.value.title()} opened successfully")
             
-            # Step 3: Send prompt to agent (using new agent class system)
+            # Step 3: Send prompt to agent using the general coding workflow
             print(f"\nSending prompt to {request.agent.value.title()}...")
-            await self.bug_hunter.send_prompt_to_agent(request.agent, request.prompt)
+            await self.workflow_orchestrator.send_prompt_to_agent(request.agent, request.prompt)
             print("SUCCESS: Prompt sent successfully")
             
             # Step 4: Wait for completion
             print(f"\nWaiting for {request.agent.value.title()} to complete...")
-            await self.bug_hunter.wait_for_agent_completion(request.agent, timeout_seconds=300)
+            await self.workflow_orchestrator.wait_for_agent_completion(request.agent, timeout_seconds=300)
             print("SUCCESS: Agent completed the task")
             
             # Step 5: Extract results
             print("\nExtracting results...")
-            results = await self.bug_hunter.get_last_message(request.agent)
+            results = await self.workflow_orchestrator.get_agent_response(request.agent)
             print("SUCCESS: Results extracted")
             
             # Step 6: Create pull request (includes all git operations)
