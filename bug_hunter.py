@@ -256,4 +256,7 @@ if __name__ == "__main__":    # Add a safety delay before starting
     print("Starting in 3 seconds...")
     time.sleep(3)
     
+    # move mouse here (1189, 450)
+    pyautogui.moveTo(1189, 450)
+
     asyncio.run(main()) 
