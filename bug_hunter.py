@@ -10,7 +10,7 @@ import asyncio
 import pyautogui
 
 from ide_completion_detector import wait_until_ide_finishes
-from coding_agents import AgentFactory, WindsurfAgent
+from coding_agents import AgentFactory, WindsurfAgent, CodingAgentType
 
 
 class BugHunter:
@@ -36,11 +36,11 @@ class BugHunter:
         subprocess.run(["git", "clone", repo_url, local_path], check=True)
         return local_path
     
-    async def open_ide(self, ide_name: str, project_path: str, should_wait_for_focus: bool = False):
-        print(f"Opening IDE: {ide_name} with project path: {project_path}")
+    async def open_ide(self, agent_type: CodingAgentType, project_path: str, should_wait_for_focus: bool = False):
+        print(f"Opening IDE: {agent_type.value} with project path: {project_path}")
         
         # Create agent instance
-        agent = AgentFactory.create_agent(ide_name, self.claude)
+        agent = AgentFactory.create_agent(agent_type, self.claude)
         window_name = agent.window_name
         
         try:
@@ -73,19 +73,19 @@ class BugHunter:
             print("Waiting 5 seconds after fallback open...")
             time.sleep(5)
 
-    async def get_input_field_coordinates(self, ide_name: str):
+    async def get_input_field_coordinates(self, agent_type: CodingAgentType):
         """Get the coordinates of the input field using agent class"""
-        agent = AgentFactory.create_agent(ide_name, self.claude)
+        agent = AgentFactory.create_agent(agent_type, self.claude)
         return await agent.get_input_field_coordinates()
     
-    async def send_prompt_to_agent(self, ide_name: str, prompt: str):
+    async def send_prompt_to_agent(self, agent_type: CodingAgentType, prompt: str):
         """Send a prompt to the specified agent"""
-        agent = AgentFactory.create_agent(ide_name, self.claude)
+        agent = AgentFactory.create_agent(agent_type, self.claude)
         await agent.send_prompt(prompt)
     
-    async def get_last_message(self, ide_name: str):
+    async def get_last_message(self, agent_type: CodingAgentType):
         """Get the last message from the agent"""
-        agent = AgentFactory.create_agent(ide_name, self.claude)
+        agent = AgentFactory.create_agent(agent_type, self.claude)
         response = await agent.read_agent_output()
         
         if response.success:
@@ -93,10 +93,10 @@ class BugHunter:
         else:
             raise Exception(f"Failed to read agent output: {response.error_message}")
     
-    async def wait_for_agent_completion(self, ide_name: str, timeout_seconds: int = 300):
+    async def wait_for_agent_completion(self, agent_type: CodingAgentType, timeout_seconds: int = 300):
         """Wait for the agent to complete processing"""
-        agent = AgentFactory.create_agent(ide_name, self.claude)
-        await wait_until_ide_finishes(ide_name, agent.interface_state_prompt, timeout_seconds)
+        agent = AgentFactory.create_agent(agent_type, self.claude)
+        await wait_until_ide_finishes(agent_type.value, agent.interface_state_prompt, timeout_seconds)
     
     async def type_bug_hunting_prompt(self, input_field_coordinates: tuple, repo_url: str):
         """Type the bug hunting prompt into the IDE's input field"""
@@ -155,7 +155,7 @@ def open_agentic_coding_interface():
 async def main():
     #TODO  Revert, only for dev purposes
     repo_url = "https://github.com/saharmor/gemini-multimodal-playground"
-    ide_name = "cursor"
+    agent_type = CodingAgentType.CURSOR
     
     hunter = BugHunter()
     
@@ -163,24 +163,24 @@ async def main():
         # Clone repository
         local_path = hunter.clone_repository(repo_url)
         
-        await hunter.open_ide(ide_name, local_path)
+        await hunter.open_ide(agent_type, local_path)
         time.sleep(1)
 
         open_agentic_coding_interface()
         time.sleep(1)
 
         # Get the coordinates of the input field
-        input_field_coordinates = await hunter.get_input_field_coordinates(ide_name)
+        input_field_coordinates = await hunter.get_input_field_coordinates(agent_type)
         if input_field_coordinates:
             await hunter.type_bug_hunting_prompt(input_field_coordinates.coordinates, repo_url)
         else:
             raise Exception("Could not find input field coordinates")
         
         # wait for IDE to finish processing command
-        await hunter.wait_for_agent_completion(ide_name, 120)
+        await hunter.wait_for_agent_completion(agent_type, 120)
 
         # Get and print response
-        response = await hunter.get_last_message(ide_name)
+        response = await hunter.get_last_message(agent_type)
         print("\nResponse from AI:\n")
         print(response)
     except Exception as e:
