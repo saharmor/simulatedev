@@ -35,19 +35,95 @@ IMPORTANT: Respond with a JSON object containing exactly these two keys: - 'inte
     def copy_button_prompt(self) -> str:
         return "The Copy text of the last message in the Cascade terminal. Usually, it's in the right pane of the screen next to the Insert text button."
     
+    async def is_coding_agent_open(self) -> bool:
+        """Check if Windsurf Cascade interface is currently open and ready"""
+        try:
+            print(f"Checking if {self.agent_name} interface is already open...")
+            input_coords = await self.get_input_field_coordinates()
+            if input_coords:
+                print(f"SUCCESS: {self.agent_name} interface is already open")
+                return True
+            else:
+                print(f"INFO: {self.agent_name} interface not detected")
+                return False
+        except Exception as e:
+            print(f"INFO: Could not detect {self.agent_name} interface: {str(e)}")
+            return False
+    
+    async def open_coding_interface(self) -> bool:
+        """Open Windsurf IDE and Cascade interface, handle any setup popups"""
+        # First ensure Windsurf application is running
+        await self._ensure_windsurf_app_open()
+        
+        # Then check if Cascade interface is already running
+        if await self.is_coding_agent_open():
+            return True
+        
+        # Interface is not open, open Cascade interface with keyboard shortcut
+        print(f"Opening {self.agent_name} Cascade interface with shortcut: {self.keyboard_shortcut}")
+        pyautogui.hotkey('command', 'i')
+        time.sleep(2)  # Wait for interface to open
+        
+        # TODO commend out for now as it's not working that well, prompt needs to be improved
+        # Handle trust workspace popup if it appears
+        # await self.handle_trust_workspace_popup()
+        
+        # Verify the Cascade opened by checking for input field again
+        if await self.is_coding_agent_open():
+            print(f"SUCCESS: {self.agent_name} interface opened successfully")
+            return True
+        else:
+            print(f"WARNING: Could not verify {self.agent_name} interface opened")
+            return False
+    
+    async def _ensure_windsurf_app_open(self):
+        """Ensure Windsurf application is open"""
+        import subprocess
+        import os
+        
+        try:
+            # Get current project path
+            project_path = os.getcwd()
+            
+            # Open Windsurf with the current project
+            print(f"Opening Windsurf application with project: {project_path}")
+            subprocess.run(["open", "-a", self.window_name, project_path])
+            print("Waiting 3 seconds for app to start...")
+            time.sleep(3)  # wait for the app to start
+            
+            # Activate the application
+            activate_script = f'''
+            tell application "{self.window_name}"
+                activate
+            end tell
+            '''
+            subprocess.run(["osascript", "-e", activate_script], check=True)
+            time.sleep(1)
+            
+            # Use computer_use_utils to bring window to front
+            from computer_use_utils import bring_to_front_window
+            repo_name = os.path.basename(project_path)
+            ide_open_success = bring_to_front_window(self.window_name, repo_name)
+            if not ide_open_success:
+                print("Warning: Could not bring Windsurf window to front, but continuing...")
+                
+        except Exception as e:
+            print(f"Warning: Could not open Windsurf application: {str(e)}")
+            print("Assuming Windsurf is already open, continuing with Cascade interface...")
+    
     async def handle_trust_workspace_popup(self):
         """Handle the 'Trust this workspace' popup specific to Windsurf"""
-        print("Handling 'Trust this workspace' prompt for Windsurf...")
+        print("Checking for 'Trust this workspace' prompt for Windsurf...")
         result = await self.claude.get_coordinates_from_claude(
-            # TODO improve this prompt
             "A button that states 'I trust this workspace' as part of a popup", 
             support_non_existing_elements=True
         )
         if result:
+            print("Found trust workspace button, clicking it...")
             pyautogui.moveTo(result.coordinates.x, result.coordinates.y)
             pyautogui.click(result.coordinates.x, result.coordinates.y)
             time.sleep(1.0)
             return True
         else:
-            print("Warning: Could not find Trust button coordinates")
+            print("INFO: No trust workspace popup found (this is normal if workspace is already trusted)")
             return False 

@@ -7,11 +7,10 @@ handling IDE management, repository operations, and agent workflow coordination.
 """
 
 import os
-import time
 import subprocess
 from urllib.parse import urlparse
-from computer_use_utils import ClaudeComputerUse, bring_to_front_window, wait_for_focus
-from coding_agents import AgentFactory, WindsurfAgent, CodingAgentType
+from computer_use_utils import ClaudeComputerUse
+from agents import AgentFactory, CodingAgentType
 
 
 class AgentOrchestrator:
@@ -46,40 +45,32 @@ class AgentOrchestrator:
         subprocess.run(["git", "clone", repo_url, local_path], check=True)
         return local_path
     
-    
-    
     async def open_ide(self, agent_type: CodingAgentType, project_path: str, repo_name: str):
-        """Open the specified IDE with the project"""
+        """Open the specified IDE with the project and ensure coding interface is ready"""
         print(f"Opening IDE: {agent_type.value} with project path: {project_path}")
         
         # Create agent instance
         agent = AgentFactory.create_agent(agent_type, self.claude)
-        window_name = agent.window_name
         
+        # Change to project directory for agents that need it
+        original_cwd = os.getcwd()
         try:
-            subprocess.run(["open", "-a", window_name, project_path])
-            print("Waiting 3 seconds for app to start...")
-            time.sleep(3)  # wait for the app to start
+            os.chdir(project_path)
             
-            activate_script = f'''
-            tell application "{window_name}"
-                activate
-            end tell
-            '''
-            subprocess.run(["osascript", "-e", activate_script], check=True)
-            time.sleep(1)
+            # Let the agent handle everything: IDE opening, interface setup, and preparation
+            interface_ready = await agent.open_coding_interface()
             
-
-            ide_open_success = bring_to_front_window(window_name, repo_name)
-            if not ide_open_success:
-                print("Error: IDE failed to open or gain focus")
-                raise Exception("IDE did not open or focus")    
-        except subprocess.CalledProcessError as e:
-            print(f"Warning: Could not set window to full screen: {str(e)}")
-            print(f"Attempting fallback open command for {window_name}...")
-            subprocess.run(["open", "-na", window_name, project_path])
-            print("Waiting 5 seconds after fallback open...")
-            time.sleep(5)
+            if not interface_ready:
+                raise Exception(f"Failed to open {agent_type.value} coding interface")
+                
+            print(f"SUCCESS: {agent_type.value} is ready to accept commands")
+            
+        except Exception as e:
+            print(f"ERROR: Failed to open coding interface: {str(e)}")
+            raise
+        finally:
+            # Restore original working directory
+            os.chdir(original_cwd)
 
     async def send_prompt_to_agent(self, agent_type: CodingAgentType, prompt: str):
         """Send a prompt to the specified agent"""

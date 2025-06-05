@@ -64,45 +64,32 @@ class CodingAgent(ABC):
         """Optional keyboard shortcut to open the agent interface"""
         return None
     
-    async def open_coding_interface(self):
-        """Open the agent interface using keyboard shortcut if available, but first check if it's already open
+    @abstractmethod
+    async def is_coding_agent_open(self) -> bool:
+        """Check if the agent is currently running and ready to accept commands
         
-        Default implementation does nothing - agents that need to open an interface should override this method.
+        Each agent should implement its own logic for checking if it's running.
+        This could involve checking for specific windows, processes, or interface elements.
+        
+        Returns:
+            bool: True if the agent is running and ready, False otherwise
         """
-        # Default implementation - agents that don't need to open an interface can use this
-        if not self.keyboard_shortcut:
-            print(f"INFO: {self.agent_name} doesn't require opening a separate interface")
-            return
-            
-        # First, check if the interface is already open by looking for the input field
-        print(f"Checking if {self.agent_name} interface is already open...")
-        try:
-            input_coords = await self.get_input_field_coordinates()
-            if input_coords:
-                print(f"SUCCESS: {self.agent_name} interface is already open")
-                return
-        except Exception as e:
-            print(f"INFO: {self.agent_name} interface not detected, will try to open it")
+        pass
+    
+    @abstractmethod
+    async def open_coding_interface(self) -> bool:
+        """Open the agent's coding interface and ensure it's ready to accept commands
         
-        # Interface is not open, try to open it with keyboard shortcut
-        print(f"Opening {self.agent_name} interface with shortcut: {self.keyboard_shortcut}")
-        if self.keyboard_shortcut == "cmd+l":
-            pyautogui.hotkey('command', 'l')
-        elif self.keyboard_shortcut == "cmd+k":
-            pyautogui.hotkey('command', 'k')
-        elif self.keyboard_shortcut == "cmd+i":
-            pyautogui.hotkey('command', 'i')
-        time.sleep(2)  # Wait a bit longer for interface to open
+        Each agent should implement its own logic for:
+        1. Checking if already running (using is_agent_running())
+        2. Opening the interface if not running
+        3. Handling any setup popups or prompts
+        4. Verifying the interface is ready
         
-        # Verify the interface opened by checking for input field again
-        try:
-            input_coords = await self.get_input_field_coordinates()
-            if input_coords:
-                print(f"SUCCESS: {self.agent_name} interface opened successfully")
-            else:
-                print(f"WARNING: Could not verify {self.agent_name} interface opened")
-        except Exception as e:
-            print(f"WARNING: Could not verify {self.agent_name} interface opened: {str(e)}")
+        Returns:
+            bool: True if interface is open and ready, False otherwise
+        """
+        pass
     
     async def get_input_field_coordinates(self):
         """Get the coordinates of the input field"""
@@ -116,9 +103,6 @@ class CodingAgent(ABC):
     
     async def send_prompt(self, prompt: str):
         """Send a prompt to the agent"""
-        # Open interface first if needed
-        await self.open_coding_interface()
-        
         # Get input field coordinates
         input_coords = await self.get_input_field_coordinates()
         if not input_coords:

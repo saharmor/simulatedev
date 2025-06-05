@@ -3,6 +3,8 @@
 Cursor Agent Implementation
 """
 
+import time
+import pyautogui
 from typing import Optional
 from .base import CodingAgent
 
@@ -31,4 +33,76 @@ IMPORTANT: Respond with a JSON object containing exactly these two keys: - 'inte
     
     @property
     def copy_button_prompt(self) -> str:
-        return "A grey small thumbs-down button. Always in the right pane of the screen." 
+        return "A grey small thumbs-down button. Always in the right pane of the screen."
+    
+    async def is_coding_agent_open(self) -> bool:
+        """Check if Cursor chat interface is currently open and ready"""
+        try:
+            print(f"Checking if {self.agent_name} interface is already open...")
+            input_coords = await self.get_input_field_coordinates()
+            if input_coords:
+                print(f"SUCCESS: {self.agent_name} interface is already open")
+                return True
+            else:
+                print(f"INFO: {self.agent_name} interface not detected")
+                return False
+        except Exception as e:
+            print(f"INFO: Could not detect {self.agent_name} interface: {str(e)}")
+            return False
+    
+    async def open_coding_interface(self) -> bool:
+        """Open Cursor IDE and chat interface"""
+        # First ensure Cursor application is running
+        await self._ensure_cursor_app_open()
+        
+        # Then check if chat interface is already running
+        if await self.is_coding_agent_open():
+            return True
+        
+        # Interface is not open, open chat interface with keyboard shortcut
+        print(f"Opening {self.agent_name} chat interface with shortcut: {self.keyboard_shortcut}")
+        pyautogui.hotkey('command', 'l')
+        time.sleep(2)  # Wait for interface to open
+        
+        # Verify the chat interface opened by checking for input field again
+        if await self.is_coding_agent_open():
+            print(f"SUCCESS: {self.agent_name} interface opened successfully")
+            return True
+        else:
+            print(f"WARNING: Could not verify {self.agent_name} interface opened")
+            return False
+    
+    async def _ensure_cursor_app_open(self):
+        """Ensure Cursor application is open"""
+        import subprocess
+        import os
+        
+        try:
+            # Get current project path
+            project_path = os.getcwd()
+            
+            # Open Cursor with the current project
+            print(f"Opening Cursor application with project: {project_path}")
+            subprocess.run(["open", "-a", self.window_name, project_path])
+            print("Waiting 3 seconds for app to start...")
+            time.sleep(3)  # wait for the app to start
+            
+            # Activate the application
+            activate_script = f'''
+            tell application "{self.window_name}"
+                activate
+            end tell
+            '''
+            subprocess.run(["osascript", "-e", activate_script], check=True)
+            time.sleep(1)
+            
+            # Use computer_use_utils to bring window to front
+            from computer_use_utils import bring_to_front_window
+            repo_name = os.path.basename(project_path)
+            ide_open_success = bring_to_front_window(self.window_name, repo_name)
+            if not ide_open_success:
+                print("Warning: Could not bring Cursor window to front, but continuing...")
+                
+        except Exception as e:
+            print(f"Warning: Could not open Cursor application: {str(e)}")
+            print("Assuming Cursor is already open, continuing with chat interface...") 
