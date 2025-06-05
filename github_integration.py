@@ -263,13 +263,45 @@ class GitHubIntegration:
             print(f"ERROR: Failed to push branch {branch_name}: {e.stderr.decode()}")
             return False
     
+    def get_default_branch(self, repo_url: str) -> str:
+        """Get the default branch of a repository
+        
+        Args:
+            repo_url: Repository URL
+            
+        Returns:
+            str: Default branch name (fallback to 'main' if detection fails)
+        """
+        if not self.github_token:
+            print("WARNING: No GitHub token, assuming 'main' as default branch")
+            return "main"
+        
+        try:
+            repo_info = self.parse_repo_info(repo_url)
+            url = f"https://api.github.com/repos/{repo_info['owner']}/{repo_info['repo']}"
+            
+            response = requests.get(url, headers=self.base_headers)
+            
+            if response.status_code == 200:
+                repo_data = response.json()
+                default_branch = repo_data.get("default_branch", "main")
+                print(f"INFO: Detected default branch: {default_branch}")
+                return default_branch
+            else:
+                print(f"WARNING: Cannot detect default branch (status: {response.status_code}), using 'main'")
+                return "main"
+                
+        except Exception as e:
+            print(f"WARNING: Error detecting default branch: {str(e)}, using 'main'")
+            return "main"
+
     def create_pull_request(
         self,
         repo_url: str,
         branch_name: str,
         title: str,
         description: str,
-        base_branch: str = "main",
+        base_branch: Optional[str] = None,
         head_repo_url: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """Create a pull request on GitHub
@@ -279,7 +311,7 @@ class GitHubIntegration:
             branch_name: Name of the branch with changes
             title: PR title
             description: PR description
-            base_branch: Target branch for the PR
+            base_branch: Target branch for the PR (auto-detected if None)
             head_repo_url: Source repository URL (for cross-repo PRs), defaults to repo_url
         """
         
@@ -289,6 +321,10 @@ class GitHubIntegration:
         
         try:
             target_repo_info = self.parse_repo_info(repo_url)
+            
+            # Auto-detect base branch if not provided
+            if base_branch is None:
+                base_branch = self.get_default_branch(repo_url)
             
             # Determine head reference
             if head_repo_url and head_repo_url != repo_url:
@@ -300,6 +336,8 @@ class GitHubIntegration:
                 # Same repository PR
                 head_ref = branch_name
                 print(f"INFO: Creating PR within {target_repo_info['owner']}/{target_repo_info['repo']}")
+            
+            print(f"INFO: PR details - head: {head_ref}, base: {base_branch}")
             
             pr_data = {
                 "title": title,
@@ -321,6 +359,34 @@ class GitHubIntegration:
                 pr_data = response.json()
                 print(f"SUCCESS: Pull request created: {pr_data['html_url']}")
                 return pr_data
+            elif response.status_code == 422:
+                # Handle validation errors - try common branch names
+                print(f"WARNING: PR creation failed with validation error. Trying fallback branches...")
+                
+                fallback_branches = ["master", "develop", "dev"]
+                if base_branch not in fallback_branches:
+                    fallback_branches.insert(0, "main")  # Try main first if not already tried
+                
+                for fallback_branch in fallback_branches:
+                    if fallback_branch == base_branch:
+                        continue  # Skip the one we already tried
+                    
+                    print(f"INFO: Trying base branch: {fallback_branch}")
+                    pr_data["base"] = fallback_branch
+                    
+                    retry_response = requests.post(
+                        url,
+                        json=pr_data,
+                        headers=self.base_headers
+                    )
+                    
+                    if retry_response.status_code == 201:
+                        pr_data = retry_response.json()
+                        print(f"SUCCESS: Pull request created with base branch '{fallback_branch}': {pr_data['html_url']}")
+                        return pr_data
+                
+                print(f"ERROR: Failed to create PR with any base branch: {response.status_code} - {response.text}")
+                return None
             else:
                 print(f"ERROR: Failed to create PR: {response.status_code} - {response.text}")
                 return None

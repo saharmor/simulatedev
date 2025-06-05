@@ -38,6 +38,7 @@ Examples:
 import argparse
 import asyncio
 import os
+import shutil
 import sys
 from typing import Optional
 from dataclasses import dataclass
@@ -57,7 +58,6 @@ class WorkflowRequest:
     agent: CodingAgentType
     target_dir: Optional[str] = None
     create_pr: bool = True
-    delete_existing: bool = False
 
 
 class WorkflowOrchestrator:
@@ -91,7 +91,6 @@ class WorkflowOrchestrator:
             print(f"Agent: {request.agent.value}")
             print(f"Approach: Systematic (map → rank → choose → implement one)")
             print(f"Create PR: {request.create_pr}")
-            print(f"Delete existing: {request.delete_existing}")
             
             # Get workflow instance
             workflow = self.get_workflow_instance(request.workflow_type)
@@ -247,8 +246,14 @@ async def main():
             agent=agent_type,
             target_dir=args.target_dir,
             create_pr=not args.no_pr,
-            delete_existing=args.delete_existing
         )
+        
+        if args.delete_existing:
+            # delete local repo directory
+            repo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scanned_repos", args.repo_url.split("/")[-1])
+            if os.path.exists(repo_path):
+                shutil.rmtree(repo_path)
+                print(f"Deleted existing repository folder: {repo_path}")
         
         # Initialize and run workflow orchestrator
         orchestrator = WorkflowOrchestrator()

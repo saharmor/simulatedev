@@ -446,7 +446,7 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
             
             # Report state change
             if state != last_state:
-                print(f"{ide_name} state: {state}")
+                print(f"{ide_name} state: {state}, reasoning: {reasoning}")
                 last_state = state
                 
             # If IDE is done, return success
@@ -459,7 +459,7 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
             remaining = timeout_in_seconds - elapsed
             
             if screenshot_count % 5 == 0 or remaining < 30:
-                print(f"Still executing || Reasoning: {reasoning} || {int(remaining)} seconds remaining (next check in {check_interval} seconds)")
+                print(f"Still executing... {int(remaining)} seconds remaining (next check in {check_interval} seconds)")
                 
             print(f"Sleeping for {int(check_interval)} seconds before next check...")
             
