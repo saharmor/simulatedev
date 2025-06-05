@@ -7,6 +7,7 @@ extending the agent orchestrator with bug-specific prompts and workflows.
 """
 
 import pyautogui
+import pyperclip
 import time
 import sys
 import os
@@ -22,62 +23,89 @@ class BugHunter(AgentOrchestrator):
     """Specialized orchestrator for bug hunting workflows"""
     
     def generate_bug_hunting_prompt(self, repo_url: str) -> str:
-        """Generate a bug hunting prompt for the specified repository"""
-        return f"""You are a world-class developer analyzing code for bugs. Respond only with a JSON array of bug findings.
+        """Generate a bug hunting prompt that maps, ranks, and implements one bug"""
+        return f"""You are a world-class developer with expertise in bug discovery and autonomous implementation. Your task is to find bugs systematically and implement a fix for the best candidate.
 
-<output_format>
-{{
-    "bugs": [
-        {{
-            "file": "string", 
-            "lines": "string (clickable link to {repo_url}/blob/main/FILE#L1-L2)",
-            "bug_type": "string (security/memory/efficiency/etc)",
-            "description": "string",
-            "implications": "string", 
-            "fix": "string"
-        }}
-    ]
-}}
-</output_format>
+## Repository
+Working on: {repo_url}
 
-My colleague told me they found three bugs in this codebase. One of them is extremely severe. Find those bugs and return them in the specified JSON format above. Make sure the lines field generates clickable GitHub links.
-ONLY RETURN THE JSON ARRAY. NOTHING ELSE."""
+## Bug Hunting Process
+
+### Phase 1: MAPPING - Comprehensive Bug Discovery
+First, scan the entire codebase to identify ALL potential bugs. Look for:
+
+1. **Security Vulnerabilities**: SQL injection, XSS, authentication bypasses, input validation issues
+2. **Memory Issues**: Memory leaks, buffer overflows, dangling pointers
+3. **Logic Errors**: Off-by-one errors, incorrect conditionals, race conditions
+4. **Error Handling Gaps**: Missing try-catch blocks, unhandled exceptions, silent failures
+5. **Data Validation Issues**: Missing input validation, type conversion errors
+6. **Concurrency Bugs**: Race conditions, deadlocks, thread safety issues
+7. **Performance Bugs**: Inefficient algorithms, resource leaks, blocking operations
+
+Create a comprehensive list of ALL bugs you find, no matter how small.
+
+### Phase 2: RANKING - Prioritization
+For each bug found, evaluate it on these criteria:
+
+**Implementation Likelihood (1-10 scale):**
+- How complex is the fix? (simple fixes score higher)
+- How well-contained is the bug? (localized bugs score higher)
+- How likely are you to successfully implement it autonomously? (higher certainty scores higher)
+- Are there clear, well-established patterns for fixing this type of bug? (yes scores higher)
+
+**Impact & Impressiveness (1-10 scale):**
+- How severe is the potential damage? (more severe scores higher)
+- How visible would the fix be to users/developers? (more visible scores higher)
+- How much would this improve code quality/security? (more improvement scores higher)
+- How technically impressive is identifying and fixing this bug? (more impressive scores higher)
+
+**Combined Score Calculation:**
+- Final Score = (Implementation Likelihood × 0.6) + (Impact & Impressiveness × 0.4)
+- This prioritizes achievable fixes while still valuing high-impact improvements
+
+### Phase 3: SELECTION - Choose the Best Candidate
+Select the bug with the highest combined score. This should be:
+- Something you can confidently implement end-to-end
+- Impressive enough to demonstrate real value
+- Achievable within the autonomous workflow constraints
+
+### Phase 4: IMPLEMENTATION - Fix the Selected Bug
+For the chosen bug:
+1. Implement a complete, working fix
+2. Add appropriate tests if the codebase has testing infrastructure
+3. Add clear comments explaining the fix
+4. Ensure the fix doesn't break existing functionality
+5. Follow the existing code style and conventions
+
+## Output Format
+Structure your response as follows:
+
+```
+# BUG HUNTING ANALYSIS
+
+## PHASE 1: MAPPING
+[List all bugs found with brief descriptions]
+
+## PHASE 2: RANKING
+[For each bug, show the scoring breakdown]
+
+## PHASE 3: SELECTION
+**CHOSEN BUG:** [Name/description of selected bug]
+**REASONING:** [Why this bug was selected based on the scoring criteria]
+
+## PHASE 4: IMPLEMENTATION
+[Implement the fix with clear explanation of changes made]
+```
+
+## Important Notes
+- Focus on bugs you can implement confidently and completely
+- Prioritize fixes that demonstrate clear value and technical competence
+- Ensure your implementation is production-ready, not just a proof-of-concept
+- Don't attempt fixes that require extensive architectural changes or external dependencies
+
+Please proceed with this bug hunting process."""
 
     async def hunt_bugs(self, agent_type: CodingAgentType, repo_url: str, project_path: str = None) -> str:
-        """Execute a complete bug hunting workflow"""
+        """Execute a bug hunting workflow that maps, ranks, and implements one high-value bug"""
         prompt = self.generate_bug_hunting_prompt(repo_url)
         return await self.execute_workflow(agent_type, repo_url, prompt, project_path)
-    
-    async def type_bug_hunting_prompt_legacy(self, input_field_coordinates: tuple, repo_url: str):
-        """Legacy method for typing bug hunting prompt (kept for backward compatibility)"""
-        prompt = self.generate_bug_hunting_prompt(repo_url)
-        
-        # Move to the input field
-        print(f"Moving to input field at ({input_field_coordinates.x}, {input_field_coordinates.y})...")
-        pyautogui.moveTo(input_field_coordinates.x, input_field_coordinates.y, duration=1.0)
-        time.sleep(0.5)  # Wait for mouse movement
-        pyautogui.click(input_field_coordinates.x, input_field_coordinates.y)
-        time.sleep(1.0)  # Wait longer for focus
-        
-        print("Typing prompt...")
-        # Type the prompt line by line, inserting a newline break (Shift+Enter) after each line
-        lines = prompt.split('\n')
-        for i, line in enumerate(lines):
-            pyautogui.write(line)
-            if i < len(lines) - 1:  # Don't add newline after last line
-                pyautogui.hotkey('shift', 'enter')  # inserts a line break without submitting
-
-        pyautogui.press('enter')
-        time.sleep(1.0)  # Wait longer before pressing Enter
-
-
-def clean_input_box():
-    """Clean the input box using keyboard shortcuts"""
-    pyautogui.hotkey('command', 'a')
-    pyautogui.hotkey('command', 'backspace')
-
-
-def open_agentic_coding_interface():
-    """Open the agentic coding interface using keyboard shortcut"""
-    # TODO: add check if the agentic coding interface is not already open
-    pyautogui.hotkey('command', 'l') 

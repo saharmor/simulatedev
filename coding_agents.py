@@ -130,20 +130,23 @@ class CodingAgent(ABC):
         if not input_coords:
             raise Exception(f"Could not locate {self.agent_name} input field")
         
-        # Click and type
+        # Click the input field
         print(f"Moving to {self.agent_name} input field...")
-        pyautogui.moveTo(input_coords.coordinates.x, input_coords.coordinates.y, duration=1.0)
+        pyautogui.moveTo(input_coords.coordinates.x, input_coords.coordinates.y, duration=0.5)
         time.sleep(0.5)
         pyautogui.click(input_coords.coordinates.x, input_coords.coordinates.y)
         time.sleep(1.0)
         
-        print(f"Typing prompt to {self.agent_name}...")
-        lines = prompt.split('\n')
-        for i, line in enumerate(lines):
-            pyautogui.write(line)
-            if i < len(lines) - 1:
-                pyautogui.hotkey('shift', 'enter')
+        # Copy prompt to clipboard and paste it
+        print(f"Copying prompt to clipboard and pasting into {self.agent_name}...")
+        pyperclip.copy(prompt)
+        time.sleep(0.5)  # Brief pause to ensure clipboard is updated
         
+        # Paste the prompt using Cmd+V on macOS
+        pyautogui.hotkey('command', 'v')
+        time.sleep(1.0)  # Wait for paste to complete
+        
+        # Submit the prompt
         pyautogui.press('enter')
         time.sleep(1.0)
     
