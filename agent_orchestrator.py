@@ -10,7 +10,7 @@ import os
 import time
 import subprocess
 from urllib.parse import urlparse
-from computer_use_utils import ClaudeComputerUse, wait_for_focus
+from computer_use_utils import ClaudeComputerUse, bring_to_front_window, wait_for_focus
 from coding_agents import AgentFactory, WindsurfAgent, CodingAgentType
 
 
@@ -46,7 +46,9 @@ class AgentOrchestrator:
         subprocess.run(["git", "clone", repo_url, local_path], check=True)
         return local_path
     
-    async def open_ide(self, agent_type: CodingAgentType, project_path: str, should_wait_for_focus: bool = False):
+    
+    
+    async def open_ide(self, agent_type: CodingAgentType, project_path: str, repo_name: str):
         """Open the specified IDE with the project"""
         print(f"Opening IDE: {agent_type.value} with project path: {project_path}")
         
@@ -67,11 +69,11 @@ class AgentOrchestrator:
             subprocess.run(["osascript", "-e", activate_script], check=True)
             time.sleep(1)
             
-            if should_wait_for_focus:
-                is_focused_and_opened = wait_for_focus(window_name)            
-                if not is_focused_and_opened:
-                    print("Error: IDE failed to open or gain focus")
-                    raise Exception("IDE did not open or focus")
+
+            ide_open_success = bring_to_front_window(window_name, repo_name)
+            if not ide_open_success:
+                print("Error: IDE failed to open or gain focus")
+                raise Exception("IDE did not open or focus")
             
             # Handle Windsurf-specific popup
             if isinstance(agent, WindsurfAgent):
@@ -114,7 +116,8 @@ class AgentOrchestrator:
                 project_path = self.clone_repository(repo_url)
             
             # Step 2: Open IDE
-            await self.open_ide(agent_type, project_path, should_wait_for_focus=True)
+            repo_name = self.get_repo_name(repo_url)
+            await self.open_ide(agent_type, project_path, repo_name)
             
             # Step 3: Send prompt
             await self.send_prompt_to_agent(agent_type, prompt)

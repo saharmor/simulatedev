@@ -3,8 +3,10 @@ import base64
 import io
 import subprocess
 import pyautogui
+import time
+import platform
 from enum import Enum
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 from dotenv import load_dotenv
 import json
 from dataclasses import dataclass
@@ -180,21 +182,176 @@ def get_coordinates_for_prompt(prompt: str) -> Optional[Tuple[int, int]]:
         return None
 
 
+def get_windsurf_project_window_name(project_contained_name: str):
+    """Get Windsurf project window name since it runs as an Electron app"""
+    script = '''
+        tell application "System Events"
+            tell process "Electron"
+                set theWindowNames to name of every window
+            end tell
+        end tell
+        return theWindowNames
+    '''
+    try:
+        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
+        window_names = result.stdout.strip().split(",")
+        return next((name.strip() for name in window_names if project_contained_name in name), None)
+    except Exception as e:
+        print(f"Error getting Windsurf window names: {str(e)}")
+        return None
+
+
+def get_ide_window_name(app_name: str, window_title: str):
+    """Extract the appropriate window name based on the IDE"""
+    if app_name == "windsurf":
+        return window_title.split(" — ")[0] if " — " in window_title else window_title
+    elif app_name == "cursor":
+        return window_title.split(" — ")[1] if " — " in window_title else window_title
+    else:
+        return window_title
+
+
+def bring_to_front_window(app_name: str, window_title: str):
+    """
+    Focus the appropriate IDE window based on the current interface.
+    
+    Returns:
+        bool: True if the window was successfully focused, False otherwise
+    """
+    try:
+        app_name = app_name.lower()
+        window_name = get_ide_window_name(app_name, window_title)
+        
+        if platform.system() == "Darwin":
+            # If the application is Google Chrome, or if it's Lovable or Bolt,
+            # then use Chrome to find the tab with the window_title.
+            window_name_for_script = window_name if window_name else app_name
+
+            if app_name in ["lovable", "bolt"]:
+                script = f'''
+                tell application "Google Chrome"
+                    activate
+                    set tabFound to false
+                    repeat with w in windows
+                        set tabCount to count of tabs in w
+                        repeat with i from 1 to tabCount
+                            if (title of (tab i of w) contains "{window_name_for_script}") then
+                                set active tab index of w to i
+                                -- Bring the window to the front
+                                set index of w to 1
+                                set tabFound to true
+                                exit repeat
+                            end if
+                        end repeat
+                        if tabFound then exit repeat
+                    end repeat
+                    return tabFound
+                end tell
+                '''
+                result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
+                tab_found = result.stdout.strip() == "true"
+                if tab_found:
+                    return True
+                else:
+                    print(f"Warning: Focused on Google Chrome, but could not find tab with title containing '{window_name}'")
+                    return False
+            else:
+                # windsurf runs as an Electron app, so we need to check the window names
+                app_name_for_script = "Electron" if app_name == "windsurf" else app_name.capitalize()
+                
+                script = f'''
+                tell application "System Events"
+                    tell process "{app_name_for_script}"
+                        set frontmost to true
+                        repeat with w in windows
+                            if name of w contains "{window_name}" then
+                                perform action "AXRaise" of w
+                                exit repeat
+                            end if
+                        end repeat
+                    end tell
+                end tell
+                '''
+
+                subprocess.run(["osascript", "-e", script], check=True)
+                return True
+
+        elif platform.system() == "Windows":
+            # Windows-specific focusing script would be implemented here
+            print("Window focusing not implemented for Windows")
+            return False
+        else:
+            print(f"Window focusing not implemented for {platform.system()}")
+            return False
+    except Exception as e:
+        print(f"Error focusing window: {e}")
+        return False
+
+
 def wait_for_focus(app_name, timeout=10):
-    """Wait until the specified app is frontmost."""
+    """Wait until the specified app is frontmost. Updated to handle Windsurf as Electron app."""
+    # Handle Windsurf as Electron app
+    process_name = "Electron" if app_name.lower() == "windsurf" else app_name
+    
     script = f'''
     tell application "System Events"
-        repeat until (name of first application process whose frontmost is true) is "{app_name}"
+        repeat until (name of first application process whose frontmost is true) is "{process_name}"
             delay 0.5
         end repeat
     end tell
     '''
     try:
         subprocess.run(["osascript", "-e", script], timeout=timeout)
+        return True
     except subprocess.TimeoutExpired:
-        print(f"Timed out waiting for {app_name} to become active.")
+        print(f"Timed out waiting for {app_name} (process: {process_name}) to become active.")
         return False
-    return True
+    except Exception as e:
+        print(f"Error waiting for focus: {str(e)}")
+        return False
+
+
+def get_current_window_name():
+    """Get the name of the currently active window, with robust error handling."""
+    script = '''
+    try
+        tell application "System Events"
+            set frontProcess to first process whose frontmost is true
+            set processName to name of frontProcess
+        end tell
+
+        if processName is "Google Chrome" then
+            tell application "Google Chrome"
+                if (count of windows) > 0 then
+                    return title of active tab of front window
+                else
+                    return "Google Chrome"
+                end if
+            end tell
+        else
+            tell application "System Events"
+                if exists front window of frontProcess then
+                    return name of front window of frontProcess
+                else
+                    return processName
+                end if
+            end tell
+        end if
+    on error errorMessage
+        return "Unknown"
+    end try
+    '''
+    
+    try:
+        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            print(f"Warning: AppleScript error when getting window name: {result.stderr.strip()}")
+            return "Unknown Window"
+        return result.stdout.strip()
+    except Exception as e:
+        print(f"Error getting current window name: {e}")
+        return "Unknown Window"
+
 
 def take_screenshot(target_width, target_height, encode_base64: bool = False, monitor_number: int = 0, save_to_file: bool = False) -> str:
     """

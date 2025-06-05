@@ -27,6 +27,12 @@ Examples:
     python workflows_cli.py bugs https://github.com/user/repo cursor
     python workflows_cli.py optimize https://github.com/user/repo windsurf
     python workflows_cli.py low-hanging https://github.com/user/repo cursor
+    
+    # Skip pull request creation
+    python workflows_cli.py bugs https://github.com/user/repo cursor --no-pr
+    
+    # Delete existing repository folder if it exists
+    python workflows_cli.py bugs https://github.com/user/repo cursor --delete-existing
 """
 
 import argparse
@@ -51,6 +57,7 @@ class WorkflowRequest:
     agent: CodingAgentType
     target_dir: Optional[str] = None
     create_pr: bool = True
+    delete_existing: bool = False
 
 
 class WorkflowOrchestrator:
@@ -84,6 +91,7 @@ class WorkflowOrchestrator:
             print(f"Agent: {request.agent.value}")
             print(f"Approach: Systematic (map → rank → choose → implement one)")
             print(f"Create PR: {request.create_pr}")
+            print(f"Delete existing: {request.delete_existing}")
             
             # Get workflow instance
             workflow = self.get_workflow_instance(request.workflow_type)
@@ -181,6 +189,9 @@ Examples:
   
   # Skip pull request creation
   python workflows_cli.py bugs https://github.com/user/repo cursor --no-pr
+  
+  # Delete existing repository folder if it exists
+  python workflows_cli.py bugs https://github.com/user/repo cursor --delete-existing
         """
     )
     
@@ -212,6 +223,12 @@ Examples:
         help="Skip creating a pull request"
     )
     
+    parser.add_argument(
+        "--delete-existing",
+        action="store_true",
+        help="Delete existing repository folder if it already exists (default: False)"
+    )
+    
     return parser.parse_args()
 
 
@@ -229,7 +246,8 @@ async def main():
             repo_url=args.repo_url,
             agent=agent_type,
             target_dir=args.target_dir,
-            create_pr=not args.no_pr
+            create_pr=not args.no_pr,
+            delete_existing=args.delete_existing
         )
         
         # Initialize and run workflow orchestrator

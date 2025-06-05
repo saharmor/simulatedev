@@ -119,7 +119,8 @@ class SimulateDev:
             
             # Step 2: Open IDE
             print(f"\nOpening {request.agent.value.title()}...")
-            await self.workflow_orchestrator.open_ide(request.agent, repo_path, should_wait_for_focus=True)
+            repo_name = self.workflow_orchestrator.get_repo_name(request.repo_url)
+            await self.workflow_orchestrator.open_ide(request.agent, repo_path, repo_name)
             print(f"SUCCESS: {request.agent.value.title()} opened successfully")
             
             # Step 3: Send prompt to agent using the general coding workflow

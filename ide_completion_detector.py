@@ -419,6 +419,11 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
         while time.time() - start_time < timeout_in_seconds:
             screenshot_count += 1
             
+            # Print that we're checking (every iteration)
+            elapsed = time.time() - start_time
+            remaining = timeout_in_seconds - elapsed
+            print(f"Checking {ide_name} state... (check #{screenshot_count}, {int(remaining)}s remaining)")
+            
             # Capture screenshot
             # TODO FIX and get size correctly
             image = take_screenshot(1280, 720, save_to_file=True)
@@ -455,6 +460,8 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
             if screenshot_count % 5 == 0 or remaining < 30:
                 print(f"Still waiting... {int(remaining)} seconds remaining (next check in {check_interval} seconds)")
                 
+            print(f"Sleeping for {int(check_interval)} seconds before next check...")
+            
             # Wait before next check
             time.sleep(check_interval)
             
