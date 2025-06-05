@@ -15,7 +15,8 @@ from PIL import Image
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-from computer_use_utils import take_screenshot
+from computer_use_utils import take_screenshot, ClaudeComputerUse
+import pyautogui
 
 def get_window_list():
     """
@@ -295,6 +296,99 @@ def analyze_ide_state(image_path, interface_state_analysis_prompt):
         print(f"Error analyzing IDE state: {e}")
         return False, f"error: {str(e)}"
 
+def detect_cursor_resume_message(image_path):
+    """
+    Detect if Cursor shows the message about stopping after 25 tool calls.
+    
+    Args:
+        image_path (str): Path to the screenshot image.
+        
+    Returns:
+        bool: True if the resume message is detected, False otherwise.
+    """
+    try:
+        # Load and prepare the image
+        with Image.open(image_path) as img:
+            # Ensure image is in RGB format for compatibility
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            
+            # Get Gemini model
+            model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20')
+            
+            # Prompt to detect the resume message
+            prompt = """You are analyzing a screenshot of the Cursor IDE interface. Look for this exact message:
+
+"Note: we default stop the agent after 25 tool calls. You can resume the conversation."
+
+Respond with a JSON object containing:
+{
+    "resume_message_detected": true/false,
+    "reasoning": "explanation of what you found"
+}
+
+If you see this message, return true. If not, return false."""
+            
+            # Get response from Gemini
+            response = model.generate_content([prompt, img])
+            response_text = response.text.strip()
+            
+            # Extract JSON from response text
+            try:
+                # Look for JSON content between triple backticks if present
+                if "```json" in response_text and "```" in response_text.split("```json", 1)[1]:
+                    json_content = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
+                elif "```" in response_text and "```" in response_text.split("```", 1)[1]:
+                    json_content = response_text.split("```", 1)[1].split("```", 1)[0].strip()
+                else:
+                    json_content = response_text
+                
+                # Parse the JSON
+                analysis = json.loads(json_content)
+                return analysis.get("resume_message_detected", False)
+                
+            except json.JSONDecodeError:
+                return False  # Default to False if JSON parsing fails
+                
+    except Exception as e:
+        print(f"Error detecting cursor resume message: {e}")
+        return False
+
+async def click_cursor_resume_button():
+    """
+    Find and click the "Resume the Conversation" button in Cursor.
+    
+    Returns:
+        bool: True if button was found and clicked, False otherwise.
+    """
+    try:
+        # Initialize Claude Computer Use for finding the button
+        claude = ClaudeComputerUse()
+        
+        # Look for the Resume button
+        result = await claude.get_coordinates_from_claude(
+            "Button/linked text that says 'resume the Conversation' related to continuing after 25 tool calls",
+            support_non_existing_elements=True
+        )
+        
+        if result and result.coordinates:
+            print(f"Found Resume button at coordinates ({result.coordinates.x}, {result.coordinates.y})")
+            
+            # Click the resume button
+            pyautogui.moveTo(result.coordinates.x, result.coordinates.y, duration=0.5)
+            time.sleep(0.5)
+            pyautogui.click(result.coordinates.x, result.coordinates.y)
+            time.sleep(2.0)  # Wait a bit for the resume to take effect
+            print("Successfully clicked Resume the Conversation button")
+            return True
+        else:
+            print("Could not find Resume the Conversation button")
+            return False
+            
+    except Exception as e:
+        print(f"Error clicking resume button: {e}")
+        return False
+
 async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, timeout_in_seconds):
     """
     Wait until the specified IDE finishes processing.
@@ -318,7 +412,7 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
         print(f"Will wait up to {timeout_in_seconds} seconds for completion")
         
         start_time = time.time()
-        check_interval = 4.0  # Check every 4 seconds
+        check_interval = 20.0  # Start with 20 seconds
         screenshot_count = 0
         last_state = None
         
@@ -328,6 +422,18 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
             # Capture screenshot
             # TODO FIX and get size correctly
             image = take_screenshot(1280, 720, save_to_file=True)
+            
+            # Special handling for Cursor: Check for 25 tool call limit message
+            if ide_name.lower() == "cursor":
+                if detect_cursor_resume_message("screenshot.png"):
+                    print("Detected Cursor 25 tool call limit message. Attempting to resume...")
+                    resume_success = await click_cursor_resume_button()
+                    if resume_success:
+                        print("Successfully resumed Cursor conversation. Continuing to monitor...")
+                        # Continue monitoring - don't reset the timeout, just continue
+                        continue
+                    else:
+                        raise Exception("Failed to click the Resume button in Cursor. The IDE will be stuck waiting for user interaction and cannot proceed automatically.")
             
             # Analyze screenshot
             is_done, state = analyze_ide_state(image, interface_state_analysis_prompt)
@@ -339,7 +445,7 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
                 
             # If IDE is done, return success
             if is_done:
-                print(f"✅ {ide_name} has completed its task!")
+                print(f"SUCCESS: {ide_name} has completed its task!")
                 return True
             
             # Check elapsed time
@@ -347,13 +453,16 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
             remaining = timeout_in_seconds - elapsed
             
             if screenshot_count % 5 == 0 or remaining < 30:
-                print(f"Still waiting... {int(remaining)} seconds remaining")
+                print(f"Still waiting... {int(remaining)} seconds remaining (next check in {check_interval} seconds)")
                 
             # Wait before next check
             time.sleep(check_interval)
             
+            # Update check interval: decrease by 2 seconds, minimum 5 seconds
+            check_interval = max(5.0, check_interval - 2.0)
+            
         # If we get here, we timed out
-        print(f"⏱️ Timeout: {ide_name} did not finish within {timeout_in_seconds} seconds")
+        print(f"TIMEOUT: {ide_name} did not finish within {timeout_in_seconds} seconds")
         return False
     except KeyboardInterrupt:
         print("\nMonitoring stopped by user.")
