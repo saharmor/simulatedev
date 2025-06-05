@@ -31,9 +31,16 @@ class AgentOrchestrator:
         repo_name = self.get_repo_name(repo_url)
         local_path = os.path.join(self.base_dir, repo_name)
         
-        if os.path.exists(local_path):
+        # Check if directory exists and is a valid git repository
+        if os.path.exists(local_path) and os.path.isdir(os.path.join(local_path, '.git')):
             print(f"Repository already exists at {local_path}")
             return local_path
+            
+        # Remove directory if it exists but isn't a valid git repo
+        if os.path.exists(local_path):
+            import shutil
+            print(f"Removing invalid repository directory at {local_path}")
+            shutil.rmtree(local_path)
             
         print(f"Cloning repository to {local_path}...")
         subprocess.run(["git", "clone", repo_url, local_path], check=True)

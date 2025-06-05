@@ -1,17 +1,27 @@
 #!/usr/bin/env python3
 """
-SimulateDev Workflows CLI - Specialized Workflow Launcher
+SimulateDev Workflows CLI - AI Coding Workflow Launcher
 
-This tool allows you to run specialized AI coding workflows on GitHub repositories.
+This tool allows you to run AI coding workflows on GitHub repositories.
+Each workflow follows a systematic approach: Map → Rank → Choose → Implement
 
 Usage:
     python workflows_cli.py <workflow> <repo_url> <agent_name>
     
 Available Workflows:
-    bugs        - Find and fix bugs in the codebase
-    optimize    - Performance optimization and refactoring  
+    bugs        - Find and fix one high-impact bug
+    optimize    - Find and implement one high-value performance optimization  
     refactor    - Code quality improvements and refactoring
-    low-hanging - Find easy wins and quick improvements
+    low-hanging - Find and implement one impressive low-hanging fruit improvement
+    
+Systematic Approach:
+    1. MAPPING: Comprehensively identify all opportunities (bugs/improvements)
+    2. RANKING: Score each by implementation likelihood + impact/impressiveness  
+    3. SELECTION: Choose the highest-scoring opportunity
+    4. IMPLEMENTATION: Implement only that one improvement completely
+    
+    This ensures the coding agent focuses on achievable, high-value work rather than
+    attempting everything and potentially failing to complete any improvements.
     
 Examples:
     python workflows_cli.py bugs https://github.com/user/repo cursor
@@ -44,7 +54,7 @@ class WorkflowRequest:
 
 
 class WorkflowOrchestrator:
-    """Orchestrator for specialized AI coding workflows"""
+    """Orchestrator for AI coding workflows"""
     
     def __init__(self):
         self.github_integration = GitHubIntegration()
@@ -69,29 +79,30 @@ class WorkflowOrchestrator:
     async def execute_workflow(self, request: WorkflowRequest) -> bool:
         """Execute the specified workflow"""
         try:
-            print(f"🚀 Starting {request.workflow_type} workflow...")
+            print(f"STARTING: {request.workflow_type} workflow...")
             print(f"Repository: {request.repo_url}")
             print(f"Agent: {request.agent.value}")
+            print(f"Approach: Systematic (map → rank → choose → implement one)")
             print(f"Create PR: {request.create_pr}")
             
             # Get workflow instance
             workflow = self.get_workflow_instance(request.workflow_type)
             
             # Step 1: Clone repository
-            print("\n📥 Cloning repository...")
+            print("\nCLONING: repository...")
             if request.target_dir:
                 repo_path = request.target_dir
                 success = clone_repository(request.repo_url, request.target_dir)
                 if not success:
-                    print("❌ ERROR: Failed to clone repository")
+                    print("ERROR: Failed to clone repository")
                     return False
             else:
                 repo_path = workflow.clone_repository(request.repo_url)
             
-            print(f"✅ SUCCESS: Repository cloned to: {repo_path}")
+            print(f"SUCCESS: Repository cloned to: {repo_path}")
             
             # Step 2: Execute the specific workflow
-            print(f"\n🔧 Executing {request.workflow_type} workflow...")
+            print(f"\nEXECUTING: {request.workflow_type} workflow...")
             
             if request.workflow_type == 'bugs':
                 results = await workflow.hunt_bugs(request.agent, request.repo_url, repo_path)
@@ -105,18 +116,18 @@ class WorkflowOrchestrator:
                 # General workflow would need a prompt, but we're focusing on specialized workflows here
                 raise ValueError(f"Unsupported workflow in execute_workflow: {request.workflow_type}")
             
-            print("✅ SUCCESS: Workflow completed")
+            print("SUCCESS: Workflow completed")
             
             # Step 3: Create pull request if requested
             if request.create_pr:
-                print("\n📝 Creating pull request...")
+                print("\nCREATING: pull request...")
                 
                 # Create workflow-specific commit message
                 workflow_descriptions = {
-                    'bugs': 'Fix bugs and security issues',
-                    'optimize': 'Performance optimizations and improvements',
+                    'bugs': 'Bug fix: high-impact, low-risk improvement',
+                    'optimize': 'Performance optimization: focused improvement',
                     'refactor': 'Code refactoring and quality improvements',
-                    'low-hanging': 'Quick wins and easy improvements'
+                    'low-hanging': 'Low-hanging fruit: quick win with high value'
                 }
                 
                 commit_message = workflow_descriptions.get(request.workflow_type, f"{request.workflow_type} improvements")
@@ -129,40 +140,44 @@ class WorkflowOrchestrator:
                 )
                 
                 if pr_url:
-                    print(f"✅ SUCCESS: Pull request created: {pr_url}")
-                    print(f"\n🔗 You can review the changes at: {pr_url}")
+                    print(f"SUCCESS: Pull request created: {pr_url}")
+                    print(f"\nREVIEW: You can review the changes at: {pr_url}")
                 else:
-                    print("⚠️ WARNING: Pull request creation failed")
+                    print("WARNING: Pull request creation failed")
             else:
-                print("\n⏭️ Skipping pull request creation")
+                print("\nSKIPPING: pull request creation")
             
-            print(f"\n🎉 {request.workflow_type.title()} workflow completed successfully!")
-            print(f"\n📊 Results Summary:\n{results}")
+            print(f"\nRESULTS: Summary:\n{results}")
             
             return True
             
         except Exception as e:
-            print(f"❌ ERROR: Workflow execution failed: {str(e)}")
+            print(f"ERROR: Workflow execution failed: {str(e)}")
             return False
 
 
 def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
-        description="Run specialized AI coding workflows on GitHub repositories",
+        description="Run AI coding workflows on GitHub repositories",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Available Workflows:
-  bugs        - Find and fix bugs in the codebase
-  optimize    - Performance optimization and improvements  
+  bugs        - Find and fix one high-impact bug
+  optimize    - Find and implement one high-value performance optimization  
   refactor    - Code quality improvements and refactoring
-  low-hanging - Find easy wins and quick improvements
+  low-hanging - Find and implement one impressive low-hanging fruit improvement
+  
+Systematic Approach:
+  1. MAPPING: Comprehensively identify all opportunities
+  2. RANKING: Score by implementation likelihood + impact/impressiveness  
+  3. SELECTION: Choose the highest-scoring opportunity
+  4. IMPLEMENTATION: Implement only that one improvement completely
   
 Examples:
   python workflows_cli.py bugs https://github.com/user/repo cursor
   python workflows_cli.py optimize https://github.com/user/repo windsurf
-  python workflows_cli.py refactor https://github.com/user/repo cursor
-  python workflows_cli.py low-hanging https://github.com/user/repo windsurf
+  python workflows_cli.py low-hanging https://github.com/user/repo cursor
   
   # Skip pull request creation
   python workflows_cli.py bugs https://github.com/user/repo cursor --no-pr
@@ -222,17 +237,17 @@ async def main():
         success = await orchestrator.execute_workflow(request)
         
         if success:
-            print(f"\n🎊 {args.workflow.title()} workflow completed successfully!")
+            print(f"\nCOMPLETED: {args.workflow.title()} workflow completed successfully!")
             sys.exit(0)
         else:
-            print(f"\n💥 {args.workflow.title()} workflow failed!")
+            print(f"\nFAILED: {args.workflow.title()} workflow failed!")
             sys.exit(1)
             
     except KeyboardInterrupt:
-        print("\n⏹️ Process interrupted by user")
+        print("\nINTERRUPTED: Process interrupted by user")
         sys.exit(1)
     except Exception as e:
-        print(f"\n💥 Unexpected error: {str(e)}")
+        print(f"\nERROR: Unexpected error: {str(e)}")
         sys.exit(1)
 
 

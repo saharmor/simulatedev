@@ -19,6 +19,7 @@ import os
 import sys
 from typing import Optional
 from dataclasses import dataclass
+from datetime import datetime
 
 from clone_repo import clone_repository
 from workflows.general_coding import GeneralCodingWorkflow
@@ -44,6 +45,44 @@ class SimulateDev:
         self.github_integration = GitHubIntegration()
         self.base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scanned_repos")
         os.makedirs(self.base_dir, exist_ok=True)
+        
+        # Create CodingAgentResponses directory
+        self.responses_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "CodingAgentResponses")
+        os.makedirs(self.responses_dir, exist_ok=True)
+    
+    def save_agent_response(self, repo_url: str, agent_name: str, response: str):
+        """Save the agent response to a file with the specified naming format"""
+        try:
+            # Extract repository name from URL
+            repo_name = os.path.splitext(os.path.basename(repo_url.rstrip('/')))[0]
+            if repo_name.endswith('.git'):
+                repo_name = repo_name[:-4]
+            
+            # Generate timestamp
+            now = datetime.now()
+            date_str = now.strftime("%Y%m%d")
+            time_str = now.strftime("%H%M")
+            
+            # Create filename
+            filename = f"{repo_name}_{date_str}_{time_str}.txt"
+            filepath = os.path.join(self.responses_dir, filename)
+            
+            # Save response to file
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(f"SimulateDev Agent Response\n")
+                f.write(f"{'='*50}\n")
+                f.write(f"Repository: {repo_url}\n")
+                f.write(f"Agent: {agent_name}\n")
+                f.write(f"Timestamp: {now.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"{'='*50}\n\n")
+                f.write(response)
+            
+            print(f"SUCCESS: Agent response saved to: {filepath}")
+            return filepath
+            
+        except Exception as e:
+            print(f"WARNING: Failed to save agent response: {str(e)}")
+            return None
     
     async def process_request(self, request: ProjectRequest) -> bool:
         """
@@ -55,6 +94,9 @@ class SimulateDev:
         Returns:
             bool: True if successful, False otherwise
         """
+        pr_url = None
+        agent_response = None
+        
         try:
             print(f"Starting SimulateDev process...")
             print(f"Repository: {request.repo_url}")
@@ -92,10 +134,14 @@ class SimulateDev:
             
             # Step 5: Extract results
             print("\nExtracting results...")
-            results = await self.workflow_orchestrator.get_agent_response(request.agent)
+            agent_response = await self.workflow_orchestrator.get_agent_response(request.agent)
             print("SUCCESS: Results extracted")
             
-            # Step 6: Create pull request (includes all git operations)
+            # Step 6: Save agent response to file
+            print("\nSaving agent response...")
+            response_filepath = self.save_agent_response(request.repo_url, request.agent.value, agent_response)
+            
+            # Step 7: Create pull request (includes all git operations)
             if request.create_pr:
                 print("\nProcessing changes and creating pull request...")
                 pr_url = self.github_integration.smart_workflow(
@@ -107,19 +153,48 @@ class SimulateDev:
                 
                 if pr_url:
                     print(f"SUCCESS: Pull request created: {pr_url}")
-                    print(f"\nYou can review the changes at: {pr_url}")
                 else:
                     print("WARNING: Pull request creation failed")
             else:
                 print("\nSkipping pull request creation")
             
             print(f"\nProcess completed successfully!")
-            print(f"Results:\n{results}")
+            print(f"Results:\n{agent_response}")
+            
+            # Print final summary with PR URL if available
+            print(f"\n{'='*60}")
+            print(f"SIMULATEDEV COMPLETED SUCCESSFULLY")
+            print(f"{'='*60}")
+            print(f"Repository: {request.repo_url}")
+            print(f"Agent: {request.agent.value}")
+            if response_filepath:
+                print(f"Response saved to: {response_filepath}")
+            if pr_url:
+                print(f"Pull Request URL: {pr_url}")
+                print(f"\nYou can review and merge the changes at: {pr_url}")
+            print(f"{'='*60}")
             
             return True
             
         except Exception as e:
             print(f"ERROR: Error during processing: {str(e)}")
+            
+            # Still try to save the response if we got one
+            if agent_response:
+                print("\nAttempting to save agent response despite error...")
+                self.save_agent_response(request.repo_url, request.agent.value, agent_response)
+            
+            # Print summary even on failure
+            print(f"\n{'='*60}")
+            print(f"SIMULATEDEV FAILED")
+            print(f"{'='*60}")
+            print(f"Repository: {request.repo_url}")
+            print(f"Agent: {request.agent.value}")
+            print(f"Error: {str(e)}")
+            if pr_url:
+                print(f"Pull Request URL: {pr_url}")
+            print(f"{'='*60}")
+            
             return False
 
 
