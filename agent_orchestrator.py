@@ -73,12 +73,7 @@ class AgentOrchestrator:
             ide_open_success = bring_to_front_window(window_name, repo_name)
             if not ide_open_success:
                 print("Error: IDE failed to open or gain focus")
-                raise Exception("IDE did not open or focus")
-            
-            # Handle Windsurf-specific popup
-            if isinstance(agent, WindsurfAgent):
-                await agent.handle_trust_workspace_popup()
-                
+                raise Exception("IDE did not open or focus")    
         except subprocess.CalledProcessError as e:
             print(f"Warning: Could not set window to full screen: {str(e)}")
             print(f"Attempting fallback open command for {window_name}...")

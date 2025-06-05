@@ -112,14 +112,6 @@ class CodingAgent(ABC):
         result = await self.claude.get_coordinates_from_claude(self.copy_button_prompt)
         return result
     
-    async def analyze_interface_state(self):
-        """Analyze the current state of the agent interface"""
-        result = await self.claude.get_coordinates_from_claude(
-            self.interface_state_prompt, 
-            support_non_existing_elements=True
-        )
-        return result
-    
     async def send_prompt(self, prompt: str):
         """Send a prompt to the agent"""
         # Open interface first if needed
@@ -200,27 +192,14 @@ class CursorAgent(CodingAgent):
     
     @property
     def interface_state_prompt(self) -> str:
-        return """You are analyzing a screenshot of the Cursor AI coding assistant interface. You only care about the right panel. IGNORE ALL THE REST OF THE SCREENSHOT. 
-Determine the Cursor's current state based on visual cues in the right pane of the image. 
-Return the following state for the following scenarios: 
-'user_input_required' if there is a Cancel and Run buttons as the last message in the right pane, above the input box. Don't return this state even if the last message ends with a question to the user.
-'done' if there is a thumbs-up or thumbs-down icon in the right handside pane
-'still_working' if there is a 'Generating' text in the right handside pane
-IMPORTANT: Respond with a JSON object containing exactly these two keys: 
-- 'interface_state': must be EXACTLY ONE of these values: 'user_input_required', 'still_working', or 'done' 
-- 'reasoning': a brief explanation for your decision 
-Example response format: 
-```json 
-{ 
-  "interface_state": "done", 
-  "reasoning": "I can see a thumbs-up/thumbs-down icons in the right panel" 
-} 
-``` 
-Only analyze the right panel and provide nothing but valid JSON in your response."""
+        return """You are analyzing a screenshot of the Cursor AI coding assistant interface. You only care about the right panel. IGNORE ALL THE REST OF THE SCREENSHOT. Determine Cursor's current state based on visual cues in the right pane of the image. Return the following state for the following scenarios:
+'done' the first thing you should check is if you see a thumbs-up or thumbs-down icon in the right panel. If you see thumbs-up/thumbs-down, that's necessarily mean that the status is done!
+'still_working' If Cursor is working and it says "Generating" and you see "Stop" buttons
+IMPORTANT: Respond with a JSON object containing exactly these two keys: - 'interface_state': must be EXACTLY ONE of these values: 'user_input_required', 'still_working', or 'done' - 'reasoning': a brief explanation for your decision Example response format: ```json { "interface_state": "done", "reasoning": "I can see a thumbs-up/thumbs-down icons in the right panel" } ``` Only analyze the right panel and provide nothing but valid JSON in your response."""
     
     @property
     def input_field_prompt(self) -> str:
-        return 'Text input field in the right pane of the screen that says "Plan, search, build anything". This is the main input box for the Cursor Agent where users type their prompts.'
+        return 'Input box for the Cursor Agent which starts with \'Plan, search, build anything\'. Usually, it\'s in the right pane of the screen'
     
     @property
     def copy_button_prompt(self) -> str:
@@ -240,28 +219,15 @@ class WindsurfAgent(CodingAgent):
     
     @property
     def interface_state_prompt(self) -> str:
-        return """You are analyzing a screenshot of the Cascade AI coding assistant interface. You only care about the right panel that says 'Cascade | Write Mode'. IGNORE ALL THE REST OF THE SCREENSHOT. 
-Determine the Cascade's current state based on visual cues in the right pane of the image. 
-Return the following state for the following scenarios: 
-'user_input_required' if there is an accept and reject button or 'waiting on response' text in the right handside pane
-'done' if there is a thumbs-up or thumbs-down icon in the right handside pane
-'still_working' for all other cases
-IMPORTANT: Respond with a JSON object containing exactly these two keys: 
-- 'interface_state': must be EXACTLY ONE of these values: 'user_input_required', 'still_working', or 'done' 
-- 'reasoning': a brief explanation for your decision 
-Example response format: 
-```json 
-{ 
-  "interface_state": "done", 
-  "reasoning": "I can see a thumbs-up/thumbs-down icons in the right panel" 
-} 
-``` 
-Only analyze the right panel and provide nothing but valid JSON in your response."""
+        return """You are analyzing a screenshot of the Cascade AI coding assistant interface. You only care about the right panel that says 'Cascade | Write Mode'. IGNORE ALL THE REST OF THE SCREENSHOT. Determine the Cascade's current state based on visual cues in the right pane of the image. Return the following state for the following scenarios:
+'done' the first thing you should check is if you see a thumbs-up or thumbs-down icon in the right panel. If you see thumbs-up/thumbs-down, that's necessarily mean that the status is done!
+'still_working' if it says Running or Generating and there's a green dot on the bottom right of the chatbot panel.
+IMPORTANT: Respond with a JSON object containing exactly these two keys: - 'interface_state': must be EXACTLY ONE of these values: 'still_working', or 'done' - 'reasoning': a brief explanation for your decision Example response format: ```json { "interface_state": "done", "reasoning": "I can see a thumbs-up/thumbs-down icons in the right panel" } ``` Only analyze the right panel and provide nothing but valid JSON in your response."""
     
     @property
     def input_field_prompt(self) -> str:
         return 'Input box for the Cascade agent which starts with "Ask anything". Usually, it\'s in the right pane of the screen.'
-    
+
     @property
     def copy_button_prompt(self) -> str:
         return "The Copy text of the last message in the Cascade terminal. Usually, it's in the right pane of the screen next to the Insert text button."
@@ -270,6 +236,7 @@ Only analyze the right panel and provide nothing but valid JSON in your response
         """Handle the 'Trust this workspace' popup specific to Windsurf"""
         print("Handling 'Trust this workspace' prompt for Windsurf...")
         result = await self.claude.get_coordinates_from_claude(
+            # TODO improve this prompt
             "A button that states 'I trust this workspace' as part of a popup", 
             support_non_existing_elements=True
         )

@@ -285,12 +285,13 @@ def analyze_ide_state(image_path, interface_state_analysis_prompt):
                 analysis = json.loads(json_content)
                 
                 state = analysis["interface_state"].lower()
+                reasoning = analysis["reasoning"]
                 
                 # Determine if IDE is done
                 is_done = state == "done"
-                return is_done, state                
+                return is_done, state, reasoning                
             except json.JSONDecodeError:
-                return False, "processing"  # Default to processing if JSON parsing fails
+                return False, "processing", "JSON parsing failed"  # Default to processing if JSON parsing fails
                 
     except Exception as e:
         print(f"Error analyzing IDE state: {e}")
@@ -441,7 +442,7 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
                         raise Exception("Failed to click the Resume button in Cursor. The IDE will be stuck waiting for user interaction and cannot proceed automatically.")
             
             # Analyze screenshot
-            is_done, state = analyze_ide_state(image, interface_state_analysis_prompt)
+            is_done, state, reasoning = analyze_ide_state(image, interface_state_analysis_prompt)
             
             # Report state change
             if state != last_state:
@@ -458,7 +459,7 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
             remaining = timeout_in_seconds - elapsed
             
             if screenshot_count % 5 == 0 or remaining < 30:
-                print(f"Still waiting... {int(remaining)} seconds remaining (next check in {check_interval} seconds)")
+                print(f"Still executing || Reasoning: {reasoning} || {int(remaining)} seconds remaining (next check in {check_interval} seconds)")
                 
             print(f"Sleeping for {int(check_interval)} seconds before next check...")
             
