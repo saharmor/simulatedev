@@ -7,6 +7,7 @@ from .base import CodingAgent, CodingAgentType
 from .cursor_agent import CursorAgent
 from .windsurf_agent import WindsurfAgent
 from .claude_code_agent import ClaudeCodeAgent
+from .test_agent import TestAgent
 
 
 class AgentFactory:
@@ -21,6 +22,8 @@ class AgentFactory:
             return WindsurfAgent(claude_computer_use)
         elif agent_type == CodingAgentType.CLAUDE_CODE:
             return ClaudeCodeAgent(claude_computer_use)
+        elif agent_type == CodingAgentType.TEST:
+            return TestAgent(claude_computer_use)
         else:
             raise ValueError(f"Unsupported agent: {agent_type}")
     
@@ -35,6 +38,8 @@ class AgentFactory:
             return WindsurfAgent(claude_computer_use)
         elif agent_name == "claude_code" or agent_name == "cloud_code":
             return ClaudeCodeAgent(claude_computer_use)
+        elif agent_name == "test":
+            return TestAgent(claude_computer_use)
         else:
             raise ValueError(f"Unsupported agent: {agent_name}")
     
