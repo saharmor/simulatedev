@@ -6,10 +6,7 @@ A simple test agent that analyzes the codebase for inconsistencies and updates t
 This agent is designed to test the pipeline functionality without requiring complex UI interactions.
 """
 
-import time
 import os
-import subprocess
-import pyautogui
 import pyperclip
 from typing import Optional
 from .base import CodingAgent
@@ -81,9 +78,6 @@ Provide nothing but valid JSON in your response."""
     async def _run_analysis(self, prompt: str):
         """Run the actual codebase analysis"""
         print("Test Agent: Analyzing codebase structure...")
-        
-        # Get current directory
-        repo_dir = os.getcwd()
         
         # Analyze the codebase
         analysis_results = []
