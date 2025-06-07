@@ -102,6 +102,9 @@ python main.py https://github.com/user/repo "Add comprehensive error handling to
 
 # Custom optimization task
 python main.py https://github.com/user/repo "Optimize database queries" claude_code
+
+# Test the pipeline and analyze codebase consistency
+python main.py https://github.com/user/repo "Analyze codebase for inconsistencies" test
 ```
 
 ### Specialized Workflows
@@ -157,6 +160,7 @@ python workflows_cli.py bugs https://github.com/user/repo cursor --no-pr
 | Cursor | Supported | Full integration |
 | Windsurf | Supported | Full integration |  
 | Claude Code | Coming Soon | In development |
+| Test | Supported | Pipeline testing & codebase analysis |
 
 ## Advanced Usage
 
@@ -197,6 +201,33 @@ python main.py https://github.com/user/repo "Fix bugs" cursor --target-dir ~/my-
 ```bash
 python main.py https://github.com/user/repo "Add features" windsurf --no-pr
 ```
+
+### Test Agent
+
+The Test Agent is a special agent designed for pipeline testing and codebase analysis. Unlike other agents that require UI interaction, the Test Agent performs automated analysis and is perfect for:
+
+- **Pipeline Testing**: Verify that the entire SimulateDev pipeline works correctly
+- **Codebase Analysis**: Identify inconsistencies in code structure and documentation
+- **README Validation**: Check if documentation accurately reflects the current codebase
+- **Quality Assurance**: Find missing headers, documentation, and registration issues
+
+**Usage:**
+```bash
+# Run codebase analysis
+python main.py https://github.com/user/repo "Analyze codebase for inconsistencies" test
+
+# Test the pipeline without creating a PR
+python main.py https://github.com/user/repo "Test pipeline functionality" test --no-pr
+
+# You can also test locally using the demo script
+python test_agent_demo.py
+```
+
+The Test Agent automatically checks for:
+- Agent registration consistency in factory files
+- README accuracy compared to available agents
+- Missing file headers and documentation
+- General code structure issues
 
 ### Environment Variables
 
@@ -301,6 +332,19 @@ python computer_use_utils.py
 **UI element not found:**
 - Try running with a clean IDE state
 - Ensure the IDE window is visible and focused
+
+### IDE-Specific Behaviors
+
+**Cursor 25 Tool Call Limit (Auto-Handled):**
+- Cursor automatically stops agents after 25 tool calls by default
+- SimulateDev automatically detects this message and clicks "Resume the Conversation"
+- No manual intervention required - the workflow continues seamlessly
+- This only applies to Cursor - other agents run until completion
+
+**Windsurf Trust Workspace:**
+- May prompt to trust the workspace on first run
+- SimulateDev automatically handles this prompt
+- Ensure Windsurf has necessary permissions
 
 ## License
 

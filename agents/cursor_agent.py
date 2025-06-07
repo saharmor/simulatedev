@@ -30,10 +30,8 @@ class CursorAgent(CodingAgent):
 
 'paused_and_wanting_to_resume' - If you see the message "Note: we default stop the agent after 25 tool calls. You can resume the conversation." or similar pause/resume message indicating Cursor has hit tool call limits and needs manual resume
 
-'user_input_required' - If Cursor is waiting for user input or interaction that is not to resume the conversation.
-
 IMPORTANT: Respond with a JSON object containing exactly these two keys:
-- 'interface_state': must be EXACTLY ONE of these values: 'user_input_required', 'still_working', 'paused_and_wanting_to_resume', or 'done'
+- 'interface_state': must be EXACTLY ONE of these values: 'still_working', 'paused_and_wanting_to_resume', or 'done'
 - 'reasoning': a brief explanation for your decision
 
 Example response format:

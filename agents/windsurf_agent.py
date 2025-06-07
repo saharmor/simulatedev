@@ -29,10 +29,8 @@ class WindsurfAgent(CodingAgent):
 
 'still_working' - if it says Running or Generating and there's a green dot on the bottom right of the chatbot panel. Another indicator is if you see a red rectangle in the bottom right of the chatbot panel.
 
-'user_input_required' - If Windsurf is waiting for user input or interaction that is not to resume the conversation.
-
 IMPORTANT: Respond with a JSON object containing exactly these two keys:
-- 'interface_state': must be EXACTLY ONE of these values: 'user_input_required', 'still_working', 'paused_and_wanting_to_resume', or 'done'
+- 'interface_state': must be EXACTLY ONE of these values: 'still_working', 'paused_and_wanting_to_resume', or 'done'
 - 'reasoning': a brief explanation for your decision
 
 Example response format:

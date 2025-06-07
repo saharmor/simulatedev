@@ -4,7 +4,7 @@ This package contains specialized workflow modules for different coding use case
 
 ## Available Workflows
 
-### 🐛 Bug Hunting (`bug_hunting.py`)
+### Bug Hunting (`bug_hunting.py`)
 **Class**: `BugHunter`  
 **Purpose**: Finds and fixes bugs, security issues, and code vulnerabilities
 
@@ -18,7 +18,7 @@ This package contains specialized workflow modules for different coding use case
 - Code quality issues
 - Vulnerability assessments
 
-### ⚡ Code Optimization (`code_optimization.py`) 
+### Code Optimization (`code_optimization.py`) 
 **Class**: `CodeOptimizer`  
 **Purpose**: Performance improvements, refactoring, and code quality enhancements
 
@@ -33,7 +33,7 @@ This package contains specialized workflow modules for different coding use case
 - Quick improvements
 - Architecture cleanup
 
-### 🔧 General Coding (`general_coding.py`)
+### General Coding (`general_coding.py`)
 **Class**: `GeneralCodingWorkflow`  
 **Purpose**: User-defined coding tasks with enhanced prompts
 

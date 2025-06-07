@@ -44,6 +44,10 @@ Example response format:
 Provide nothing but valid JSON in your response."""
     
     @property
+    def resume_button_prompt(self) -> str:
+        return "Resume button or continue option in the test agent interface (not typically used)"
+    
+    @property
     def input_field_prompt(self) -> str:
         return "Command prompt or input field in the terminal or text editor where commands can be entered for the test agent."
     
