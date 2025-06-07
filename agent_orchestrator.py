@@ -115,6 +115,5 @@ class AgentOrchestrator:
             response = await self.get_agent_response(agent_type)
             
             return response
-            
         except Exception as e:
             raise Exception(f"Workflow execution failed: {str(e)}") 

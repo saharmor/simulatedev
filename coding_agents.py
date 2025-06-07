@@ -14,6 +14,7 @@ from agents import (
     CursorAgent,
     WindsurfAgent,
     ClaudeCodeAgent,
+    TestAgent,
     AgentFactory
 )
 
@@ -25,5 +26,6 @@ __all__ = [
     'CursorAgent',
     'WindsurfAgent',
     'ClaudeCodeAgent',
+    'TestAgent',
     'AgentFactory'
 ] 

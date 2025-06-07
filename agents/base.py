@@ -18,6 +18,7 @@ class CodingAgentType(Enum):
     CURSOR = "cursor"
     WINDSURF = "windsurf"
     CLAUDE_CODE = "claude_code"
+    TEST = "test"
 
 
 @dataclass
