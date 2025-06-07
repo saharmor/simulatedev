@@ -7,6 +7,7 @@ import time
 import pyautogui
 import pyperclip
 import json
+import os
 from abc import ABC, abstractmethod
 from typing import Optional
 from dataclasses import dataclass
@@ -35,6 +36,7 @@ class CodingAgent(ABC):
     def __init__(self, claude_computer_use):
         self.claude = claude_computer_use
         self.agent_name = self.__class__.__name__.lower().replace('agent', '')
+        self.output_file = "agent_execution_output.md"
     
     @property
     @abstractmethod
@@ -102,8 +104,43 @@ class CodingAgent(ABC):
         result = await self.claude.get_coordinates_from_claude(self.copy_button_prompt)
         return result
     
-    async def send_prompt(self, prompt: str):
-        """Send a prompt to the agent"""
+    async def execute_prompt(self, prompt: str) -> AgentResponse:
+        """Execute the complete workflow: send prompt -> wait -> save to file -> return content
+        
+        This is the main method that orchestrates the entire agent interaction.
+        """
+        try:
+            # Step 1: Send the prompt
+            print(f"Sending prompt to {self.agent_name}...")
+            await self._send_prompt_to_interface(prompt)
+            
+            # Step 2: Wait for completion
+            print(f"Waiting for {self.agent_name} to complete...")
+            await self._wait_for_completion()
+            
+            # Step 3: Ask agent to save output
+            print(f"Asking {self.agent_name} to save output to {self.output_file}...")
+            save_prompt = f"Please save the complete output of your last execution to a file called '{self.output_file}' in the current directory. Include all the changes you made, explanations, and any relevant information."
+            await self._send_prompt_to_interface(save_prompt)
+            
+            # Wait a bit for file save operation
+            await self._wait_for_completion(timeout_seconds=30)
+            
+            # Step 4: Read the file
+            print(f"Reading output from {self.output_file}...")
+            content = await self._read_output_file()
+            
+            return AgentResponse(content=content, success=True)
+            
+        except Exception as e:
+            return AgentResponse(
+                content="",
+                success=False,
+                error_message=f"Failed to execute prompt: {str(e)}"
+            )
+    
+    async def _send_prompt_to_interface(self, prompt: str):
+        """Send a prompt to the agent interface (GUI-based implementation)"""
         # Get input field coordinates
         input_coords = await self.get_input_field_coordinates()
         if not input_coords:
@@ -117,50 +154,44 @@ class CodingAgent(ABC):
         time.sleep(1.0)
         
         # Copy prompt to clipboard and paste it
-        print(f"Copying prompt to clipboard and pasting into {self.agent_name}...")
+        print(f"Pasting prompt into {self.agent_name}...")
         pyperclip.copy(prompt)
-        time.sleep(0.5)  # Brief pause to ensure clipboard is updated
+        time.sleep(0.5)
         
         # Paste the prompt using Cmd+V on macOS
         pyautogui.hotkey('command', 'v')
-        time.sleep(1.0)  # Wait for paste to complete
+        time.sleep(1.0)
         
         # Submit the prompt
         pyautogui.press('enter')
         time.sleep(1.0)
     
-    async def read_agent_output(self) -> AgentResponse:
-        """Read the output from the agent"""
+    async def _wait_for_completion(self, timeout_seconds: int = 300):
+        """Wait for the agent to complete processing"""
+        from ide_completion_detector import wait_until_ide_finishes
+        await wait_until_ide_finishes(self.agent_name, self.interface_state_prompt, timeout_seconds)
+    
+    async def _read_output_file(self) -> str:
+        """Read the output file and return its content"""
+        file_path = os.path.join(os.getcwd(), self.output_file)
+        
+        # Wait for file to exist (max 10 seconds)
+        for i in range(10):
+            if os.path.exists(file_path):
+                break
+            time.sleep(1)
+        else:
+            raise Exception(f"Output file {self.output_file} was not created")
+        
+        # Read the file
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Clean up the file after reading
         try:
-            # Get copy button coordinates and click
-            copy_coords = await self.get_copy_button_coordinates()
-            if not copy_coords:
-                return AgentResponse(
-                    content="", 
-                    success=False, 
-                    error_message="Could not find copy button"
-                )
-            
-            # Adjust coordinates slightly (original code had +30 offset)
-            copy_coords.coordinates.x = copy_coords.coordinates.x + 30
-            pyautogui.moveTo(copy_coords.coordinates.x, copy_coords.coordinates.y)
-            pyautogui.click(copy_coords.coordinates.x, copy_coords.coordinates.y)
-            time.sleep(1.0)
-            
-            # Get clipboard contents
-            content = pyperclip.paste()
-            
-            # Try to format JSON if possible
-            try:
-                parsed = json.loads(content)
-                formatted_content = json.dumps(parsed, indent=2)
-                return AgentResponse(content=formatted_content, success=True)
-            except json.JSONDecodeError:
-                return AgentResponse(content=content, success=True)
-                
-        except Exception as e:
-            return AgentResponse(
-                content="", 
-                success=False, 
-                error_message=str(e)
-            ) 
+            os.remove(file_path)
+            print(f"Cleaned up {self.output_file}")
+        except:
+            pass  # Ignore cleanup errors
+        
+        return content 

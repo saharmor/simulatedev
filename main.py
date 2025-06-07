@@ -123,20 +123,10 @@ class SimulateDev:
             await self.workflow_orchestrator.open_ide(request.agent, repo_path, repo_name)
             print(f"SUCCESS: {request.agent.value.title()} opened successfully")
             
-            # Step 3: Send prompt to agent using the general coding workflow
-            print(f"\nSending prompt to {request.agent.value.title()}...")
-            await self.workflow_orchestrator.send_prompt_to_agent(request.agent, request.prompt)
-            print("SUCCESS: Prompt sent successfully")
-            
-            # Step 4: Wait for completion
-            print(f"\nWaiting for {request.agent.value.title()} to complete...")
-            await self.workflow_orchestrator.wait_for_agent_completion(request.agent, timeout_seconds=300)
-            print("SUCCESS: Agent completed the task")
-            
-            # Step 5: Extract results
-            print("\nExtracting results...")
-            agent_response = await self.workflow_orchestrator.get_agent_response(request.agent)
-            print("SUCCESS: Results extracted")
+            # Step 3: Execute prompt with agent (includes sending, waiting, and getting response)
+            print(f"\nExecuting prompt with {request.agent.value.title()}...")
+            agent_response = await self.workflow_orchestrator.execute_agent_prompt(request.agent, request.prompt)
+            print("SUCCESS: Agent completed the task and returned results")
             
             # Step 6: Save agent response to file
             print("\nSaving agent response...")

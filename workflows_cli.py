@@ -13,6 +13,7 @@ Available Workflows:
     optimize    - Find and implement one high-value performance optimization  
     refactor    - Code quality improvements and refactoring
     low-hanging - Find and implement one impressive low-hanging fruit improvement
+    test        - Simple hello world test for end-to-end agent testing
     
 Systematic Approach:
     1. MAPPING: Comprehensively identify all opportunities (bugs/improvements)
@@ -47,6 +48,7 @@ from clone_repo import clone_repository
 from workflows.bug_hunting import BugHunter
 from workflows.code_optimization import CodeOptimizer
 from workflows.general_coding import GeneralCodingWorkflow
+from workflows.test_workflow import TestWorkflow
 from github_integration import GitHubIntegration
 from coding_agents import CodingAgentType
 
@@ -75,7 +77,8 @@ class WorkflowOrchestrator:
             'optimize': CodeOptimizer(),
             'refactor': CodeOptimizer(),  # Uses refactor method
             'low-hanging': CodeOptimizer(),  # Uses low-hanging fruit method
-            'general': GeneralCodingWorkflow()
+            'general': GeneralCodingWorkflow(),
+            'test': TestWorkflow()
         }
         
         if workflow_type not in workflows:
@@ -119,6 +122,8 @@ class WorkflowOrchestrator:
                 results = await workflow.refactor_code(request.agent, request.repo_url, repo_path)
             elif request.workflow_type == 'low-hanging':
                 results = await workflow.find_low_hanging_fruit(request.agent, request.repo_url, repo_path)
+            elif request.workflow_type == 'test':
+                results = await workflow.execute_simple_hello_world(request.agent, repo_path)
             else:
                 # General workflow would need a prompt, but we're focusing on specialized workflows here
                 raise ValueError(f"Unsupported workflow in execute_workflow: {request.workflow_type}")
@@ -134,7 +139,8 @@ class WorkflowOrchestrator:
                     'bugs': 'Bug fix: high-impact, low-risk improvement',
                     'optimize': 'Performance optimization: focused improvement',
                     'refactor': 'Code refactoring and quality improvements',
-                    'low-hanging': 'Low-hanging fruit: quick win with high value'
+                    'low-hanging': 'Low-hanging fruit: quick win with high value',
+                    'test': 'Test workflow: simple hello world test'
                 }
                 
                 commit_message = workflow_descriptions.get(request.workflow_type, f"{request.workflow_type} improvements")
@@ -174,6 +180,7 @@ Available Workflows:
   optimize    - Find and implement one high-value performance optimization  
   refactor    - Code quality improvements and refactoring
   low-hanging - Find and implement one impressive low-hanging fruit improvement
+  test        - Simple hello world test for end-to-end agent testing
   
 Systematic Approach:
   1. MAPPING: Comprehensively identify all opportunities
@@ -196,7 +203,7 @@ Examples:
     
     parser.add_argument(
         "workflow",
-        choices=["bugs", "optimize", "refactor", "low-hanging"],
+        choices=["bugs", "optimize", "refactor", "low-hanging", "test"],
         help="The type of workflow to run"
     )
     

@@ -7,9 +7,9 @@ This agent is designed to test the pipeline functionality without requiring comp
 """
 
 import os
-import pyperclip
+import time
 from typing import Optional
-from .base import CodingAgent
+from .base import CodingAgent, AgentResponse
 
 
 class TestAgent(CodingAgent):
@@ -51,18 +51,40 @@ Provide nothing but valid JSON in your response."""
     def copy_button_prompt(self) -> str:
         return "Copy button, copy icon, or text selection area where analysis results can be copied from the test agent interface."
     
-    async def send_prompt(self, prompt: str):
-        """Send a prompt to the test agent (simulates running analysis)"""
+    async def execute_prompt(self, prompt: str) -> AgentResponse:
+        """Execute the test agent analysis and save results to file"""
         print(f"Test Agent: Running codebase analysis...")
         print(f"Prompt received: {prompt}")
         
-        # Simulate analysis by running the test agent script
-        await self._run_analysis(prompt)
-        
-        # Copy results to clipboard
-        results = self._get_analysis_results()
-        pyperclip.copy(results)
-        print("Test Agent: Analysis complete, results copied to clipboard")
+        try:
+            # Simulate analysis by running the test agent script
+            await self._run_analysis(prompt)
+            
+            # Get and save results
+            results = self._get_analysis_results()
+            
+            # Save to output file
+            print(f"Test Agent: Saving results to {self.output_file}...")
+            with open(self.output_file, 'w', encoding='utf-8') as f:
+                f.write(f"# Test Agent Analysis Results\n\n")
+                f.write(f"**Prompt:** {prompt}\n\n")
+                f.write(f"**Analysis Date:** {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+                f.write("---\n\n")
+                f.write(results)
+            
+            print("Test Agent: Analysis complete, results saved to file")
+            
+            # Read the file back
+            content = await self._read_output_file()
+            
+            return AgentResponse(content=content, success=True)
+            
+        except Exception as e:
+            return AgentResponse(
+                content="",
+                success=False,
+                error_message=f"Test agent failed: {str(e)}"
+            )
 
     async def is_coding_agent_open(self) -> bool:
         """Check if test agent is running (always returns True for simplicity)"""
@@ -183,14 +205,13 @@ Provide nothing but valid JSON in your response."""
         if not self._analysis_results:
             return "✅ No inconsistencies found! The codebase appears to be well-structured."
         
-        results = "🔍 Test Agent Analysis Results\n"
-        results += "=" * 35 + "\n\n"
+        results = "## 🔍 Test Agent Analysis Results\n\n"
         results += f"Found {len(self._analysis_results)} potential issues:\n\n"
         
         for i, issue in enumerate(self._analysis_results, 1):
             results += f"{i}. {issue}\n"
         
-        results += "\n" + "=" * 35 + "\n"
+        results += "\n---\n\n"
         results += "💡 Consider updating the README.md to reflect these findings.\n"
         results += "This analysis helps ensure the codebase documentation stays current."
         

@@ -49,6 +49,9 @@ class AgentOrchestrator:
         """Open the specified IDE with the project and ensure coding interface is ready"""
         print(f"Opening IDE: {agent_type.value} with project path: {project_path}")
         
+        # Store project path for agents that need it
+        self._current_project_path = project_path
+        
         # Create agent instance
         agent = AgentFactory.create_agent(agent_type, self.claude)
         
@@ -72,30 +75,30 @@ class AgentOrchestrator:
             # Restore original working directory
             os.chdir(original_cwd)
 
-    async def send_prompt_to_agent(self, agent_type: CodingAgentType, prompt: str):
-        """Send a prompt to the specified agent"""
-        agent = AgentFactory.create_agent(agent_type, self.claude)
-        await agent.send_prompt(prompt)
-    
-    async def get_agent_response(self, agent_type: CodingAgentType):
-        """Get the response from the agent"""
-        agent = AgentFactory.create_agent(agent_type, self.claude)
-        response = await agent.read_agent_output()
-        
-        if response.success:
-            return response.content
-        else:
-            raise Exception(f"Failed to read agent output: {response.error_message}")
-    
-    async def wait_for_agent_completion(self, agent_type: CodingAgentType, timeout_seconds: int = 300):
-        """Wait for the agent to complete processing"""
-        from ide_completion_detector import wait_until_ide_finishes
-        agent = AgentFactory.create_agent(agent_type, self.claude)
-        await wait_until_ide_finishes(agent_type.value, agent.interface_state_prompt, timeout_seconds)
+    async def execute_agent_prompt(self, agent_type: CodingAgentType, prompt: str) -> str:
+        """Execute a prompt with the agent and return the response"""
+        # Change to project directory if we have one stored
+        original_cwd = os.getcwd()
+        try:
+            if hasattr(self, '_current_project_path') and self._current_project_path:
+                os.chdir(self._current_project_path)
+            
+            # Create agent and execute prompt
+            agent = AgentFactory.create_agent(agent_type, self.claude)
+            response = await agent.execute_prompt(prompt)
+            
+            if response.success:
+                return response.content
+            else:
+                raise Exception(f"Failed to execute prompt: {response.error_message}")
+                
+        finally:
+            # Always restore original directory
+            os.chdir(original_cwd)
     
     async def execute_workflow(self, agent_type: CodingAgentType, repo_url: str, prompt: str, 
                               project_path: str = None) -> str:
-        """Execute a complete workflow: open IDE, send prompt, wait for completion, get response"""
+        """Execute a complete workflow: open IDE, execute prompt, return response"""
         try:
             # Step 1: Clone repository if no project path provided
             if not project_path:
@@ -105,14 +108,8 @@ class AgentOrchestrator:
             repo_name = self.get_repo_name(repo_url)
             await self.open_ide(agent_type, project_path, repo_name)
             
-            # Step 3: Send prompt
-            await self.send_prompt_to_agent(agent_type, prompt)
-            
-            # Step 4: Wait for completion
-            await self.wait_for_agent_completion(agent_type)
-            
-            # Step 5: Get response
-            response = await self.get_agent_response(agent_type)
+            # Step 3: Execute prompt and get response
+            response = await self.execute_agent_prompt(agent_type, prompt)
             
             return response
         except Exception as e:

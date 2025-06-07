@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """
-Claude Code Agent Implementation
+Claude Code Agent Implementation - Headless Mode
 """
 
-import time
 import subprocess
-import pyautogui
-import pyperclip
+import json
 import os
+import time
 from typing import Optional
-from .base import CodingAgent
+from .base import CodingAgent, AgentResponse
 
 
 class ClaudeCodeAgent(CodingAgent):
-    """Claude Code agent implementation"""
+    """Claude Code agent implementation using headless mode"""
+    
+    def __init__(self, claude_computer_use):
+        super().__init__(claude_computer_use)
+        self.repo_dir = os.getcwd()
     
     @property
     def window_name(self) -> str:
@@ -21,146 +24,235 @@ class ClaudeCodeAgent(CodingAgent):
     
     @property
     def keyboard_shortcut(self) -> Optional[str]:
-        return None  # Claude Code is opened via terminal command
+        return None  # Not needed for headless mode
     
     @property
     def interface_state_prompt(self) -> str:
-        return """You are analyzing a screenshot of the Claude Code interface. 
-Determine the Claude Code's current state based on visual cues in the interface. 
-Return the following state for the following scenarios: 
-'still_working' if you see text indicating Claude is working like "esc to interrupt"
-'user_input_required' if Claude is presenting the user with a question and options to choose from or if you see a prompt asking for user input
-'done' if the operation appears complete without the "esc to interrupt" text or options to choose from
-IMPORTANT: Respond with a JSON object containing exactly these two keys: 
-- 'interface_state': must be EXACTLY ONE of these values: 'user_input_required', 'still_working', or 'done' 
-- 'reasoning': a brief explanation for your decision 
-Example response format: 
-```json 
-{ 
-  "interface_state": "done", 
-  "reasoning": "Operation completed with results displayed" 
-} 
-``` 
-Provide nothing but valid JSON in your response."""
+        # Not used in headless mode
+        return ""
     
     @property
     def input_field_prompt(self) -> str:
-        return "Main input field or command line prompt in the Claude Code terminal interface where users can type commands or prompts."
+        # Not used in headless mode
+        return ""
     
     @property
     def copy_button_prompt(self) -> str:
-        return "Copy button or copy icon in the Claude Code interface, typically near output or results area, or text selection that can be copied."
-    
-    async def send_prompt(self, prompt: str):
-        """Send a prompt to Claude Code terminal (optimized for terminal interface)"""
-        print(f"Sending prompt to {self.agent_name} terminal...")
+        # Not used in headless mode
+        return ""
+
+    async def execute_prompt(self, prompt: str) -> AgentResponse:
+        """Execute prompt in headless mode with file output"""
+        print("\nWARNING: This will execute Claude with --dangerously-skip-permissions")
+        print("This gives Claude full access to execute commands in the repository directory")
+        approval = input("Do you want to continue? (y/n): ")
+        if approval.lower() != 'y':
+            return AgentResponse(
+                content="Operation cancelled by user",
+                success=False,
+                error_message="User did not approve execution with dangerous permissions"
+            )
         
-        # For terminal interface, we don't need to locate and click input field
-        # The terminal is already focused and ready for input
-        
-        # Copy prompt to clipboard and paste it
-        print(f"Copying prompt to clipboard and pasting into {self.agent_name}...")
-        pyperclip.copy(prompt)
-        time.sleep(0.5)  # Brief pause to ensure clipboard is updated
-        
-        # Paste the prompt using Cmd+V on macOS
-        pyautogui.hotkey('command', 'v')
-        time.sleep(1.0)  # Wait for paste to complete
-        
-        # Submit the prompt
-        pyautogui.press('enter')
-        time.sleep(1.0)
+
+        try:
+            # Combine the original prompt with instruction to save output
+            combined_prompt = f"""{prompt}
+
+After completing the above task, please save a comprehensive summary of everything you did to a file called '{self.output_file}' in the current directory. Include:
+- All changes made
+- Explanations of what was done
+"""
+            
+            # Use claude command with headless mode flags
+            cmd = [
+                'claude',
+                '-p', combined_prompt,
+                '--output-format', 'stream-json',
+                '--verbose',
+                '--dangerously-skip-permissions'
+            ]
+            
+            print(f"Executing prompt in {self.agent_name} headless mode. Prompt: {prompt}")
+            print("Streaming Claude's response in real-time...")
+            print("-" * 50)
+
+            # Use Popen for real-time streaming
+            process = subprocess.Popen(
+                cmd,
+                cwd=self.repo_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,  # Line buffered
+                universal_newlines=True
+            )
+            
+            # Stream output in real-time
+            stdout_lines = []
+            stderr_lines = []
+            
+            try:
+                while True:
+                    output = process.stdout.readline()
+                    if output == '' and process.poll() is not None:
+                        break
+                    if output:
+                        stdout_lines.append(output.strip())
+                        # Parse and display JSON streaming output
+                        try:
+                            json_obj = json.loads(output.strip())
+                            
+                            if json_obj.get('type') == 'system':
+                                if json_obj.get('subtype') == 'init':
+                                    print(f"🚀 Initializing Claude session...")
+                                    print(f"   Model: {json_obj.get('model', 'unknown')}")
+                                    tools = json_obj.get('tools', [])
+                                    if tools:
+                                        print(f"   Available tools: {', '.join(tools[:5])}{'...' if len(tools) > 5 else ''}")
+                            
+                            elif json_obj.get('type') == 'assistant':
+                                message = json_obj.get('message', {})
+                                content = message.get('content', [])
+                                
+                                for content_item in content:
+                                    if content_item.get('type') == 'text':
+                                        text = content_item.get('text', '')
+                                        if text.strip():
+                                            print(f"\n💬 {text}")
+                                    
+                                    elif content_item.get('type') == 'tool_use':
+                                        tool_name = content_item.get('name', 'unknown')
+                                        print(f"\n🔧 Using tool: {tool_name}")
+                                        
+                                        # Show some details about the tool use
+                                        if tool_name == 'Write':
+                                            input_data = content_item.get('input', {})
+                                            file_path = input_data.get('file_path', '')
+                                            if file_path:
+                                                print(f"   📝 Creating file: {os.path.basename(file_path)}")
+                                        elif tool_name == 'Edit':
+                                            input_data = content_item.get('input', {})
+                                            file_path = input_data.get('file_path', '')
+                                            if file_path:
+                                                print(f"   ✏️  Editing file: {os.path.basename(file_path)}")
+                                        elif tool_name == 'Read':
+                                            input_data = content_item.get('input', {})
+                                            file_path = input_data.get('file_path', '')
+                                            if file_path:
+                                                print(f"   📖 Reading file: {os.path.basename(file_path)}")
+                                        elif tool_name == 'Bash':
+                                            input_data = content_item.get('input', {})
+                                            command = input_data.get('command', '')
+                                            if command:
+                                                print(f"   ⚡ Running: {command[:50]}{'...' if len(command) > 50 else ''}")
+                            
+                            elif json_obj.get('type') == 'user':
+                                message = json_obj.get('message', {})
+                                content = message.get('content', [])
+                                
+                                for content_item in content:
+                                    if content_item.get('type') == 'tool_result':
+                                        result_content = content_item.get('content', '')
+                                        if 'successfully' in result_content.lower():
+                                            print(f"   ✅ Success")
+                                        elif 'error' in result_content.lower() or 'failed' in result_content.lower():
+                                            print(f"   ❌ Error: {result_content[:100]}...")
+                                        else:
+                                            print(f"   📄 {result_content[:100]}{'...' if len(result_content) > 100 else ''}")
+                            
+                            elif json_obj.get('type') == 'result':
+                                if json_obj.get('subtype') == 'success':
+                                    result = json_obj.get('result', '')  
+                                    cost = json_obj.get('cost_usd', 0)
+                                    duration = json_obj.get('duration_ms', 0)
+                                    print(f"\n🎉 Task completed successfully!")
+                                    if result:
+                                        print(f"   Result: {result}")
+                                    print(f"   Duration: {duration/1000:.1f}s, Cost: ${cost:.4f}")
+                                else:
+                                    print(f"\n❌ Task failed: {json_obj.get('error', 'Unknown error')}")
+                        
+                        except json.JSONDecodeError:
+                            # Not JSON, might be regular output
+                            if output.strip():
+                                print(f"[Output]: {output.strip()}")
+                
+                # Wait for process to complete and get return code
+                return_code = process.wait(timeout=300)
+                
+                # Capture any remaining stderr
+                stderr_output = process.stderr.read()
+                if stderr_output:
+                    stderr_lines.append(stderr_output)
+                
+                print(f"\n{'-' * 50}")
+                print(f"Claude execution completed with return code: {return_code}")
+                
+            except subprocess.TimeoutExpired:
+                process.kill()
+                raise subprocess.TimeoutExpired(cmd, 300)
+            
+            if return_code == 0:
+                # Now read the output file
+                print(f"Reading output from {self.output_file}...")
+                content = await self._read_output_file()
+                
+                return AgentResponse(
+                    content=content,
+                    success=True
+                )
+            else:
+                error_msg = '\n'.join(stderr_lines) or f"Command failed with return code {return_code}"
+                print(f"ERROR: Claude command failed: {error_msg}")
+                return AgentResponse(
+                    content="",
+                    success=False,
+                    error_message=error_msg
+                )
+                
+        except subprocess.TimeoutExpired:
+            return AgentResponse(
+                content="",
+                success=False,
+                error_message="Claude command timed out after 5 minutes"
+            )
+        except Exception as e:
+            return AgentResponse(
+                content="",
+                success=False,
+                error_message=f"Failed to execute Claude command: {str(e)}"
+            )
 
     async def is_coding_agent_open(self) -> bool:
-        """Check if Claude Code is currently running in a terminal"""
+        """Check if Claude Code is available (command exists and can run)"""
         try:
-            # Get the current repository name from the directory
-            repo_dir = os.getcwd()
-            repo_name = os.path.basename(repo_dir)
+            # Check if claude command is available
+            result = subprocess.run(
+                ['which', 'claude'],
+                capture_output=True,
+                text=True
+            )
             
-            # Use AppleScript to check for running terminals with Claude and repo name in title
-            # Handle both formats: with and without folder emoji
-            applescript = f'''
-            tell application "System Events"
-                set terminalWindows to (windows of application process "Terminal")
-                repeat with termWindow in terminalWindows
-                    set windowTitle to (name of termWindow as string)
-                    if (windowTitle contains "📁 {repo_name}" or windowTitle contains "{repo_name}") and windowTitle contains "claude" then
-                        return "found"
-                    end if
-                end repeat
-                return "not_found"
-            end tell
-            '''
-            
-            result = subprocess.run(['osascript', '-e', applescript], 
-                                  capture_output=True, text=True, check=True)
-            
-            if result.stdout.strip() == "found":
-                print(f"SUCCESS: {self.agent_name} is already running (found terminal with title containing '{repo_name}' and 'claude')")
+            if result.returncode == 0:
+                print(f"SUCCESS: Claude Code command is available at {result.stdout.strip()}")
                 return True
             else:
-                print(f"INFO: {self.agent_name} not detected")
+                print(f"INFO: Claude Code command not found in PATH")
                 return False
                 
         except Exception as e:
-            print(f"INFO: Could not check for running {self.agent_name} terminal: {str(e)}")
+            print(f"INFO: Could not check for Claude Code command: {str(e)}")
             return False
     
     async def open_coding_interface(self) -> bool:
-        """Open Claude Code by opening terminal, navigating to repo directory, and running 'claude' command"""
-        # First check if already running
+        """Verify Claude Code is available and ready for headless mode"""
+        print(f"Checking {self.agent_name} availability...")
+        
+        # In headless mode, we just need to verify the command exists
         if await self.is_coding_agent_open():
+            print(f"SUCCESS: {self.agent_name} is ready for headless operation")
             return True
-        
-        print(f"Opening {self.agent_name} via terminal...")
-        
-        # Get the current repository name from the directory
-        repo_dir = os.getcwd()
-        repo_name = os.path.basename(repo_dir)
-        
-        try:
-            # Open Terminal using AppleScript (more reliable than pyautogui)
-            print("Opening Terminal via AppleScript...")
-            open_terminal_script = '''
-            tell application "Terminal"
-                activate
-                do script ""
-            end tell
-            '''
-            subprocess.run(['osascript', '-e', open_terminal_script], check=True)
-            time.sleep(2)  # Wait for Terminal to open
-            
-            # Navigate to the repository directory and run claude
-            print(f"Navigating to repository directory: {repo_dir}")
-            
-            # Change to the repo directory and run claude
-            command = f"cd '{repo_dir}'"
-            pyautogui.typewrite(command)
-            time.sleep(0.5)
-            pyautogui.press('enter')
-            time.sleep(1)  # Wait for cd to complete
-
-            command = f"claude"
-            pyautogui.typewrite(command)
-            time.sleep(0.5)
-            pyautogui.press('enter')
-            time.sleep(1)  # Wait for claude to start
-            
-            # Claude Code will show a security prompt asking if we trust the files in this folder
-            # We need to press Enter to confirm "Yes, proceed"
-            print("Confirming repository trust (pressing Enter)...")
-            pyautogui.press('enter')
-            time.sleep(3)  # Wait for Claude to fully initialize after confirmation
-            
-            # Verify Claude Code opened by checking for terminal title again
-            if await self.is_coding_agent_open():
-                print(f"SUCCESS: {self.agent_name} opened successfully")
-                return True
-            else:
-                print(f"WARNING: Could not verify {self.agent_name} opened - may need manual verification")
-                return False
-                
-        except Exception as e:
-            print(f"ERROR: Failed to open {self.agent_name}: {str(e)}")
+        else:
+            print(f"ERROR: {self.agent_name} command not available. Please install Claude Code.")
+            print("Install instructions: https://github.com/anthropics/claude-code")
             return False 
