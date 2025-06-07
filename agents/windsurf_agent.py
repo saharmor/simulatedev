@@ -24,7 +24,7 @@ class WindsurfAgent(CodingAgent):
     def interface_state_prompt(self) -> str:
         return """You are analyzing a screenshot of the Cascade AI coding assistant interface. You only care about the right panel that says 'Cascade | Write Mode'. IGNORE ALL THE REST OF THE SCREENSHOT. Determine the Cascade's current state based on visual cues in the right pane of the image. Return the following state for the following scenarios:
 'done' the first thing you should check is if you see a thumbs-up or thumbs-down icon in the right panel. If you see thumbs-up/thumbs-down, that's necessarily mean that the status is done!
-'still_working' if it says Running or Generating and there's a green dot on the bottom right of the chatbot panel.
+'still_working' if it says Running or Generating and there's a green dot on the bottom right of the chatbot panel. Another indicator is if you see a red rectangle in the bottom right of the chatbot panel.
 IMPORTANT: Respond with a JSON object containing exactly these two keys: - 'interface_state': must be EXACTLY ONE of these values: 'still_working', or 'done' - 'reasoning': a brief explanation for your decision Example response format: ```json { "interface_state": "done", "reasoning": "I can see a thumbs-up/thumbs-down icons in the right panel" } ``` Only analyze the right panel and provide nothing but valid JSON in your response."""
     
     @property

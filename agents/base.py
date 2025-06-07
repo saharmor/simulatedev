@@ -166,7 +166,7 @@ class CodingAgent(ABC):
         pyautogui.press('enter')
         time.sleep(1.0)
     
-    async def _wait_for_completion(self, timeout_seconds: int = 300):
+    async def _wait_for_completion(self, timeout_seconds: int = 480):
         """Wait for the agent to complete processing"""
         from ide_completion_detector import wait_until_ide_finishes
         await wait_until_ide_finishes(self.agent_name, self.interface_state_prompt, timeout_seconds)

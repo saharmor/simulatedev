@@ -178,7 +178,7 @@ After completing the above task, please save a comprehensive summary of everythi
                                 print(f"[Output]: {output.strip()}")
                 
                 # Wait for process to complete and get return code
-                return_code = process.wait(timeout=300)
+                return_code = process.wait(timeout=480)
                 
                 # Capture any remaining stderr
                 stderr_output = process.stderr.read()
@@ -190,7 +190,7 @@ After completing the above task, please save a comprehensive summary of everythi
                 
             except subprocess.TimeoutExpired:
                 process.kill()
-                raise subprocess.TimeoutExpired(cmd, 300)
+                raise subprocess.TimeoutExpired(cmd, 480)
             
             if return_code == 0:
                 # Now read the output file
