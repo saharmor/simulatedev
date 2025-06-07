@@ -246,12 +246,12 @@ def initialize_gemini_client():
         print(f"Error initializing Gemini client: {e}")
         return False
 
-def analyze_ide_state(image_path, interface_state_analysis_prompt):
+def analyze_ide_state(image_input, interface_state_analysis_prompt):
     """
     Analyze a screenshot to determine if the IDE has finished processing.
     
     Args:
-        image_path (str): Path to the screenshot image.
+        image_input: Either a path to screenshot image (str) or a BytesIO buffer from take_screenshot.
         interface_state_analysis_prompt (str): Prompt for IDE state analysis.
         
     Returns:
@@ -259,40 +259,46 @@ def analyze_ide_state(image_path, interface_state_analysis_prompt):
     """
     try:
         # Load and prepare the image
-        with Image.open(image_path) as img:
-            # Ensure image is in RGB format for compatibility
-            if img.mode != "RGB":
-                img = img.convert("RGB")
+        if isinstance(image_input, str):
+            # It's a file path
+            img = Image.open(image_input)
+        else:
+            # It's a BytesIO buffer
+            img = Image.open(image_input)
+        
+        # Ensure image is in RGB format for compatibility
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        
+        # Get Gemini model
+        model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20')
+        
+        # Get response from Gemini
+        response = model.generate_content([interface_state_analysis_prompt, img])
+        response_text = response.text.strip()
+        
+        # Extract JSON from response text
+        try:
+            # Look for JSON content between triple backticks if present
+            if "```json" in response_text and "```" in response_text.split("```json", 1)[1]:
+                json_content = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
+            elif "```" in response_text and "```" in response_text.split("```", 1)[1]:
+                json_content = response_text.split("```", 1)[1].split("```", 1)[0].strip()
+            else:
+                json_content = response_text
             
-            # Get Gemini model
-            model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20')
+            # Parse the JSON
+            analysis = json.loads(json_content)
             
-            # Get response from Gemini
-            response = model.generate_content([interface_state_analysis_prompt, img])
-            response_text = response.text.strip()
+            state = analysis["interface_state"].lower()
+            reasoning = analysis["reasoning"]
             
-            # Extract JSON from response text
-            try:
-                # Look for JSON content between triple backticks if present
-                if "```json" in response_text and "```" in response_text.split("```json", 1)[1]:
-                    json_content = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
-                elif "```" in response_text and "```" in response_text.split("```", 1)[1]:
-                    json_content = response_text.split("```", 1)[1].split("```", 1)[0].strip()
-                else:
-                    json_content = response_text
-                
-                # Parse the JSON
-                analysis = json.loads(json_content)
-                
-                state = analysis["interface_state"].lower()
-                reasoning = analysis["reasoning"]
-                
-                # Determine if IDE is done
-                is_done = state == "done"
-                return is_done, state, reasoning                
-            except json.JSONDecodeError:
-                return False, "processing", "JSON parsing failed"  # Default to processing if JSON parsing fails
-                
+            # Determine if IDE is done
+            is_done = state == "done"
+            return is_done, state, reasoning                
+        except json.JSONDecodeError:
+            return False, "processing", "JSON parsing failed"  # Default to processing if JSON parsing fails
+            
     except Exception as e:
         print(f"Error analyzing IDE state: {e}")
         return False, f"error: {str(e)}", str(e)
@@ -380,7 +386,7 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
             
             # Capture screenshot
             # TODO FIX and get size correctly
-            image = take_screenshot(1280, 720, save_to_file=True)
+            image = take_screenshot(1280, 720)
             
             # Analyze screenshot
             is_done, state, reasoning = analyze_ide_state(image, interface_state_analysis_prompt)

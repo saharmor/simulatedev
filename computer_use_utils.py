@@ -79,7 +79,7 @@ class ClaudeComputerUse:
             client = Anthropic(api_key=api_key)
             
             # Take a screenshot
-            base64_image = take_screenshot(self.target_width, self.target_height, encode_base64=True, save_to_file=True)
+            base64_image = take_screenshot(self.target_width, self.target_height, encode_base64=True)
             
             # Create the message with the screenshot and prompt
             system_prompt = """You are a UI Element Detection AI. Analyze screenshots to locate UI elements and output in JSON format with these exact keys:
@@ -353,7 +353,7 @@ def get_current_window_name():
         return "Unknown Window"
 
 
-def take_screenshot(target_width, target_height, encode_base64: bool = False, monitor_number: int = 0, save_to_file: bool = False) -> str:
+def take_screenshot(target_width, target_height, encode_base64: bool = False, monitor_number: int = 0) -> str:
     """
     Capture screenshot using mss library with multi-monitor support.
     
@@ -373,8 +373,7 @@ def take_screenshot(target_width, target_height, encode_base64: bool = False, mo
         # Resize to target dimensions
         screenshot = screenshot.resize((target_width, target_height))
         
-        if save_to_file:
-            screenshot.save("screenshot.png")
+
 
         # Save to in-memory buffer
         img_buffer = io.BytesIO()
