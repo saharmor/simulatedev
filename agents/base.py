@@ -52,6 +52,12 @@ class CodingAgent(ABC):
     
     @property
     @abstractmethod
+    def resume_button_prompt(self) -> str:
+        """Prompt for finding the resume button coordinates"""
+        pass
+    
+    @property
+    @abstractmethod
     def input_field_prompt(self) -> str:
         """Prompt for finding the input field coordinates"""
         pass
@@ -124,7 +130,7 @@ class CodingAgent(ABC):
             await self._send_prompt_to_interface(save_prompt)
             
             # Wait a bit for file save operation
-            await self._wait_for_completion(timeout_seconds=30)
+            await self._wait_for_completion(timeout_seconds=120)
             
             # Step 4: Read the file
             print(f"Reading output from {self.output_file}...")
@@ -169,7 +175,7 @@ class CodingAgent(ABC):
     async def _wait_for_completion(self, timeout_seconds: int = 480):
         """Wait for the agent to complete processing"""
         from ide_completion_detector import wait_until_ide_finishes
-        await wait_until_ide_finishes(self.agent_name, self.interface_state_prompt, timeout_seconds)
+        await wait_until_ide_finishes(self.agent_name, self.interface_state_prompt, timeout_seconds, self.resume_button_prompt)
     
     async def _read_output_file(self) -> str:
         """Read the output file and return its content"""

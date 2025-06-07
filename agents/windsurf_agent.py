@@ -23,10 +23,32 @@ class WindsurfAgent(CodingAgent):
     @property
     def interface_state_prompt(self) -> str:
         return """You are analyzing a screenshot of the Cascade AI coding assistant interface. You only care about the right panel that says 'Cascade | Write Mode'. IGNORE ALL THE REST OF THE SCREENSHOT. Determine the Cascade's current state based on visual cues in the right pane of the image. Return the following state for the following scenarios:
-'done' the first thing you should check is if you see a thumbs-up or thumbs-down icon in the right panel. If you see thumbs-up/thumbs-down, that's necessarily mean that the status is done! Accept/Reject buttons do not imply Windsurf is done, it's just a way to give feedback to the agent!
-'still_working' if it says Running or Generating and there's a green dot on the bottom right of the chatbot panel. Another indicator is if you see a red rectangle in the bottom right of the chatbot panel.
-IMPORTANT: Respond with a JSON object containing exactly these two keys: - 'interface_state': must be EXACTLY ONE of these values: 'still_working', or 'done' - 'reasoning': a brief explanation for your decision Example response format: ```json { "interface_state": "done", "reasoning": "I can see a thumbs-up/thumbs-down icons in the right panel" } ``` Only analyze the right panel and provide nothing but valid JSON in your response."""
-    
+'paused_and_wanting_to_resume' - the first thing you should check is if you you see any message indicating "Continue response?" Windsurf has paused due to execution limits, time limits, or similar constraints and is waiting for user action to resume"
+
+'done' - If you see a thumbs-up or thumbs-down icon in the right panel. Accept/Reject buttons do not imply Windsurf is done, it's just a way to give feedback to the agent!
+
+'still_working' - if it says Running or Generating and there's a green dot on the bottom right of the chatbot panel. Another indicator is if you see a red rectangle in the bottom right of the chatbot panel.
+
+'user_input_required' - If Windsurf is waiting for user input or interaction that is not to resume the conversation.
+
+IMPORTANT: Respond with a JSON object containing exactly these two keys:
+- 'interface_state': must be EXACTLY ONE of these values: 'user_input_required', 'still_working', 'paused_and_wanting_to_resume', or 'done'
+- 'reasoning': a brief explanation for your decision
+
+Example response format:
+```json
+{
+  "interface_state": "done",
+  "reasoning": "I can see a thumbs-up/thumbs-down icons in the right panel"
+}
+```
+
+Only analyze the right panel and provide nothing but valid JSON in your response."""
+
+    @property
+    def resume_button_prompt(self) -> str:
+        return "Button stating Continue to the right of the chatbot panel"
+
     @property
     def input_field_prompt(self) -> str:
         return 'Input box for the Cascade agent which starts with "Ask anything". Usually, it\'s in the right pane of the screen.'

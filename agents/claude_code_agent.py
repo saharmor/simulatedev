@@ -32,6 +32,11 @@ class ClaudeCodeAgent(CodingAgent):
         return ""
     
     @property
+    def resume_button_prompt(self) -> str:
+        # Not used in headless mode
+        return ""
+    
+    @property
     def input_field_prompt(self) -> str:
         # Not used in headless mode
         return ""
