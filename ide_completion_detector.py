@@ -341,7 +341,7 @@ async def click_ide_resume_button(resume_button_prompt):
         print(f"Error clicking resume button: {e}")
         return False
 
-async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, timeout_in_seconds, resume_button_prompt=None):
+async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, timeout_in_seconds, resume_button_prompt=None, require_two_subsequent_done_states=False):
     """
     Wait until the specified IDE finishes processing.
     
@@ -398,8 +398,17 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
                 
             # If IDE is done, return success
             if is_done:
-                print(f"SUCCESS: {ide_name} has completed its task!")
-                return True
+                if require_two_subsequent_done_states:
+                    print(f"Checking again if {ide_name} completed its task to make sure it was not a false positive")
+                    is_done, state, reasoning = analyze_ide_state(image, interface_state_analysis_prompt)
+                    if state == "done":
+                        print(f"SUCCESS: {ide_name} has completed its task! Reasoning: {reasoning}")
+                        return True
+                    else:
+                        print(f"WARNING: {ide_name} didn't acutally finish its task. Continue waiting. Reasoning: {reasoning}")
+                else:
+                    print(f"SUCCESS: {ide_name} has completed its task!")
+                    return True
             
             # Handle paused state for both Cursor and Windsurf
             if state == "paused_and_wanting_to_resume":
@@ -463,7 +472,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Wait for an IDE to finish processing")
     parser.add_argument("--ide", required=True, help="Name of the IDE to monitor")
-    parser.add_argument("--timeout", type=int, default=480, help="Maximum time to wait in seconds")
+    parser.add_argument("--timeout", type=int, default=600, help="Maximum time to wait in seconds")
     parser.add_argument("--interface_state_analysis_prompt", required=True, help="Prompt for IDE state analysis")
     parser.add_argument("--resume_button_prompt", help="Prompt for finding the resume button (optional)")
     

@@ -23,9 +23,9 @@ from datetime import datetime
 
 from clone_repo import clone_repository
 from workflows.general_coding import GeneralCodingWorkflow
-from computer_use_utils import ClaudeComputerUse
 from github_integration import GitHubIntegration
-from coding_agents import AgentFactory, CodingAgentType
+from coding_agents import CodingAgentType
+from exceptions import AgentTimeoutException, WorkflowTimeoutException
 
 
 @dataclass
@@ -96,11 +96,14 @@ class SimulateDev:
         """
         pr_url = None
         agent_response = None
-        
+        is_error = False
         try:
+            from config import config
+            
             print(f"Starting SimulateDev process...")
             print(f"Repository: {request.repo_url}")
             print(f"Agent: {request.agent.value}")
+            print(f"Timeout: {config.agent_timeout_seconds} seconds ({config.agent_timeout_seconds/60:.1f} minutes)")
             print(f"Prompt: {request.prompt}")
             print(f"Create PR: {request.create_pr}")
             
@@ -166,7 +169,9 @@ class SimulateDev:
             print(f"{'='*60}")
             
             return True
-            
+        except (AgentTimeoutException, WorkflowTimeoutException) as e:
+            print(f"\n{e.get_user_friendly_message()}")
+            is_error = True
         except Exception as e:
             print(f"ERROR: Error during processing: {str(e)}")
             
@@ -174,10 +179,12 @@ class SimulateDev:
             if agent_response:
                 print("\nAttempting to save agent response despite error...")
                 self.save_agent_response(request.repo_url, request.agent.value, agent_response)
-            
+            is_error = True
+        
+        if is_error:
             # Print summary even on failure
             print(f"\n{'='*60}")
-            print(f"SIMULATEDEV FAILED")
+            print(f"SimulateDev failed!")
             print(f"{'='*60}")
             print(f"Repository: {request.repo_url}")
             print(f"Agent: {request.agent.value}")
@@ -260,7 +267,8 @@ async def main():
             print("\nSimulateDev completed successfully!")
             sys.exit(0)
         else:
-            print("\nSimulateDev failed!")
+            print("\nSimulateDev did not complete successfully.")
+            print("Check the output above for specific details about what went wrong.")
             sys.exit(1)
             
     except KeyboardInterrupt:

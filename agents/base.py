@@ -119,7 +119,9 @@ class CodingAgent(ABC):
             # Step 1: Send the prompt
             print(f"Sending prompt to {self.agent_name}...")
             await self._send_prompt_to_interface(prompt)
-            
+            # wait for 5 seconds to make sure the prompt is sent
+            time.sleep(5)
+
             # Step 2: Wait for completion
             print(f"Waiting for {self.agent_name} to complete...")
             await self._wait_for_completion()
@@ -128,8 +130,9 @@ class CodingAgent(ABC):
             print(f"Asking {self.agent_name} to save output to {self.output_file}...")
             save_prompt = f"Please save the complete output of your last execution to a file called '{self.output_file}' in the current directory. Include all the changes you made, explanations, and any relevant information."
             await self._send_prompt_to_interface(save_prompt)
-            
-            # Wait a bit for file save operation
+            time.sleep(3)
+
+            # Wait a bit for file save operation (use shorter timeout for file save)
             await self._wait_for_completion(timeout_seconds=120)
             
             # Step 4: Read the file
@@ -172,10 +175,17 @@ class CodingAgent(ABC):
         pyautogui.press('enter')
         time.sleep(1.0)
     
-    async def _wait_for_completion(self, timeout_seconds: int = 480):
+    async def _wait_for_completion(self, timeout_seconds: int = None):
         """Wait for the agent to complete processing"""
         from ide_completion_detector import wait_until_ide_finishes
-        await wait_until_ide_finishes(self.agent_name, self.interface_state_prompt, timeout_seconds, self.resume_button_prompt)
+        from exceptions import AgentTimeoutException
+        from config import config
+        
+        # Use configured timeout if not explicitly provided
+        if not timeout_seconds:
+            timeout_seconds = config.agent_timeout_seconds
+        
+        await wait_until_ide_finishes(self.agent_name, self.interface_state_prompt, timeout_seconds, self.resume_button_prompt, require_two_subsequent_done_states=True)
     
     async def _read_output_file(self) -> str:
         """Read the output file and return its content"""

@@ -89,9 +89,12 @@ class WorkflowOrchestrator:
     async def execute_workflow(self, request: WorkflowRequest) -> bool:
         """Execute the specified workflow"""
         try:
+            from config import config
+            
             print(f"STARTING: {request.workflow_type} workflow...")
             print(f"Repository: {request.repo_url}")
             print(f"Agent: {request.agent.value}")
+            print(f"Timeout: {config.agent_timeout_seconds} seconds ({config.agent_timeout_seconds/60:.1f} minutes)")
             print(f"Approach: Systematic (map → rank → choose → implement one)")
             print(f"Create PR: {request.create_pr}")
             
@@ -165,7 +168,13 @@ class WorkflowOrchestrator:
             return True
             
         except Exception as e:
-            print(f"ERROR: Workflow execution failed: {str(e)}")
+            from exceptions import AgentTimeoutException, WorkflowTimeoutException
+            
+            if isinstance(e, (AgentTimeoutException, WorkflowTimeoutException)):
+                # Handle timeout scenarios gracefully
+                print(f"\n{e.get_user_friendly_message()}")
+            else:
+                print(f"ERROR: Workflow execution failed: {str(e)}")
             return False
 
 
@@ -273,7 +282,8 @@ async def main():
             print(f"\nCOMPLETED: {args.workflow.title()} workflow completed successfully!")
             sys.exit(0)
         else:
-            print(f"\nFAILED: {args.workflow.title()} workflow failed!")
+            print(f"\nFAILED: {args.workflow.title()} workflow did not complete successfully.")
+            print("Check the output above for specific details about what went wrong.")
             sys.exit(1)
             
     except KeyboardInterrupt:
