@@ -24,86 +24,76 @@ class BugHunter(AgentOrchestrator):
     
     def generate_bug_hunting_prompt(self, repo_url: str) -> str:
         """Generate a bug hunting prompt that maps, ranks, and implements one bug"""
-        return f"""You are a world-class developer with expertise in bug discovery and autonomous implementation. Your task is to find bugs systematically and implement a fix for the best candidate.
+        return f"""You are a world-class security researcher and software engineer with expertise in discovering subtle, high-impact bugs. Your task is to find sophisticated bugs that demonstrate deep technical understanding while remaining fixable within a single PR.
 
 ## Repository
 Working on: {repo_url}
 
 ## Bug Hunting Process
 
-### Phase 1: MAPPING - Comprehensive Bug Discovery
-First, scan the entire codebase to identify ALL potential bugs. Look for:
+### Phase 1: MAPPING - Deep Technical Bug Discovery
+Perform thorough analysis to identify sophisticated bugs that would impress experienced developers:
 
-1. **Security Vulnerabilities**: SQL injection, XSS, authentication bypasses, input validation issues
-2. **Memory Issues**: Memory leaks, buffer overflows, dangling pointers
-3. **Logic Errors**: Off-by-one errors, incorrect conditionals, race conditions
-4. **Error Handling Gaps**: Missing try-catch blocks, unhandled exceptions, silent failures
-5. **Data Validation Issues**: Missing input validation, type conversion errors
-6. **Concurrency Bugs**: Race conditions, deadlocks, thread safety issues
-7. **Performance Bugs**: Inefficient algorithms, resource leaks, blocking operations
+1. **Security Vulnerabilities**: Path traversal, timing attacks, insecure randomness, JWT flaws, SSRF, prototype pollution, insecure deserialization
+2. **Concurrency Issues**: TOCTOU bugs, missing locks, race conditions, double-checked locking anti-patterns
+3. **Resource Management**: Resource exhaustion, connection leaks, missing cleanup in error paths, memory issues
+4. **Cryptographic Weaknesses**: Weak hash algorithms, predictable tokens, missing constant-time comparisons, hardcoded secrets
+5. **Business Logic Flaws**: Integer overflow in calculations, missing rate limiting, incorrect state transitions, authorization gaps
+6. **Type Safety Issues**: Unsafe type assertions, missing null checks, type confusion bugs
+7. **API Contract Violations**: Missing pagination limits, information leakage, GraphQL attacks, missing field authorization
 
-Create a comprehensive list of ALL bugs you find, no matter how small.
+### Phase 2: RANKING - Technical Sophistication Assessment
+Score each bug (1-10 scale):
 
-### Phase 2: RANKING - Prioritization
-For each bug found, evaluate it on these criteria:
+**Implementation Feasibility:**
+- Testable? Something an automated coding agent can fix without human supervision?
 
-**Implementation Likelihood (1-10 scale):**
-- How complex is the fix? (simple fixes score higher)
-- How well-contained is the bug? (localized bugs score higher)
-- How likely are you to successfully implement it autonomously? (higher certainty scores higher)
-- Are there clear, well-established patterns for fixing this type of bug? (yes scores higher)
+**Technical Impressiveness:**
+- Would impress senior engineers? Shows deep understanding? Hard to detect automatically? Real production impact?
 
-**Impact & Impressiveness (1-10 scale):**
-- How severe is the potential damage? (more severe scores higher)
-- How visible would the fix be to users/developers? (more visible scores higher)
-- How much would this improve code quality/security? (more improvement scores higher)
-- How technically impressive is identifying and fixing this bug? (more impressive scores higher)
+**Final Score = (Feasibility × 0.5) + (Impressiveness × 0.5)**
 
-**Combined Score Calculation:**
-- Final Score = (Implementation Likelihood × 0.6) + (Impact & Impressiveness × 0.4)
-- This prioritizes achievable fixes while still valuing high-impact improvements
+### Phase 3: SELECTION - Choose the Most Impressive Fixable Bug
+Select the bug that best demonstrates deep technical knowledge, real-world impact, and clean implementation.
 
-### Phase 3: SELECTION - Choose the Best Candidate
-Select the bug with the highest combined score. This should be:
-- Something you can confidently implement end-to-end
-- Impressive enough to demonstrate real value
-- Achievable within the autonomous workflow constraints
-
-### Phase 4: IMPLEMENTATION - Fix the Selected Bug
-For the chosen bug:
-1. Implement a complete, working fix
-2. Add appropriate tests if the codebase has testing infrastructure
-3. Add clear comments explaining the fix
-4. Ensure the fix doesn't break existing functionality
-5. Follow the existing code style and conventions
+### Phase 4: IMPLEMENTATION - Professional Bug Fix
+1. Implement complete, secure fix following best practices
+2. Add comprehensive test cases
+3. Include detailed comments explaining vulnerability and fix
+4. Add defensive programming practices
+5. Update documentation and consider logging/monitoring
 
 ## Output Format
 Structure your response as follows:
 
 ```
-# BUG HUNTING ANALYSIS
+# ADVANCED BUG HUNTING ANALYSIS
 
 ## PHASE 1: MAPPING
-[List all bugs found with brief descriptions]
+[List all sophisticated bugs found with technical descriptions]
 
 ## PHASE 2: RANKING
-[For each bug, show the scoring breakdown]
+[For each bug, show detailed scoring with technical justification]
 
 ## PHASE 3: SELECTION
-**CHOSEN BUG:** [Name/description of selected bug]
-**REASONING:** [Why this bug was selected based on the scoring criteria]
+**CHOSEN BUG:** [Technical name and CVE-style description]
+**TECHNICAL IMPACT:** [Detailed explanation of what could go wrong]
+**ATTACK SCENARIO:** [How this could be exploited in practice]
+**FIX APPROACH:** [Industry-standard solution pattern]
 
 ## PHASE 4: IMPLEMENTATION
-[Implement the fix with clear explanation of changes made]
+[Implement the fix with professional code and comprehensive explanation]
 ```
 
-## Important Notes
-- Focus on bugs you can implement confidently and completely
-- Prioritize fixes that demonstrate clear value and technical competence
-- Ensure your implementation is production-ready, not just a proof-of-concept
-- Don't attempt fixes that require extensive architectural changes or external dependencies
+## Important Guidelines
+- Focus on bugs that require technical sophistication to identify
+- Avoid trivial issues like missing error messages or simple null checks
+- Choose bugs that have real security or reliability implications
+- Ensure your fix follows security best practices and design patterns
+- Make the PR description compelling enough to impress senior engineers
+- Include enough technical detail to demonstrate expertise
 
-Please proceed with this bug hunting process."""
+Please proceed with this advanced bug hunting process."""
 
     async def hunt_bugs(self, agent_type: CodingAgentType, repo_url: str, project_path: str = None) -> str:
         """Execute a bug hunting workflow that maps, ranks, and implements one high-value bug"""
