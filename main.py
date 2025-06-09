@@ -17,6 +17,7 @@ import argparse
 import asyncio
 import os
 import sys
+import webbrowser
 from typing import Optional
 from dataclasses import dataclass
 from datetime import datetime
@@ -147,6 +148,8 @@ class SimulateDev:
                 
                 if pr_url:
                     print(f"SUCCESS: Pull request created: {pr_url}")
+                    print("Opening pull request in your default browser...")
+                    webbrowser.open(pr_url)
                 else:
                     print("WARNING: Pull request creation failed")
             else:

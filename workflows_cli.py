@@ -41,6 +41,7 @@ import asyncio
 import os
 import shutil
 import sys
+import webbrowser
 from typing import Optional
 from dataclasses import dataclass
 
@@ -157,6 +158,8 @@ class WorkflowOrchestrator:
                 
                 if pr_url:
                     print(f"SUCCESS: Pull request created: {pr_url}")
+                    print("Opening pull request in your default browser...")
+                    webbrowser.open(pr_url)
                     print(f"\nREVIEW: You can review the changes at: {pr_url}")
                 else:
                     print("WARNING: Pull request creation failed")
@@ -166,7 +169,6 @@ class WorkflowOrchestrator:
             print(f"\nRESULTS: Summary:\n{results}")
             
             return True
-            
         except Exception as e:
             from exceptions import AgentTimeoutException, WorkflowTimeoutException
             

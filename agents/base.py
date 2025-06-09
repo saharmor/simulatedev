@@ -128,7 +128,10 @@ class CodingAgent(ABC):
             
             # Step 3: Ask agent to save output
             print(f"Asking {self.agent_name} to save output to {self.output_file}...")
-            save_prompt = f"Please save the complete output of your last execution to a file called '{self.output_file}' in the current directory. Include all the changes you made, explanations, and any relevant information."
+            save_prompt = f"""Save a comprehensive summary of everything you did to a file called '{self.output_file}' in the current directory. Include:
+- All changes made
+- Explanations of what was done
+"""
             await self._send_prompt_to_interface(save_prompt)
             time.sleep(3)
 
