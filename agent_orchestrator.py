@@ -23,7 +23,9 @@ class AgentOrchestrator:
     
     def get_repo_name(self, repo_url: str) -> str:
         """Extract repository name from URL"""
-        return os.path.splitext(os.path.basename(urlparse(repo_url).path))[0]
+        # Remove trailing slashes to handle URLs like https://github.com/user/repo/
+        parsed_path = urlparse(repo_url).path.rstrip('/')
+        return os.path.splitext(os.path.basename(parsed_path))[0]
     
     def clone_repository(self, repo_url: str) -> str:
         """Clone the repository and return the local path"""

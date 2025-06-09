@@ -256,8 +256,11 @@ async def main():
         )
         
         if args.delete_existing:
-            # delete local repo directory
-            repo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scanned_repos", args.repo_url.split("/")[-1])
+            # delete local repo directory using same logic as AgentOrchestrator
+            from urllib.parse import urlparse
+            parsed_path = urlparse(args.repo_url).path.rstrip('/')
+            repo_name = os.path.splitext(os.path.basename(parsed_path))[0]
+            repo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scanned_repos", repo_name)
             if os.path.exists(repo_path):
                 shutil.rmtree(repo_path)
                 print(f"Deleted existing repository folder: {repo_path}")
