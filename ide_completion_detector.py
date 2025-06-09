@@ -444,8 +444,8 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
             # Wait before next check (but don't sleep longer than remaining time)
             time.sleep(actual_sleep_time)
             
-            # Update check interval: decrease by 2 seconds, minimum 5 seconds
-            check_interval = max(5.0, check_interval - 2.0)
+            # Update check interval: decrease by 2 seconds, minimum 10 seconds
+            check_interval = max(10.0, check_interval - 2.0)
             
         # If we get here, we timed out
         final_elapsed = time.time() - start_time

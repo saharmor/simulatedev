@@ -46,6 +46,78 @@ class ClaudeCodeAgent(CodingAgent):
         # Not used in headless mode
         return ""
 
+    def _display_claude_progress(self, json_obj: dict) -> None:
+        """Display Claude's progress based on JSON streaming output"""
+        if json_obj.get('type') == 'system':
+            if json_obj.get('subtype') == 'init':
+                print(f"🚀 Initializing Claude session...")
+                print(f"   Model: {json_obj.get('model', 'unknown')}")
+                tools = json_obj.get('tools', [])
+                if tools:
+                    print(f"   Available tools: {', '.join(tools[:5])}{'...' if len(tools) > 5 else ''}")
+        
+        elif json_obj.get('type') == 'assistant':
+            message = json_obj.get('message', {})
+            content = message.get('content', [])
+            
+            for content_item in content:
+                if content_item.get('type') == 'text':
+                    text = content_item.get('text', '')
+                    if text.strip():
+                        print(f"\n💬 {text}")
+                
+                elif content_item.get('type') == 'tool_use':
+                    tool_name = content_item.get('name', 'unknown')
+                    print(f"\n🔧 Using tool: {tool_name}")
+                    
+                    # Show some details about the tool use
+                    if tool_name == 'Write':
+                        input_data = content_item.get('input', {})
+                        file_path = input_data.get('file_path', '')
+                        if file_path:
+                            print(f"   📝 Creating file: {os.path.basename(file_path)}")
+                    elif tool_name == 'Edit':
+                        input_data = content_item.get('input', {})
+                        file_path = input_data.get('file_path', '')
+                        if file_path:
+                            print(f"   ✏️  Editing file: {os.path.basename(file_path)}")
+                    elif tool_name == 'Read':
+                        input_data = content_item.get('input', {})
+                        file_path = input_data.get('file_path', '')
+                        if file_path:
+                            print(f"   📖 Reading file: {os.path.basename(file_path)}")
+                    elif tool_name == 'Bash':
+                        input_data = content_item.get('input', {})
+                        command = input_data.get('command', '')
+                        if command:
+                            print(f"   ⚡ Running: {command[:50]}{'...' if len(command) > 50 else ''}")
+        
+        elif json_obj.get('type') == 'user':
+            message = json_obj.get('message', {})
+            content = message.get('content', [])
+            
+            for content_item in content:
+                if content_item.get('type') == 'tool_result':
+                    result_content = content_item.get('content', '')
+                    if 'successfully' in result_content.lower():
+                        print(f"   ✅ Success")
+                    elif 'error' in result_content.lower() or 'failed' in result_content.lower():
+                        print(f"   ❌ Error: {result_content[:100]}...")
+                    else:
+                        print(f"   📄 {result_content[:100]}{'...' if len(result_content) > 100 else ''}")
+        
+        elif json_obj.get('type') == 'result':
+            if json_obj.get('subtype') == 'success':
+                result = json_obj.get('result', '')  
+                cost = json_obj.get('cost_usd', 0)
+                duration = json_obj.get('duration_ms', 0)
+                print(f"\n🎉 Task completed successfully!")
+                if result:
+                    print(f"   Result: {result}")
+                print(f"   Duration: {duration/1000:.1f}s, Cost: ${cost:.4f}")
+            else:
+                print(f"\n❌ Task failed: {json_obj.get('error', 'Unknown error')}")
+
     async def execute_prompt(self, prompt: str) -> AgentResponse:
         """Execute prompt in headless mode with file output"""
         print("\nWARNING: This will execute Claude with --dangerously-skip-permissions")
@@ -57,7 +129,6 @@ class ClaudeCodeAgent(CodingAgent):
                 success=False,
                 error_message="User did not approve execution with dangerous permissions"
             )
-        
 
         try:
             # Combine the original prompt with instruction to save output
@@ -106,77 +177,7 @@ After completing the above task, please save a comprehensive summary of everythi
                         # Parse and display JSON streaming output
                         try:
                             json_obj = json.loads(output.strip())
-                            
-                            if json_obj.get('type') == 'system':
-                                if json_obj.get('subtype') == 'init':
-                                    print(f"🚀 Initializing Claude session...")
-                                    print(f"   Model: {json_obj.get('model', 'unknown')}")
-                                    tools = json_obj.get('tools', [])
-                                    if tools:
-                                        print(f"   Available tools: {', '.join(tools[:5])}{'...' if len(tools) > 5 else ''}")
-                            
-                            elif json_obj.get('type') == 'assistant':
-                                message = json_obj.get('message', {})
-                                content = message.get('content', [])
-                                
-                                for content_item in content:
-                                    if content_item.get('type') == 'text':
-                                        text = content_item.get('text', '')
-                                        if text.strip():
-                                            print(f"\n💬 {text}")
-                                    
-                                    elif content_item.get('type') == 'tool_use':
-                                        tool_name = content_item.get('name', 'unknown')
-                                        print(f"\n🔧 Using tool: {tool_name}")
-                                        
-                                        # Show some details about the tool use
-                                        if tool_name == 'Write':
-                                            input_data = content_item.get('input', {})
-                                            file_path = input_data.get('file_path', '')
-                                            if file_path:
-                                                print(f"   📝 Creating file: {os.path.basename(file_path)}")
-                                        elif tool_name == 'Edit':
-                                            input_data = content_item.get('input', {})
-                                            file_path = input_data.get('file_path', '')
-                                            if file_path:
-                                                print(f"   ✏️  Editing file: {os.path.basename(file_path)}")
-                                        elif tool_name == 'Read':
-                                            input_data = content_item.get('input', {})
-                                            file_path = input_data.get('file_path', '')
-                                            if file_path:
-                                                print(f"   📖 Reading file: {os.path.basename(file_path)}")
-                                        elif tool_name == 'Bash':
-                                            input_data = content_item.get('input', {})
-                                            command = input_data.get('command', '')
-                                            if command:
-                                                print(f"   ⚡ Running: {command[:50]}{'...' if len(command) > 50 else ''}")
-                            
-                            elif json_obj.get('type') == 'user':
-                                message = json_obj.get('message', {})
-                                content = message.get('content', [])
-                                
-                                for content_item in content:
-                                    if content_item.get('type') == 'tool_result':
-                                        result_content = content_item.get('content', '')
-                                        if 'successfully' in result_content.lower():
-                                            print(f"   ✅ Success")
-                                        elif 'error' in result_content.lower() or 'failed' in result_content.lower():
-                                            print(f"   ❌ Error: {result_content[:100]}...")
-                                        else:
-                                            print(f"   📄 {result_content[:100]}{'...' if len(result_content) > 100 else ''}")
-                            
-                            elif json_obj.get('type') == 'result':
-                                if json_obj.get('subtype') == 'success':
-                                    result = json_obj.get('result', '')  
-                                    cost = json_obj.get('cost_usd', 0)
-                                    duration = json_obj.get('duration_ms', 0)
-                                    print(f"\n🎉 Task completed successfully!")
-                                    if result:
-                                        print(f"   Result: {result}")
-                                    print(f"   Duration: {duration/1000:.1f}s, Cost: ${cost:.4f}")
-                                else:
-                                    print(f"\n❌ Task failed: {json_obj.get('error', 'Unknown error')}")
-                        
+                            self._display_claude_progress(json_obj)
                         except json.JSONDecodeError:
                             # Not JSON, might be regular output
                             if output.strip():

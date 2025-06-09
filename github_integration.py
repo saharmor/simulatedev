@@ -395,15 +395,176 @@ class GitHubIntegration:
             print(f"ERROR: Error creating pull request: {str(e)}")
             return None
     
+    def generate_commit_and_pr_content_with_claude(self, agent_execution_report_summary: str, agent_name: str) -> Dict[str, Any]:
+        """
+        Use Claude to generate both commit message and PR content in a single API call
+        
+        Args:
+            agent_execution_report_summary: The summary/output from the coding agent
+            agent_name: Name of the agent used
+            
+        Returns:
+            Dict with 'commit_message', 'pr_title', 'pr_description', and 'pr_changes_summary' keys
+        """
+        try:
+            from anthropic import Anthropic
+            
+            # Get API key from environment
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if not api_key:
+                print("WARNING: No ANTHROPIC_API_KEY found, using default formats")
+                return self._generate_default_commit_and_pr_content(agent_name)
+            
+            # Initialize Anthropic client
+            client = Anthropic(api_key=api_key)
+            
+            system_prompt = """You are a technical writing assistant specializing in creating professional git commit messages and pull request descriptions from AI coding agent outputs.
+
+Given a coding agent's execution report summary, original prompt, and agent name, generate:
+1. A professional git commit message following conventional commit standards
+2. A concise, descriptive PR title (max 60 characters)
+3. A professional PR description 
+4. A clear summary of what changed
+
+Format your response as JSON with these exact keys:
+{
+    "commit_message": "Professional git commit message following conventional commit format",
+    "pr_title": "Brief, descriptive PR title",
+    "pr_description": "Professional description of the changes",
+    "pr_changes_summary": "Clear summary of what was modified/added/removed"
+}
+
+Guidelines for commit message:
+- Use conventional commit format: type(scope): description
+- Keep the first line under 72 characters
+- Use present tense, imperative mood ("Add feature" not "Added feature")
+- Be specific about what was changed
+- Include a brief body if the changes are complex
+- Common types: feat, fix, refactor, docs, style, test, chore
+
+Guidelines for PR content:
+- Title should be actionable and specific (e.g., "Add user authentication system" not "Update code")
+- Description should be 2-3 sentences explaining the purpose and approach
+- Changes summary should list the key files/features modified
+- Keep it professional and technical but accessible
+- Focus on what was accomplished, not just what was requested"""
+
+            user_message = f"""
+Agent Used: {agent_name}
+
+Agent Execution Report Summary:
+{agent_execution_report_summary}
+
+Please generate a professional git commit message and PR content based on this information.
+"""
+
+            response = client.messages.create(
+                model="claude-3-7-sonnet-20250219",
+                max_tokens=2500,
+                system=system_prompt,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": user_message
+                    }
+                ]
+            )
+            
+            # Parse Claude's response
+            response_text = response.content[0].text.strip()
+            
+            try:
+                # Remove any markdown code block formatting
+                if response_text.startswith('```'):
+                    response_text = response_text.split('\n', 1)[1]
+                if response_text.endswith('```'):
+                    response_text = response_text.rsplit('\n', 1)[0]
+                
+                import json
+                parsed_response = json.loads(response_text)
+                
+                # Validate required keys
+                required_keys = ['commit_message', 'pr_title', 'pr_description', 'pr_changes_summary']
+                if all(key in parsed_response for key in required_keys):
+                    # Basic validation for commit message
+                    commit_msg = parsed_response['commit_message']
+                    if commit_msg and len(commit_msg) > 10:
+                        print("SUCCESS: Generated commit message and PR content using Claude 3.7")
+                        return parsed_response
+                    else:
+                        print("WARNING: Claude generated invalid commit message, using default formats")
+                        return self._generate_default_commit_and_pr_content(agent_name)
+                else:
+                    print("WARNING: Claude response missing required keys, using default formats")
+                    return self._generate_default_commit_and_pr_content(agent_name)
+                    
+            except json.JSONDecodeError as e:
+                print(f"WARNING: Failed to parse Claude response as JSON: {e}")
+                print(f"Response was: {response_text}")
+                return self._generate_default_commit_and_pr_content(agent_name)
+                
+        except Exception as e:
+            print(f"WARNING: Error calling Claude for content generation: {str(e)}")
+            return self._generate_default_commit_and_pr_content(agent_name)
+    
+    def _generate_default_commit_and_pr_content(self, agent_name: str) -> Dict[str, Any]:
+        """Generate default commit message and PR content when Claude processing fails"""
+        return {
+            "commit_message": f"SimulateDev by {agent_name}",
+            "pr_title": f"[SimulateDev] {agent_name[:50]}{'...' if len(agent_name) > 50 else ''}",
+            "pr_description": f"Automated changes generated by the {agent_name.title()} AI coding agent.",
+            "pr_changes_summary": f"The AI agent analyzed the repository and implemented changes according to the request: \"{agent_name}\""
+        }
+
+    def generate_pr_description(self, agent_name: str, pr_title: str, pr_description: str, pr_changes_summary: str) -> tuple[str, str]:
+        """
+        Generate formatted PR title and description
+        
+        Args:
+            agent_name: Name of the agent used
+            pr_title: PR title from Claude or default
+            pr_description: PR description from Claude or default
+            pr_changes_summary: Changes summary from Claude or default
+            
+        Returns:
+            tuple[str, str]: (pr_title, formatted_pr_description)
+        """
+        from datetime import datetime
+        
+        formatted_pr_description = f"""
+## Automated Changes by SimulateDev
+
+**Agent Used:** {agent_name.title()}  
+**Generated:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+---
+
+{pr_description}
+
+### What changed?
+{pr_changes_summary}
+
+### Review Instructions
+Please carefully review all changes before merging. While AI agents are powerful, human oversight is always recommended.
+
+---
+*Generated by [SimulateDev](https://github.com/saharmor/simulatedev)*
+        """
+        
+        return pr_title, formatted_pr_description.strip()
+
     def full_workflow(
         self,
         repo_path: str,
         repo_url: str,
-        prompt: str,
-        agent_name: str
+        agent_name: str,
+        agent_execution_report_summary: Optional[str] = None
     ) -> Optional[str]:
         """
         Complete workflow: create branch, commit changes, push, and create PR
+        
+        Args:
+            agent_execution_report_summary: Optional summary/output from the coding agent for better content generation
         
         Returns:
             Optional[str]: PR URL if successful, None otherwise
@@ -423,9 +584,26 @@ class GitHubIntegration:
         if not self.create_branch(repo_path, branch_name):
             return None
         
-        # At this point, changes should already be made by the IDE
-        # We just need to commit them
-        commit_message = f"SimulateDev: {prompt}\n\nGenerated by {agent_name} via SimulateDev automation"
+        # Generate commit message and PR content using Claude (single API call)
+        if agent_execution_report_summary:
+            content = self.generate_commit_and_pr_content_with_claude(agent_execution_report_summary, agent_name)
+            commit_message = content["commit_message"]
+            pr_title, pr_description = self.generate_pr_description(
+                agent_name,
+                content["pr_title"],
+                content["pr_description"],
+                content["pr_changes_summary"]
+            )
+        else:
+            # Use default formats when no agent output is provided
+            default_content = self._generate_default_commit_and_pr_content(agent_name)
+            commit_message = default_content["commit_message"]
+            pr_title, pr_description = self.generate_pr_description(
+                agent_name,
+                default_content["pr_title"],
+                default_content["pr_description"],
+                default_content["pr_changes_summary"]
+            )
         
         if not self.commit_changes(repo_path, commit_message):
             return None
@@ -434,34 +612,11 @@ class GitHubIntegration:
         if not self.push_branch(repo_path, branch_name, repo_url):
             return None
         
-        # Create pull request
-        pr_title = f"[SimulateDev] {prompt}"
-        pr_description = f"""
-## Automated Changes by SimulateDev
-
-**Agent Used:** {agent_name.title()}  
-**Prompt:** {prompt}  
-**Generated:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-
----
-
-This pull request was automatically generated by SimulateDev using the {agent_name.title()} AI coding agent.
-
-### What changed?
-The AI agent analyzed your repository and implemented the requested changes based on the prompt: "{prompt}"
-
-### Review Instructions
-Please carefully review all changes before merging. While AI agents are powerful, human oversight is always recommended.
-
----
-*Generated by [SimulateDev](https://github.com/saharmor/simulatedev)*
-        """
-        
         pr = self.create_pull_request(
             repo_url=repo_url,
             branch_name=branch_name,
             title=pr_title,
-            description=pr_description.strip()
+            description=pr_description
         )
         
         if pr:
@@ -473,8 +628,8 @@ Please carefully review all changes before merging. While AI agents are powerful
         self,
         repo_path: str,
         original_repo_url: str,
-        prompt: str,
-        agent_name: str
+        agent_name: str,
+        agent_execution_report_summary: Optional[str] = None
     ) -> Optional[str]:
         """
         Smart workflow that handles permissions automatically:
@@ -484,25 +639,22 @@ Please carefully review all changes before merging. While AI agents are powerful
         Returns:
             Optional[str]: PR URL if successful, None otherwise
         """
-        import time
-        from datetime import datetime
-        
         print("INFO: Checking repository permissions...")
         has_push_permissions = self.check_push_permissions(original_repo_url)
         
         if has_push_permissions:
             print("SUCCESS: Have push permissions, working directly on original repository")
-            return self.full_workflow(repo_path, original_repo_url, prompt, agent_name)
+            return self.full_workflow(repo_path, original_repo_url, agent_name, agent_execution_report_summary)
         else:
             print("INFO: No push permissions, using fork workflow...")
-            return self.fork_workflow(repo_path, original_repo_url, prompt, agent_name)
+            return self.fork_workflow(repo_path, original_repo_url, agent_name, agent_execution_report_summary)
     
     def fork_workflow(
         self,
         repo_path: str,
         original_repo_url: str,
-        prompt: str,
-        agent_name: str
+        agent_name: str,
+        agent_execution_report_summary: Optional[str] = None
     ) -> Optional[str]:
         """
         Fork-based workflow for repositories where we don't have push permissions
@@ -538,8 +690,26 @@ Please carefully review all changes before merging. While AI agents are powerful
         if not self.create_branch(repo_path, branch_name):
             return None
         
-        # Step 5: Commit changes
-        commit_message = f"SimulateDev: {prompt}\n\nGenerated by {agent_name} via SimulateDev automation"
+        # Step 5: Generate commit message and PR content using Claude (single API call)
+        if agent_execution_report_summary:
+            content = self.generate_commit_and_pr_content_with_claude(agent_execution_report_summary, agent_name)
+            commit_message = content["commit_message"]
+            pr_title, pr_description = self.generate_pr_description(
+                agent_name,
+                content["pr_title"],
+                content["pr_description"],
+                content["pr_changes_summary"]
+            )
+        else:
+            # Use default formats when no agent output is provided
+            default_content = self._generate_default_commit_and_pr_content(agent_name)
+            commit_message = default_content["commit_message"]
+            pr_title, pr_description = self.generate_pr_description(
+                agent_name,
+                default_content["pr_title"],
+                default_content["pr_description"],
+                default_content["pr_changes_summary"]
+            )
         
         if not self.commit_changes(repo_path, commit_message):
             return None
@@ -549,33 +719,11 @@ Please carefully review all changes before merging. While AI agents are powerful
             return None
         
         # Step 7: Create cross-repository pull request
-        pr_title = f"[SimulateDev] {prompt}"
-        pr_description = f"""
-## Automated Changes by SimulateDev
-
-**Agent Used:** {agent_name.title()}  
-**Prompt:** {prompt}  
-**Generated:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-
----
-
-This pull request was automatically generated by SimulateDev using the {agent_name.title()} AI coding agent.
-
-### What changed?
-The AI agent analyzed your repository and implemented the requested changes based on the prompt: "{prompt}"
-
-### Review Instructions
-Please carefully review all changes before merging. While AI agents are powerful, human oversight is always recommended.
-
----
-*Generated by [SimulateDev](https://github.com/saharmor/simulatedev)*
-        """
-        
         pr = self.create_pull_request(
             repo_url=original_repo_url,  # Target: original repo
             branch_name=branch_name,
             title=pr_title,
-            description=pr_description.strip(),
+            description=pr_description,
             head_repo_url=fork_url  # Source: our fork
         )
         

@@ -129,7 +129,7 @@ class SimulateDev:
             
             # Step 3: Execute prompt with agent (includes sending, waiting, and getting response)
             print(f"\nExecuting prompt with {request.agent.value.title()}...")
-            agent_response = await self.workflow_orchestrator.execute_agent_prompt(request.agent, request.prompt)
+            agent_execution_report_summary = await self.workflow_orchestrator.execute_agent_prompt(request.agent, request.prompt)
             print("SUCCESS: Agent completed the task and returned results")
             
             # Step 6: Save agent response to file
@@ -142,8 +142,8 @@ class SimulateDev:
                 pr_url = self.github_integration.smart_workflow(
                     repo_path=repo_path,
                     original_repo_url=request.repo_url,
-                    prompt=request.prompt,
-                    agent_name=request.agent.value
+                    agent_name=request.agent.value,
+                    agent_execution_report_summary=agent_execution_report_summary
                 )
                 
                 if pr_url:

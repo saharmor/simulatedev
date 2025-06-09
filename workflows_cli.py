@@ -138,23 +138,11 @@ class WorkflowOrchestrator:
             if request.create_pr:
                 print("\nCREATING: pull request...")
                 
-                # Create workflow-specific commit message
-                workflow_descriptions = {
-                    'bugs': 'Bug fix: high-impact, low-risk improvement',
-                    'optimize': 'Performance optimization: focused improvement',
-                    'refactor': 'Code refactoring and quality improvements',
-                    'low-hanging': 'Low-hanging fruit: quick win with high value',
-                    'test': 'Test workflow: simple hello world test'
-                }
-                
-                commit_message = workflow_descriptions.get(request.workflow_type, f"{request.workflow_type} improvements")
-                
                 pr_url = self.github_integration.smart_workflow(
                     repo_path=repo_path,
                     original_repo_url=request.repo_url,
-                    prompt=commit_message,
                     agent_name=f"{request.agent.value}-{request.workflow_type}",
-                    agent_execution_report_summary=agent_execution_report_summary.content
+                    agent_execution_report_summary=agent_execution_report_summary
                 )
                 
                 if pr_url:
@@ -167,7 +155,7 @@ class WorkflowOrchestrator:
             else:
                 print("\nSKIPPING: pull request creation")
             
-            print(f"\nRESULTS: Summary:\n{agent_execution_report_summary.content}")
+            print(f"\nRESULTS: Summary:\n{agent_execution_report_summary}")
             
             return True
         except Exception as e:
