@@ -275,16 +275,19 @@ Please proceed with your refactoring analysis and implementation."""
                                   project_path: str = None) -> str:
         """Execute a performance optimization workflow that maps, ranks, and implements one high-value optimization"""
         prompt = self.generate_performance_optimization_prompt(repo_url)
-        return await self.execute_workflow(agent_type, repo_url, prompt, project_path)
+        agent_execution_report_summary = await self.execute_workflow(agent_type, repo_url, prompt, project_path)
+        return agent_execution_report_summary
     
     async def refactor_code(self, agent_type: CodingAgentType, repo_url: str, 
                            project_path: str = None) -> str:
         """Execute a code refactoring workflow"""
         prompt = self.generate_refactoring_prompt(repo_url)
-        return await self.execute_workflow(agent_type, repo_url, prompt, project_path)
+        agent_execution_report_summary = await self.execute_workflow(agent_type, repo_url, prompt, project_path)
+        return agent_execution_report_summary
     
     async def find_low_hanging_fruit(self, agent_type: CodingAgentType, repo_url: str, 
                                     project_path: str = None) -> str:
         """Execute a low-hanging fruit workflow that maps, ranks, and implements one high-value improvement"""
         prompt = self.generate_low_hanging_fruit_prompt(repo_url)
-        return await self.execute_workflow(agent_type, repo_url, prompt, project_path) 
+        agent_execution_report_summary = await self.execute_workflow(agent_type, repo_url, prompt, project_path) 
+        return agent_execution_report_summary

@@ -45,7 +45,8 @@ Please proceed with implementing this task."""
                                  user_prompt: str, project_path: str = None) -> str:
         """Execute a general coding task workflow"""
         enhanced_prompt = self.enhance_user_prompt(user_prompt, repo_url)
-        return await self.execute_workflow(agent_type, repo_url, enhanced_prompt, project_path)
+        agent_execution_report_summary = await self.execute_workflow(agent_type, repo_url, enhanced_prompt, project_path)
+        return agent_execution_report_summary
     
     def create_simple_prompt(self, user_request: str) -> str:
         """Create a simple, direct prompt without additional enhancement"""
@@ -54,4 +55,5 @@ Please proceed with implementing this task."""
     async def execute_simple_task(self, agent_type: CodingAgentType, repo_url: str,
                                  user_prompt: str, project_path: str = None) -> str:
         """Execute a simple task without prompt enhancement"""
-        return await self.execute_workflow(agent_type, repo_url, user_prompt, project_path) 
+        agent_execution_report_summary = await self.execute_workflow(agent_type, repo_url, user_prompt, project_path)
+        return agent_execution_report_summary

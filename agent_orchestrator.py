@@ -111,8 +111,8 @@ class AgentOrchestrator:
             await self.open_ide(agent_type, project_path, repo_name)
             
             # Step 3: Execute prompt and get response
-            response = await self.execute_agent_prompt(agent_type, prompt)
+            agent_execution_report_summary = await self.execute_agent_prompt(agent_type, prompt)
             
-            return response
+            return agent_execution_report_summary
         except Exception as e:
             raise Exception(f"Workflow execution failed: {str(e)}") 

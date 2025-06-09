@@ -98,4 +98,5 @@ Please proceed with this advanced bug hunting process."""
     async def hunt_bugs(self, agent_type: CodingAgentType, repo_url: str, project_path: str = None) -> str:
         """Execute a bug hunting workflow that maps, ranks, and implements one high-value bug"""
         prompt = self.generate_bug_hunting_prompt(repo_url)
-        return await self.execute_workflow(agent_type, repo_url, prompt, project_path)
+        agent_execution_report_summary = await self.execute_workflow(agent_type, repo_url, prompt, project_path)
+        return agent_execution_report_summary

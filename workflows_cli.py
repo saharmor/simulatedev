@@ -119,15 +119,15 @@ class WorkflowOrchestrator:
             print(f"\nEXECUTING: {request.workflow_type} workflow...")
             
             if request.workflow_type == 'bugs':
-                results = await workflow.hunt_bugs(request.agent, request.repo_url, repo_path)
+                agent_execution_report_summary = await workflow.hunt_bugs(request.agent, request.repo_url, repo_path)
             elif request.workflow_type == 'optimize':
-                results = await workflow.optimize_performance(request.agent, request.repo_url, repo_path)
+                agent_execution_report_summary = await workflow.optimize_performance(request.agent, request.repo_url, repo_path)
             elif request.workflow_type == 'refactor':
-                results = await workflow.refactor_code(request.agent, request.repo_url, repo_path)
+                agent_execution_report_summary = await workflow.refactor_code(request.agent, request.repo_url, repo_path)
             elif request.workflow_type == 'low-hanging':
-                results = await workflow.find_low_hanging_fruit(request.agent, request.repo_url, repo_path)
+                agent_execution_report_summary = await workflow.find_low_hanging_fruit(request.agent, request.repo_url, repo_path)
             elif request.workflow_type == 'test':
-                results = await workflow.execute_simple_hello_world(request.agent, repo_path)
+                agent_execution_report_summary = await workflow.execute_simple_hello_world(request.agent, repo_path)
             else:
                 # General workflow would need a prompt, but we're focusing on specialized workflows here
                 raise ValueError(f"Unsupported workflow in execute_workflow: {request.workflow_type}")
@@ -153,7 +153,8 @@ class WorkflowOrchestrator:
                     repo_path=repo_path,
                     original_repo_url=request.repo_url,
                     prompt=commit_message,
-                    agent_name=f"{request.agent.value}-{request.workflow_type}"
+                    agent_name=f"{request.agent.value}-{request.workflow_type}",
+                    agent_execution_report_summary=agent_execution_report_summary.content
                 )
                 
                 if pr_url:
@@ -166,7 +167,7 @@ class WorkflowOrchestrator:
             else:
                 print("\nSKIPPING: pull request creation")
             
-            print(f"\nRESULTS: Summary:\n{results}")
+            print(f"\nRESULTS: Summary:\n{agent_execution_report_summary.content}")
             
             return True
         except Exception as e:

@@ -143,7 +143,6 @@ class CodingAgent(ABC):
             content = await self._read_output_file()
             
             return AgentResponse(content=content, success=True)
-            
         except Exception as e:
             return AgentResponse(
                 content="",

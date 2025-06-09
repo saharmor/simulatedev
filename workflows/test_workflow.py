@@ -51,7 +51,8 @@ Please implement this simple task and confirm completion."""
         test_prompt = self.create_test_prompt()
         print(f"Test prompt: {test_prompt[:100]}...")
         
-        return await self.execute_workflow(agent_type, repo_url, test_prompt, project_path)
+        agent_execution_report_summary = await self.execute_workflow(agent_type, repo_url, test_prompt, project_path)
+        return agent_execution_report_summary
     
     async def execute_simple_hello_world(self, agent_type: CodingAgentType, 
                                         project_path: str = None) -> str:
@@ -69,4 +70,5 @@ This is a simple test of the agent's basic functionality."""
         print("Executing simple hello world test...")
         print(f"Working directory: {project_path or os.getcwd()}")
         
-        return await self.execute_workflow(agent_type, "test_simple", simple_prompt, project_path) 
+        agent_execution_report_summary = await self.execute_workflow(agent_type, "test_simple", simple_prompt, project_path) 
+        return agent_execution_report_summary
