@@ -6,10 +6,10 @@ Claude Code Agent Implementation - Headless Mode
 import subprocess
 import json
 import os
-import time
 from typing import Optional
 from .base import CodingAgent, AgentResponse
-
+from common.exceptions import AgentTimeoutException
+from common.config import config
 
 class ClaudeCodeAgent(CodingAgent):
     """Claude Code agent implementation using headless mode"""
@@ -184,7 +184,6 @@ After completing the above task, please save a comprehensive summary of everythi
                                 print(f"[Output]: {output.strip()}")
                 
                 # Wait for process to complete and get return code
-                from config import config
                 timeout_seconds = config.agent_timeout_seconds
                 return_code = process.wait(timeout=timeout_seconds)
                 
@@ -198,7 +197,6 @@ After completing the above task, please save a comprehensive summary of everythi
                 
             except subprocess.TimeoutExpired:
                 process.kill()
-                from exceptions import AgentTimeoutException
                 raise AgentTimeoutException(self.agent_name, timeout_seconds, "Claude command execution timed out")
             
             if return_code == 0:
@@ -220,8 +218,7 @@ After completing the above task, please save a comprehensive summary of everythi
                 )
                 
         except subprocess.TimeoutExpired:
-            from exceptions import AgentTimeoutException
-            from config import config
+            
             raise AgentTimeoutException(self.agent_name, config.agent_timeout_seconds, "Claude command timed out")
         except Exception as e:
             return AgentResponse(

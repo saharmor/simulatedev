@@ -10,7 +10,7 @@ import os
 import subprocess
 from urllib.parse import urlparse
 from computer_use_utils import ClaudeComputerUse
-from agents import AgentFactory, CodingAgentType
+from agents import AgentFactory, CodingAgentIdeType
 
 
 class AgentOrchestrator:
@@ -47,7 +47,7 @@ class AgentOrchestrator:
         subprocess.run(["git", "clone", repo_url, local_path], check=True)
         return local_path
     
-    async def open_ide(self, agent_type: CodingAgentType, project_path: str, repo_name: str):
+    async def open_ide(self, agent_type: CodingAgentIdeType, project_path: str, repo_name: str):
         """Open the specified IDE with the project and ensure coding interface is ready"""
         print(f"Opening IDE: {agent_type.value} with project path: {project_path}")
         
@@ -77,7 +77,7 @@ class AgentOrchestrator:
             # Restore original working directory
             os.chdir(original_cwd)
 
-    async def execute_agent_prompt(self, agent_type: CodingAgentType, prompt: str) -> str:
+    async def execute_agent_prompt(self, agent_type: CodingAgentIdeType, prompt: str) -> str:
         """Execute a prompt with the agent and return the response"""
         # Change to project directory if we have one stored
         original_cwd = os.getcwd()
@@ -98,7 +98,7 @@ class AgentOrchestrator:
             # Always restore original directory
             os.chdir(original_cwd)
     
-    async def execute_workflow(self, agent_type: CodingAgentType, repo_url: str, prompt: str, 
+    async def execute_workflow(self, agent_type: CodingAgentIdeType, repo_url: str, prompt: str, 
                               project_path: str = None) -> str:
         """Execute a complete workflow: open IDE, execute prompt, return response"""
         try:
