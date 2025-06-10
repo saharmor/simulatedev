@@ -22,9 +22,6 @@ from agents import (
 from roles import RoleFactory
 from utils.clone_repo import clone_repository
 from src.github_integration import GitHubIntegration
-from workflows.bug_hunting import BugHunter
-from workflows.code_optimization import CodeOptimizer
-from workflows.general_coding import GeneralCodingWorkflow
 
 
 @dataclass
@@ -319,14 +316,17 @@ class UnifiedOrchestrator:
             raise ValueError(f"Unsupported agent type: {primary_agent.coding_ide}. Valid agent types are: {', '.join([e.value for e in CodingAgentIdeType])}")
         
         if request.workflow == "bug_hunting":
+            from workflows.bug_hunting import BugHunter
             workflow = BugHunter()
             return await workflow.hunt_bugs(agent_type, request.repo_url, work_directory)
             
         elif request.workflow == "code_optimization":
+            from workflows.code_optimization import CodeOptimizer
             workflow = CodeOptimizer()
             return await workflow.optimize_performance(agent_type, request.repo_url, work_directory)
             
         elif request.workflow == "general_coding":
+            from workflows.general_coding import GeneralCodingWorkflow
             workflow = GeneralCodingWorkflow()
             if request.coding_task_prompt:
                 # Use the custom prompt provided
