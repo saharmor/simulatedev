@@ -293,7 +293,7 @@ class CodingAgent(ABC):
             time.sleep(3)
 
             # Wait a bit for file save operation (use shorter timeout for file save)
-            await self._wait_for_completion(timeout_seconds=120)
+            await self._wait_for_completion(timeout_seconds=240)
             
             # Step 4: Read the file
             print(f"Reading output from {self.output_file}...")
@@ -336,7 +336,7 @@ class CodingAgent(ABC):
     
     async def _wait_for_completion(self, timeout_seconds: int = None):
         """Wait for the agent to complete processing"""
-        from ide_completion_detector import wait_until_ide_finishes
+        from utils.ide_completion_detector import wait_until_ide_finishes
         from common.config import config
         
         # Use configured timeout if not explicitly provided

@@ -25,13 +25,7 @@ class MultiAgentOrchestrator:
         self.claude = ClaudeComputerUse()
         self.execution_log = []
         
-    def _map_coding_ide_to_type(self, coding_ide: str) -> CodingAgentIdeType:
-        """Map agent name from JSON to CodingAgentType enum"""
-        try:
-            return CodingAgentIdeType(coding_ide.lower().strip())
-        except ValueError:
-            raise ValueError(f"Unsupported coding IDE: {coding_ide}. "
-                           f"Supported IDEs: {[ide.value for ide in CodingAgentIdeType]}")
+
     
     def _create_role_specific_prompt(self, role: AgentRole, context: AgentContext, 
                                    agent_definition: AgentDefinition) -> str:
@@ -50,7 +44,11 @@ class MultiAgentOrchestrator:
                                       prompt: str, context: AgentContext, 
                                       work_directory: str) -> Dict[str, Any]:
         """Execute an agent with retry logic"""
-        agent_type = self._map_coding_ide_to_type(agent_definition.coding_ide)
+        try:
+            agent_type = CodingAgentIdeType(agent_definition.coding_ide.lower().strip())
+        except ValueError:
+            raise ValueError(f"Unsupported coding IDE: {agent_definition.coding_ide}. "
+                           f"Supported IDEs: {[ide.value for ide in CodingAgentIdeType]}")
         
         # Get role-specific configuration
         try:
