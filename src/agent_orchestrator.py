@@ -9,7 +9,7 @@ handling IDE management, repository operations, and agent workflow coordination.
 import os
 import subprocess
 from urllib.parse import urlparse
-from computer_use_utils import ClaudeComputerUse
+from utils.computer_use_utils import ClaudeComputerUse
 from agents import AgentFactory, CodingAgentIdeType
 
 

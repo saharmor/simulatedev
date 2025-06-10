@@ -15,7 +15,7 @@ from PIL import Image
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-from computer_use_utils import take_screenshot, ClaudeComputerUse
+from utils.computer_use_utils import take_screenshot, ClaudeComputerUse
 import pyautogui
 
 def get_window_list():

@@ -15,7 +15,7 @@ import os
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agent_orchestrator import AgentOrchestrator
+from src.agent_orchestrator import AgentOrchestrator
 from coding_agents import CodingAgentIdeType
 
 

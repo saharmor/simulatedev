@@ -28,15 +28,25 @@ class AgentRole(Enum):
     TESTER = "Tester"
 
 
+class WorkflowType(Enum):
+    """Enum for available workflow types"""
+    GENERAL_CODING = "general_coding"
+    BUG_HUNTING = "bug_hunting"
+    CODE_OPTIMIZATION = "code_optimization"
+
+
 @dataclass
 class MultiAgentTask:
     """Definition of a task for multi-agent execution"""
-    task: str
     agents: List['AgentDefinition']
+    repo_url: str
+    workflow: WorkflowType
+    coding_task_prompt: Optional[str] = None  # Required only for general_coding workflow
     
     def __post_init__(self):
         """Validate the task after initialization"""
         self._validate_unique_roles()
+        self._validate_workflow_requirements()
     
     def _validate_unique_roles(self):
         """Ensure each role appears only once"""
@@ -46,18 +56,58 @@ class MultiAgentTask:
                 raise ValueError(f"Duplicate role '{agent.role.value}' found at agent {i}. Each role can only be assigned to one agent.")
             used_roles.add(agent.role)
     
+    def _validate_workflow_requirements(self):
+        """Validate workflow-specific requirements"""
+        if self.workflow == WorkflowType.GENERAL_CODING and not self.coding_task_prompt:
+            raise ValueError("'coding_task_prompt' field is required when using 'general_coding' workflow")
+        if self.workflow and self.workflow != WorkflowType.GENERAL_CODING and self.coding_task_prompt:
+            raise ValueError("'coding_task_prompt' should only be provided for 'general_coding' workflow")
+    
+    def get_task_description(self) -> str:
+        """Get the task description based on workflow type"""
+        if self.workflow == WorkflowType.GENERAL_CODING:
+            return self.coding_task_prompt or "General coding task"
+        elif self.workflow == WorkflowType.BUG_HUNTING:
+            return "Find and fix security vulnerabilities and bugs"
+        elif self.workflow == WorkflowType.CODE_OPTIMIZATION:
+            return "Optimize performance and improve code quality"
+        else:
+            return "Multi-agent collaborative task"
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
-        return {
-            "task": self.task,
-            "agents": [agent.to_dict() for agent in self.agents]
+        result = {
+            "agents": [agent.to_dict() for agent in self.agents],
+            "repo_url": self.repo_url,
+            "workflow": self.workflow.value
         }
+        if self.coding_task_prompt:
+            result["coding_task_prompt"] = self.coding_task_prompt
+        return result
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'MultiAgentTask':
         """Create from dictionary (JSON deserialization)"""
         agents = [AgentDefinition.from_dict(agent_data) for agent_data in data["agents"]]
-        return cls(task=data["task"], agents=agents)
+        
+        # Validate required fields
+        if "repo_url" not in data:
+            raise ValueError("Missing required field: 'repo_url'")
+        if "workflow" not in data:
+            raise ValueError("Missing required field: 'workflow'")
+        
+        # Handle backward compatibility with old 'task' and 'prompt' fields
+        coding_task_prompt = data.get("coding_task_prompt")
+        if not coding_task_prompt:
+            # Check for old field names
+            coding_task_prompt = data.get("prompt") or data.get("task")
+        
+        return cls(
+            agents=agents,
+            repo_url=data["repo_url"],
+            workflow=data["workflow"],
+            coding_task_prompt=coding_task_prompt
+        )
 
 
 @dataclass

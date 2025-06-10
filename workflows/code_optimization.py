@@ -12,7 +12,7 @@ import os
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agent_orchestrator import AgentOrchestrator
+from src.agent_orchestrator import AgentOrchestrator
 from coding_agents import CodingAgentIdeType
 
 
@@ -21,7 +21,7 @@ class CodeOptimizer(AgentOrchestrator):
     
     def generate_low_hanging_fruit_prompt(self, repo_url: str) -> str:
         """Generate a prompt for finding and implementing one high-value, easy improvement"""
-        return f"""You are a senior staff engineer with expertise in identifying high-impact improvements that demonstrate technical excellence while remaining achievable in a single PR. Your task is to find sophisticated yet implementable improvements that would impress code reviewers.
+        return f"""You are a senior staff engineer identifying high-impact improvements that demonstrate technical excellence while remaining achievable in a single PR.
 
 ## Repository
 Working on: {repo_url}
@@ -29,146 +29,100 @@ Working on: {repo_url}
 ## Advanced Low-Hanging Fruit Process
 
 ### Phase 1: MAPPING - Sophisticated Improvement Discovery
-Analyze the codebase for improvements that demonstrate technical depth and professional engineering. Focus on:
+Analyze the codebase for improvements demonstrating technical depth:
 
-1. **Performance Optimizations with Measurable Impact**:
-   - Database query optimizations (N+1 queries, missing indexes, inefficient joins)
-   - Caching opportunities for expensive computations or API calls
-   - Algorithmic improvements (O(n²) to O(n log n) conversions)
-   - Memory allocation optimizations in hot paths
-   - Async/await conversions for blocking I/O operations
-   - Connection pooling implementations
-   - Lazy loading for heavy resources
+1. **Performance Optimizations**:
+   - Database: N+1 queries, missing indexes, inefficient joins, connection pooling
+   - Algorithms: O(n²) to O(n log n) conversions, missing memoization
+   - I/O: Async/await conversions, lazy loading, caching expensive operations
 
 2. **Security Hardening**:
-   - Adding rate limiting to prevent abuse
-   - Implementing proper input sanitization
-   - Adding CSRF protection where missing
-   - Secure headers implementation (CSP, HSTS, etc.)
-   - Replacing insecure random with cryptographically secure alternatives
-   - Adding constant-time string comparisons for secrets
-   - Implementing proper session timeout handling
+   - Rate limiting, input sanitization, CSRF protection
+   - Secure headers (CSP, HSTS), cryptographically secure random
+   - Session timeout, constant-time comparisons
 
 3. **Error Handling & Resilience**:
-   - Circuit breaker patterns for external service calls
-   - Retry logic with exponential backoff
-   - Graceful degradation for feature flags
-   - Proper error boundaries in React/frontend code
-   - Structured error responses with appropriate status codes
-   - Dead letter queue implementations
-   - Timeout handling for long-running operations
+   - Circuit breakers, retry with exponential backoff
+   - Error boundaries, structured responses, timeout handling
+   - Graceful degradation, dead letter queues
 
 4. **Type Safety & Code Contracts**:
-   - Adding comprehensive TypeScript types to JavaScript code
-   - Implementing runtime validation with libraries like Zod/Joi
-   - Adding generic constraints to prevent type errors
-   - Creating type guards for external data
-   - Implementing branded types for domain modeling
-   - Adding exhaustive switch statements with never types
+   - TypeScript types, runtime validation (Zod/Joi)
+   - Type guards, generic constraints, branded types
+   - Exhaustive switch statements
 
 5. **API & Data Model Improvements**:
-   - Adding pagination to unbounded list endpoints
-   - Implementing field-level GraphQL resolvers
-   - Adding database migrations for missing indexes
-   - Implementing soft deletes where appropriate
-   - Adding audit trails for sensitive operations
-   - Versioning APIs properly
-   - Adding OpenAPI/Swagger documentation
+   - Pagination, GraphQL resolvers, database indexes
+   - Soft deletes, audit trails, API versioning
+   - OpenAPI documentation
 
-6. **Developer Experience Enhancements**:
-   - Creating custom hooks/utilities for repeated patterns
-   - Adding comprehensive JSDoc with examples
-   - Implementing builder patterns for complex objects
-   - Creating type-safe event emitters
-   - Adding telemetry/observability hooks
-   - Implementing feature flags infrastructure
-   - Creating development mode helpers
+6. **Developer Experience**:
+   - Custom hooks/utilities, comprehensive JSDoc
+   - Builder patterns, type-safe event emitters
+   - Feature flags, telemetry hooks
 
 7. **Architecture & Design Patterns**:
-   - Implementing dependency injection for better testability
-   - Adding facade patterns for complex subsystems
-   - Creating adapters for third-party integrations
-   - Implementing repository patterns for data access
-   - Adding command/query separation (CQRS lite)
-   - Creating domain events for decoupling
-   - Implementing strategy patterns for algorithms
+   - Dependency injection, facade patterns, adapters
+   - Repository patterns, CQRS lite, domain events
+   - Strategy patterns
 
 ### Phase 2: RANKING - Professional Impact Assessment
-For each improvement found, evaluate it on these criteria:
+Score each improvement (1-10):
 
-**Implementation Feasibility (1-10 scale):**
-- Can it be implemented in 1-3 files? (more contained scores higher)
-- Is there a clear, well-established pattern? (established patterns score higher)
-- Can it be done without breaking changes? (backward compatible scores higher)
-- Is it testable with existing infrastructure? (easily testable scores higher)
-- Risk of introducing regressions? (lower risk scores higher)
+**Implementation Feasibility:**
+- Implementable in 1-3 files with established patterns
+- Backward compatible and easily testable
+- Low regression risk
 
-**Professional Impressiveness (1-10 scale):**
-- Would this impress a staff/principal engineer? (more impressive scores higher)
-- Does it demonstrate system-level thinking? (holistic thinking scores higher)
-- Does it show knowledge of best practices? (best practices score higher)
-- Would it improve metrics (performance/reliability)? (measurable impact scores higher)
-- Does it prevent future bugs/issues? (preventive measures score higher)
-- Is this something that shows "senior+" level thinking? (advanced thinking scores higher)
+**Professional Impressiveness:**
+- Impresses staff/principal engineers
+- Shows system-level thinking and best practices
+- Measurable impact and prevents future issues
 
-**Combined Score Calculation:**
-- Final Score = (Implementation Feasibility × 0.4) + (Professional Impressiveness × 0.6)
-- This prioritizes impressive improvements while ensuring they're achievable
+**Final Score = (Feasibility × 0.4) + (Impressiveness × 0.6)**
 
 ### Phase 3: SELECTION - Choose the Most Impressive Improvement
-Select the improvement that best demonstrates:
-- Senior+ level engineering judgment
-- Understanding of production systems
-- Knowledge of industry best practices
-- Measurable positive impact
-- Clean, maintainable implementation
+Select improvement demonstrating:
+- Senior+ engineering judgment and production system understanding
+- Industry best practices with measurable positive impact
 
 ### Phase 4: IMPLEMENTATION - Production-Quality Code
-For the chosen improvement:
-1. Implement using industry best practices and design patterns
-2. Add comprehensive tests including edge cases
-3. Include detailed documentation explaining the improvement
-4. Add metrics/logging to measure the impact
-5. Consider backward compatibility and migration paths
-6. Follow SOLID principles and clean code practices
-7. Include performance benchmarks if applicable
+1. Implement using best practices and design patterns
+2. Add comprehensive tests and detailed documentation
+3. Include metrics/logging and consider backward compatibility
+4. Follow SOLID principles with performance benchmarks if applicable
 
 ## Output Format
-Structure your response as follows:
-
 ```
 # ADVANCED IMPROVEMENT ANALYSIS
 
 ## PHASE 1: MAPPING
-[List all sophisticated improvements with technical details]
+[List sophisticated improvements with technical details]
 
 ## PHASE 2: RANKING
-[For each improvement, show detailed scoring with professional justification]
+[Show detailed scoring with professional justification]
 
 ## PHASE 3: SELECTION
-**CHOSEN IMPROVEMENT:** [Technical name with clear value proposition]
-**BUSINESS IMPACT:** [Quantifiable benefits - performance, reliability, security]
-**TECHNICAL APPROACH:** [Industry-standard pattern or technique used]
-**METRICS:** [How to measure the improvement's success]
+**CHOSEN IMPROVEMENT:** [Technical name with value proposition]
+**BUSINESS IMPACT:** [Quantifiable benefits]
+**TECHNICAL APPROACH:** [Industry-standard pattern used]
+**METRICS:** [Success measurement approach]
 
 ## PHASE 4: IMPLEMENTATION
 [Production-quality code with comprehensive explanation]
 ```
 
-## Important Guidelines
-- Focus on improvements that demonstrate senior+ engineering skills
-- Avoid trivial changes like renaming variables or removing comments
-- Choose improvements with measurable business/technical impact
-- Implement using established patterns and best practices
-- Make the PR compelling with clear before/after benefits
-- Include enough context to educate reviewers on the approach
-- Ensure the code is production-ready, not a proof of concept
+## Guidelines
+- Focus on senior+ engineering skills, avoid trivial changes
+- Choose measurable business/technical impact improvements
+- Use established patterns, make PR compelling with clear benefits
+- Ensure production-ready code, not proof of concept
 
 Please proceed with this advanced improvement analysis."""
 
     def generate_performance_optimization_prompt(self, repo_url: str) -> str:
         """Generate a prompt for finding and implementing one high-value performance optimization"""
-        return f"""You are a principal performance engineer with expertise in identifying and implementing sophisticated performance optimizations that deliver measurable impact. Your task is to find performance improvements that demonstrate deep technical knowledge while remaining implementable in a single PR.
+        return f"""You are a principal performance engineer identifying sophisticated performance optimizations that deliver measurable impact. Find improvements demonstrating deep technical knowledge while remaining implementable in a single PR.
 
 ## Repository
 Working on: {repo_url}
@@ -178,20 +132,20 @@ Working on: {repo_url}
 ### Phase 1: MAPPING - Performance Analysis
 Identify high-impact optimization opportunities:
 
-1. **Database & Query Optimizations**: N+1 queries, missing indexes, inefficient pagination, connection pooling
-2. **Algorithmic Improvements**: Quadratic algorithms, poor data structures, missing memoization, unnecessary loops
-3. **Memory & Resource**: Memory leaks, large allocations in hot paths, missing streaming, inefficient I/O
+1. **Database & Query**: N+1 queries, missing indexes, inefficient pagination, connection pooling
+2. **Algorithms**: Quadratic algorithms, poor data structures, missing memoization, unnecessary loops
+3. **Memory & I/O**: Memory leaks, large allocations in hot paths, missing streaming, inefficient I/O
 4. **Concurrency**: Sequential operations that could be parallel, blocking I/O, missing async patterns
 5. **Caching**: Missing HTTP caching, expensive computations without memoization, cache strategies
-6. **Network & I/O**: Missing compression, inefficient serialization, unnecessary API round trips
-7. **Frontend Performance**: Missing React.memo, unnecessary re-renders, missing virtualization, blocking JS
+6. **Network**: Missing compression, inefficient serialization, unnecessary API round trips
+7. **Frontend**: Missing React.memo, unnecessary re-renders, missing virtualization, blocking JS
 
 ### Phase 2: RANKING - Impact Assessment
 Score each optimization (1-10):
 
 **Implementation Feasibility:**
-- Testable? Something an automated coding agent can fix without human supervision?
-- Would impress senior engineers? Shows deep understanding? Hard to detect automatically? Real production impact?
+- Testable and implementable by automated agent without supervision
+- Impresses senior engineers with deep understanding and real production impact
 
 **Performance Impact:**
 - Expected improvement >20%
@@ -209,40 +163,35 @@ Select optimization with:
 ### Phase 4: IMPLEMENTATION - Production-Grade Code
 1. Implement using performance best practices
 2. Add benchmarks showing before/after metrics
-3. Include performance tests to prevent regression
-4. Add monitoring for production validation
-5. Document optimization approach
+3. Include performance tests and monitoring for production validation
+4. Document optimization approach
 
 ## Output Format
-Structure your response as follows:
-
 ```
 # ADVANCED PERFORMANCE OPTIMIZATION ANALYSIS
 
 ## PHASE 1: MAPPING
-[List all sophisticated optimization opportunities with technical details]
+[List sophisticated optimization opportunities with technical details]
 
 ## PHASE 2: RANKING
-[For each optimization, show detailed scoring with performance projections]
+[Show detailed scoring with performance projections]
 
 ## PHASE 3: SELECTION
 **CHOSEN OPTIMIZATION:** [Technical description with expected gains]
 **PERFORMANCE METRICS:** [Specific before/after measurements expected]
-**TECHNICAL APPROACH:** [Detailed explanation of the optimization technique]
+**TECHNICAL APPROACH:** [Detailed explanation of optimization technique]
 **RISK ASSESSMENT:** [Potential downsides and mitigation strategies]
 
 ## PHASE 4: IMPLEMENTATION
 [Production-quality implementation with benchmarks and explanation]
 ```
 
-## Important Guidelines
-- Focus on optimizations that demonstrate principal-level thinking
-- Avoid micro-optimizations with negligible impact
+## Guidelines
+- Focus on principal-level thinking, avoid micro-optimizations
 - Choose optimizations with measurable, significant improvements (>20%)
 - Use established performance engineering patterns
-- Include benchmarks and profiling data in your analysis
-- Consider both latency and throughput improvements
-- Ensure the optimization is maintainable and well-documented
+- Include benchmarks and consider both latency and throughput
+- Ensure optimization is maintainable and well-documented
 
 Please proceed with this advanced performance optimization analysis."""
 

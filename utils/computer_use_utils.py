@@ -3,10 +3,9 @@ import base64
 import io
 import subprocess
 import pyautogui
-import time
 import platform
 from enum import Enum
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple
 from dotenv import load_dotenv
 import json
 from dataclasses import dataclass

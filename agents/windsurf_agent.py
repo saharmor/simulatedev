@@ -8,6 +8,7 @@ import pyautogui
 from typing import Optional
 from .base import CodingAgent
 
+from utils.computer_use_utils import bring_to_front_window
 
 class WindsurfAgent(CodingAgent):
     """Windsurf AI coding agent implementation"""
@@ -121,7 +122,6 @@ Only analyze the right panel and provide nothing but valid JSON in your response
             time.sleep(1)
             
             # Use computer_use_utils to bring window to front
-            from computer_use_utils import bring_to_front_window
             repo_name = os.path.basename(project_path)
             ide_open_success = bring_to_front_window(self.window_name, repo_name)
             if not ide_open_success:

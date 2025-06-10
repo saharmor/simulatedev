@@ -2,13 +2,16 @@
 
 > Use cutting-edge AI IDEs such as Cursor and Windsurf as an API
 
-SimulateDev is an automation tool that allows you to run AI coding agents (Cursor, Windsurf, Claude Code) on any GitHub repository with a custom prompt, and automatically create pull requests with the changes.
+SimulateDev is an automation tool that allows you to run AI coding agents (Cursor, Windsurf, Claude Code) on any GitHub repository with custom prompts, and automatically create pull requests with the changes. It supports both **single-agent** and **multi-agent collaborative workflows**.
 
 ## Features
 
-- **Multi-Agent Support**: Works with Cursor, Windsurf, and Claude Code (coming soon)
-- **Automated Workflow**: Clone → Analyze → Implement → Create PR
-- **Custom Prompts**: Send any coding task to your preferred AI agent
+- **Unified Architecture**: Single-agent and multi-agent workflows use the same execution engine
+- **Multi-Agent Collaboration**: Planner → Coder → Tester workflows with specialized roles
+- **Single-Agent Simplicity**: Quick tasks with just one AI agent
+- **Multiple AI Agents**: Works with Cursor, Windsurf, Claude, and more
+- **Automated Workflow**: Clone → Analyze → Implement → Test → Create PR
+- **Custom Prompts**: Send any coding task to your preferred AI agent(s)
 - **Visual UI Detection**: Uses Claude Computer Use for precise UI interaction
 - **Auto Pull Requests**: Creates professional PRs with your changes
 - **Local Execution**: Runs coding agents on your local machine
@@ -83,29 +86,116 @@ graph LR
 
 ### Basic Usage
 
-### General Coding Tasks
-
-For custom coding tasks with user-defined prompts:
+SimulateDev provides a **unified CLI** that handles both single-agent and multi-agent workflows:
 
 ```bash
-python main.py <repo_url> <prompt> <agent>
+python simulatedev.py <task> <agent> --repo <repo_url>
 ```
 
-**Examples:**
+### Single-Agent Tasks (Most Common)
+
+For quick coding tasks with a single AI agent:
 
 ```bash
 # Fix responsive design issues with Cursor
-python main.py https://github.com/user/repo "Fix responsive table design for mobile devices" cursor
+python simulatedev.py "Fix responsive table design for mobile devices" cursor --repo https://github.com/user/repo
 
 # Add error handling with Windsurf  
-python main.py https://github.com/user/repo "Add comprehensive error handling to API endpoints" windsurf
+python simulatedev.py "Add comprehensive error handling to API endpoints" windsurf --repo https://github.com/user/repo
 
 # Custom optimization task
-python main.py https://github.com/user/repo "Optimize database queries" claude_code
+python simulatedev.py "Optimize database queries" claude --work-dir ./my-project
 
 # Test the pipeline and analyze codebase consistency
-python main.py https://github.com/user/repo "Analyze codebase for inconsistencies" test
+python simulatedev.py "Analyze codebase for inconsistencies" test --repo https://github.com/user/repo --no-pr
 ```
+
+### Multi-Agent Collaboration
+
+For complex tasks requiring multiple specialized agents working together:
+
+```bash
+# From JSON file
+python simulatedev.py --multi task.json --repo https://github.com/user/repo
+
+# Interactive mode
+python simulatedev.py --multi --interactive
+
+# From JSON string
+python simulatedev.py --multi --json '{
+  "task": "Build a REST API with comprehensive tests",
+  "agents": [
+    {"coding_ide": "claude_code", "model": "Opus 4", "role": "Planner"},
+    {"coding_ide": "cursor", "model": "N/A", "role": "Coder"},
+    {"coding_ide": "windsurf", "model": "4", "role": "Tester"}
+  ]
+}'
+```
+
+**Multi-Agent JSON Format:**
+```json
+{
+  "repo_url": "https://github.com/user/repository",  
+  "workflow": "bug_hunting|code_optimization|general_coding",
+  "coding_task_prompt": "Custom prompt (required only for general_coding workflow)",
+  "agents": [
+    {
+      "coding_ide": "claude_code",
+      "model": "Opus 4", 
+      "role": "Planner"
+    },
+    {
+      "coding_ide": "cursor",
+      "model": "N/A",
+      "role": "Coder"
+    },
+    {
+      "coding_ide": "windsurf",
+      "model": "4",
+      "role": "Tester"
+    }
+  ]
+}
+```
+
+**Key Fields:**
+- `repo_url`: Repository URL to work on (can also be specified via `--repo` flag)
+- `workflow`: Optional predefined workflow (`bug_hunting`, `code_optimization`, `general_coding`)
+- `coding_task_prompt`: Custom task description (required only for `general_coding` workflow)
+
+**Supported Roles:**
+- **Planner**: Creates implementation plans and breaks down complex tasks
+- **Coder**: Implements the solution based on the plan
+- **Tester**: Tests and validates the implementation
+
+### Workflow System
+
+SimulateDev now supports predefined workflows that can be specified in JSON:
+
+| Workflow | Description | Use Case |
+|----------|-------------|----------|
+| `bug_hunting` | Find and fix security vulnerabilities and bugs | Security audits, bug fixes |
+| `code_optimization` | Performance optimizations and improvements | Speed improvements, refactoring |
+| `general_coding` | Custom coding tasks with your own prompt | Any development task |
+
+**Example with Workflow:**
+```json
+{
+  "repo_url": "https://github.com/user/webapp",
+  "workflow": "bug_hunting",
+  "agents": [
+    {
+      "coding_ide": "cursor",
+      "model": "claude-sonnet-4",
+      "role": "Coder"
+    }
+  ]
+}
+```
+
+Note: For `bug_hunting` and `code_optimization` workflows, no `coding_task_prompt` is needed as the task is predefined.
+
+See [WORKFLOW_EXAMPLES.md](WORKFLOW_EXAMPLES.md) for comprehensive examples.
 
 ### Specialized Workflows
 
@@ -145,13 +235,44 @@ python workflows_cli.py bugs https://github.com/user/repo cursor --no-pr
 
 ## Configuration
 
-### API Keys Required
+### Environment Variables
 
-| Service | Purpose | Required | Get Key |
-|---------|---------|----------|---------|
-| Anthropic Claude | UI element detection | Yes | [Console](https://console.anthropic.com/) |  
-| Google Gemini | IDE state analysis | Yes | [AI Studio](https://ai.google.dev/) |
-| GitHub | Pull request creation | Optional | [Settings](https://github.com/settings/tokens) |
+All configuration is managed through environment variables in your `.env` file:
+
+| Variable | Purpose | Required | Default | Notes |
+|----------|---------|----------|---------|-------|
+| `ANTHROPIC_API_KEY` | UI element detection | Yes | - | [Get key](https://console.anthropic.com/) |
+| `GOOGLE_API_KEY` | IDE state analysis | Yes | - | [Get key](https://ai.google.dev/) |
+| `GITHUB_TOKEN` | Pull request creation | Optional | - | [Get token](https://github.com/settings/tokens) |
+| `AGENT_TIMEOUT_SECONDS` | Agent execution timeout | Optional | 600 | 30-7200 seconds (0.5-120 minutes) |
+| `GIT_USER_NAME` | Git commit author | Optional | "SimulateDev Bot" | For commits and PRs |
+| `GIT_USER_EMAIL` | Git commit email | Optional | "simulatedev@example.com" | For commits and PRs |
+
+### Timeout Configuration
+
+The `AGENT_TIMEOUT_SECONDS` setting controls how long SimulateDev waits for agents to complete tasks:
+
+```env
+# Default: 10 minutes (good for most tasks)
+AGENT_TIMEOUT_SECONDS=600
+
+# For complex tasks: 20 minutes
+AGENT_TIMEOUT_SECONDS=1200
+
+# For simple tasks: 5 minutes  
+AGENT_TIMEOUT_SECONDS=300
+
+# Maximum: 2 hours
+AGENT_TIMEOUT_SECONDS=7200
+```
+
+**Guidelines:**
+- **Simple tasks** (bug fixes, small features): 300-600 seconds (5-10 minutes)
+- **Medium tasks** (refactoring, optimizations): 600-1200 seconds (10-20 minutes)  
+- **Complex tasks** (large features, major changes): 1200-3600 seconds (20-60 minutes)
+- **Very complex tasks**: Up to 7200 seconds (2 hours)
+
+The timeout is automatically validated and clamped to reasonable bounds (30 seconds minimum, 2 hours maximum).
 
 ### Supported AI Agents
 
@@ -181,7 +302,7 @@ SimulateDev automatically handles repository permissions for you:
 
 ```bash
 # Same command works for both cases
-python main.py https://github.com/someone-else/repo "Fix bug" cursor
+python simulatedev.py "Fix bug" cursor --repo https://github.com/someone-else/repo
 ```
 
 The tool will automatically:
@@ -193,13 +314,13 @@ The tool will automatically:
 ### Custom Target Directory
 
 ```bash
-python main.py https://github.com/user/repo "Fix bugs" cursor --target-dir ~/my-projects/repo
+python simulatedev.py "Fix bugs" cursor --repo https://github.com/user/repo --target-dir ~/my-projects/repo
 ```
 
 ### Skip Pull Request Creation
 
 ```bash
-python main.py https://github.com/user/repo "Add features" windsurf --no-pr
+python simulatedev.py "Add features" windsurf --repo https://github.com/user/repo --no-pr
 ```
 
 ### Test Agent
@@ -214,13 +335,10 @@ The Test Agent is a special agent designed for pipeline testing and codebase ana
 **Usage:**
 ```bash
 # Run codebase analysis
-python main.py https://github.com/user/repo "Analyze codebase for inconsistencies" test
+python simulatedev.py "Analyze codebase for inconsistencies" test --repo https://github.com/user/repo
 
 # Test the pipeline without creating a PR
-python main.py https://github.com/user/repo "Test pipeline functionality" test --no-pr
-
-# You can also test locally using the demo script
-python test_agent_demo.py
+python simulatedev.py "Test pipeline functionality" test --repo https://github.com/user/repo --no-pr
 ```
 
 The Test Agent automatically checks for:
@@ -237,7 +355,7 @@ You can also set environment variables directly:
 export ANTHROPIC_API_KEY="your_key"
 export GOOGLE_API_KEY="your_key" 
 export GITHUB_TOKEN="your_token"
-python main.py https://github.com/user/repo "Refactor code" cursor
+python simulatedev.py "Refactor code" cursor --repo https://github.com/user/repo
 ```
 
 ## Development
@@ -246,116 +364,101 @@ python main.py https://github.com/user/repo "Refactor code" cursor
 
 ```
 simulatedev/
-├── main.py                       # Main CLI for general coding tasks
-├── workflows_cli.py              # CLI for specialized workflows (bugs, optimize, etc.)
-├── agent_orchestrator.py         # High-level agent workflow coordination  
-├── workflows/                    # Specialized workflow modules
-│   ├── __init__.py              # Package initialization
-│   ├── bug_hunting.py           # Bug discovery and fixing workflows
-│   ├── code_optimization.py     # Performance and refactoring workflows
-│   └── general_coding.py        # General user-defined coding tasks
-├── coding_agents.py             # Agent abstraction layer (Cursor, Windsurf, Claude Code)
-├── clone_repo.py                # Repository cloning utilities
-├── computer_use_utils.py        # Claude Computer Use integration
-├── ide_completion_detector.py   # IDE state monitoring
-├── github_integration.py        # GitHub API operations and PR creation
-├── requirements.txt             # Dependencies
-└── scanned_repos/              # Cloned repositories
+├── simulatedev.py               # Main unified CLI for all workflows
+├── src/                         # Core application modules
+│   ├── __init__.py             # Package initialization
+│   ├── unified_orchestrator.py # Unified orchestration for single/multi-agent workflows
+│   ├── multi_agent_orchestrator.py # Legacy multi-agent orchestrator (uses role system)
+│   ├── agent_orchestrator.py   # High-level agent workflow coordination
+│   ├── workflows_cli.py        # CLI for specialized workflows (bugs, optimize, etc.)
+│   └── github_integration.py   # GitHub API operations and PR creation
+├── utils/                       # Utility functions and helper scripts
+│   ├── __init__.py             # Package initialization
+│   ├── clone_repo.py           # Repository cloning utilities
+│   ├── computer_use_utils.py   # Claude Computer Use integration
+│   └── ide_completion_detector.py # IDE state monitoring
+├── agents/                      # AI agent implementations
+│   ├── __init__.py             # Package initialization
+│   ├── base.py                 # Base agent classes
+│   ├── cursor_agent.py         # Cursor IDE integration
+│   ├── windsurf_agent.py       # Windsurf IDE integration
+│   ├── claude_code_agent.py    # Claude Code integration
+│   ├── test_agent.py           # Testing and analysis agent
+│   └── factory.py              # Agent creation and management
+├── roles/                       # Role-based agent system
+│   ├── __init__.py             # Package initialization
+│   ├── base_role.py            # Abstract base role class
+│   ├── planner_role.py         # Planning and task breakdown
+│   ├── coder_role.py           # Code implementation
+│   ├── tester_role.py          # Testing and validation
+│   └── role_factory.py         # Role creation and management
+├── workflows/                   # Specialized workflow modules
+│   ├── __init__.py             # Package initialization
+│   ├── bug_hunting.py          # Bug discovery and fixing workflows
+│   ├── code_optimization.py    # Performance and refactoring workflows
+│   └── general_coding.py       # General user-defined coding tasks
+├── common/                      # Shared utilities and configuration
+│   ├── __init__.py             # Package initialization
+│   ├── config.py               # Configuration management
+│   └── exceptions.py           # Custom exception classes
+├── examples/                    # Sample configuration files
+│   ├── __init__.py             # Package initialization
+│   ├── README.md               # Examples documentation
+│   ├── sample_bug_hunting_task.json      # Bug hunting example
+│   ├── sample_multi_agent_task.json      # Multi-agent example
+│   └── sample_optimization_task.json     # Code optimization example
+├── docs/                        # Documentation files
+│   ├── __init__.py             # Package initialization
+│   └── WORKFLOW_EXAMPLES.md    # Comprehensive workflow examples
+├── coding_agents.py            # Backward compatibility layer
+├── requirements.txt            # Dependencies
+└── scanned_repos/             # Cloned repositories
 ```
 
-### Module Responsibilities
+### Architecture
 
-- **`main.py`**: Entry point for general coding tasks with user-defined prompts
-- **`workflows_cli.py`**: Entry point for specialized predefined workflows
-- **`agent_orchestrator.py`**: High-level orchestration for agent workflows (IDE management, prompt sending, response handling)
-- **`workflows/`**: Package containing specialized workflow modules:
-  - **`bug_hunting.py`**: Bug discovery and security issue fixing
-  - **`code_optimization.py`**: Performance optimizations, refactoring, and code quality improvements
-  - **`general_coding.py`**: Enhanced general-purpose coding task handling
-- **`coding_agents.py`**: Clean abstraction layer for different AI coding agents
-- **`github_integration.py`**: Git operations and GitHub API integration
-- **`computer_use_utils.py`**: Claude Computer Use for screen automation
-- **`ide_completion_detector.py`**: Monitors IDE state to detect task completion
+SimulateDev uses a **unified architecture** where single-agent workflows are treated as multi-agent workflows with one coder agent:
 
-### Running Tests
-
-```bash
-# Test GitHub integration
-python github_integration.py
-
-# Test repository cloning
-python clone_repo.py https://github.com/octocat/Hello-World
-
-# Test computer use utilities
-python computer_use_utils.py
 ```
+Unified CLI → Unified Orchestrator → Role System → Agent Factory
+```
+
+**Key Components:**
+- **Unified CLI** (`simulatedev.py`): Single entry point for all workflows
+- **Unified Orchestrator**: Handles both single and multi-agent execution
+- **Role System**: Specialized behavior for Planner, Coder, and Tester roles
+- **Agent Factory**: Creates and manages different AI agents
+
+This design provides:
+- **Code Unification**: ~60% reduction in orchestration code
+- **Maintainability**: Single source of truth for orchestration logic
+- **Consistency**: Same experience across all workflow types
+- **Extensibility**: Foundation for future enhancements
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
-
-## Roadmap
-
-- [ ] **Claude Code Integration**: Add support for Google Cloud Code
-- [ ] **Web Interface**: Build a web UI for easier usage
-- [ ] **Batch Processing**: Process multiple repositories at once
-- [ ] **Custom Agents**: Support for other AI coding tools
-- [ ] **Docker Support**: Containerized execution
-- [ ] **Webhooks**: GitHub webhook integration for automated triggers
-
-## Troubleshooting
-
-### Common Issues
-
-**IDE doesn't open:**
-- Ensure the IDE is installed and accessible from command line
-- Check if the IDE is already running
-
-**API key errors:**
-- Verify your API keys in `.env` file
-- Check API key permissions and quotas
-
-**Pull request creation fails:**
-- Ensure GitHub token has `repo` permissions
-- For private repositories, token needs additional permissions
-- If forking fails, check if the repository allows forking
-
-**Permission issues:**
-- If you don't have push permissions, the tool will automatically fork
-- Ensure your GitHub token has `public_repo` permission (for public repos) or `repo` (for private repos)
-- For organizations, you may need additional permissions to fork repositories
-
-**UI element not found:**
-- Try running with a clean IDE state
-- Ensure the IDE window is visible and focused
-
-### IDE-Specific Behaviors
-
-**Cursor 25 Tool Call Limit (Auto-Handled):**
-- Cursor automatically stops agents after 25 tool calls by default
-- SimulateDev automatically detects this message and clicks "Resume the Conversation"
-- No manual intervention required - the workflow continues seamlessly
-- This only applies to Cursor - other agents run until completion
-
-**Windsurf Trust Workspace:**
-- May prompt to trust the workspace on first run
-- SimulateDev automatically handles this prompt
-- Ensure Windsurf has necessary permissions
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Acknowledgments
+## Support
 
-- [Anthropic Claude](https://anthropic.com/) for computer use capabilities
-- [Google Gemini](https://ai.google.dev/) for image analysis
-- [Cursor](https://cursor.com/) and [Windsurf](https://windsurf.ai/) for amazing AI coding experiences
+If you encounter any issues or have questions:
 
----
+1. Check the documentation above
+2. Look at existing issues on GitHub
+3. Create a new issue with detailed information about your problem
 
-**Built with love for the developer community**
+## Roadmap
+
+- [ ] Claude Code agent integration
+- [ ] Parallel multi-agent execution
+- [ ] Custom role definitions
+- [ ] Web interface
+- [ ] Integration with more IDEs

@@ -45,12 +45,12 @@ import webbrowser
 from typing import Optional
 from dataclasses import dataclass
 
-from clone_repo import clone_repository
+from utils.clone_repo import clone_repository
 from workflows.bug_hunting import BugHunter
 from workflows.code_optimization import CodeOptimizer
 from workflows.general_coding import GeneralCodingWorkflow
 from workflows.test_workflow import TestWorkflow
-from github_integration import GitHubIntegration
+from src.github_integration import GitHubIntegration
 from coding_agents import CodingAgentIdeType
 
 from common.config import config
