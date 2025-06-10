@@ -3,7 +3,11 @@
 Agents package for AI coding assistants.
 """
 
-from .base import CodingAgent, CodingAgentType, AgentResponse
+from .base import (
+    CodingAgent, CodingAgentIdeType, AgentResponse,
+    AgentRole, MultiAgentTask, AgentDefinition, 
+    AgentContext, MultiAgentResponse
+)
 from .cursor_agent import CursorAgent
 from .windsurf_agent import WindsurfAgent
 from .claude_code_agent import ClaudeCodeAgent
@@ -12,8 +16,13 @@ from .factory import AgentFactory
 
 __all__ = [
     'CodingAgent',
-    'CodingAgentType', 
+    'CodingAgentIdeType', 
     'AgentResponse',
+    'AgentRole',
+    'MultiAgentTask',
+    'AgentDefinition',
+    'AgentContext',
+    'MultiAgentResponse',
     'CursorAgent',
     'WindsurfAgent',
     'ClaudeCodeAgent',

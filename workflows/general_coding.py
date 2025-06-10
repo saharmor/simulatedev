@@ -13,7 +13,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agent_orchestrator import AgentOrchestrator
-from coding_agents import CodingAgentType
+from coding_agents import CodingAgentIdeType
 
 
 class GeneralCodingWorkflow(AgentOrchestrator):
@@ -41,7 +41,7 @@ Please proceed with implementing this task."""
         
         return enhanced_prompt
     
-    async def execute_coding_task(self, agent_type: CodingAgentType, repo_url: str, 
+    async def execute_coding_task(self, agent_type: CodingAgentIdeType, repo_url: str, 
                                  user_prompt: str, project_path: str = None) -> str:
         """Execute a general coding task workflow"""
         enhanced_prompt = self.enhance_user_prompt(user_prompt, repo_url)
@@ -52,7 +52,7 @@ Please proceed with implementing this task."""
         """Create a simple, direct prompt without additional enhancement"""
         return user_request
     
-    async def execute_simple_task(self, agent_type: CodingAgentType, repo_url: str,
+    async def execute_simple_task(self, agent_type: CodingAgentIdeType, repo_url: str,
                                  user_prompt: str, project_path: str = None) -> str:
         """Execute a simple task without prompt enhancement"""
         agent_execution_report_summary = await self.execute_workflow(agent_type, repo_url, user_prompt, project_path)

@@ -13,7 +13,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agent_orchestrator import AgentOrchestrator
-from coding_agents import CodingAgentType
+from coding_agents import CodingAgentIdeType
 
 
 class CodeOptimizer(AgentOrchestrator):
@@ -271,21 +271,21 @@ Working on: {repo_url}
 
 Please proceed with your refactoring analysis and implementation."""
 
-    async def optimize_performance(self, agent_type: CodingAgentType, repo_url: str, 
+    async def optimize_performance(self, agent_type: CodingAgentIdeType, repo_url: str, 
                                   project_path: str = None) -> str:
         """Execute a performance optimization workflow that maps, ranks, and implements one high-value optimization"""
         prompt = self.generate_performance_optimization_prompt(repo_url)
         agent_execution_report_summary = await self.execute_workflow(agent_type, repo_url, prompt, project_path)
         return agent_execution_report_summary
     
-    async def refactor_code(self, agent_type: CodingAgentType, repo_url: str, 
+    async def refactor_code(self, agent_type: CodingAgentIdeType, repo_url: str, 
                            project_path: str = None) -> str:
         """Execute a code refactoring workflow"""
         prompt = self.generate_refactoring_prompt(repo_url)
         agent_execution_report_summary = await self.execute_workflow(agent_type, repo_url, prompt, project_path)
         return agent_execution_report_summary
     
-    async def find_low_hanging_fruit(self, agent_type: CodingAgentType, repo_url: str, 
+    async def find_low_hanging_fruit(self, agent_type: CodingAgentIdeType, repo_url: str, 
                                     project_path: str = None) -> str:
         """Execute a low-hanging fruit workflow that maps, ranks, and implements one high-value improvement"""
         prompt = self.generate_low_hanging_fruit_prompt(repo_url)

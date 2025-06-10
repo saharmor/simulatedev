@@ -3,7 +3,7 @@
 Agent Factory for creating coding agent instances
 """
 
-from .base import CodingAgent, CodingAgentType
+from .base import CodingAgent, CodingAgentIdeType
 from .cursor_agent import CursorAgent
 from .windsurf_agent import WindsurfAgent
 from .claude_code_agent import ClaudeCodeAgent
@@ -14,15 +14,15 @@ class AgentFactory:
     """Factory for creating coding agent instances"""
     
     @staticmethod
-    def create_agent(agent_type: CodingAgentType, claude_computer_use) -> CodingAgent:
+    def create_agent(agent_type: CodingAgentIdeType, claude_computer_use) -> CodingAgent:
         """Create an agent instance based on the agent type"""
-        if agent_type == CodingAgentType.CURSOR:
+        if agent_type == CodingAgentIdeType.CURSOR:
             return CursorAgent(claude_computer_use)
-        elif agent_type == CodingAgentType.WINDSURF:
+        elif agent_type == CodingAgentIdeType.WINDSURF:
             return WindsurfAgent(claude_computer_use)
-        elif agent_type == CodingAgentType.CLAUDE_CODE:
+        elif agent_type == CodingAgentIdeType.CLAUDE_CODE:
             return ClaudeCodeAgent(claude_computer_use)
-        elif agent_type == CodingAgentType.TEST:
+        elif agent_type == CodingAgentIdeType.TEST:
             return TestAgent(claude_computer_use)
         else:
             raise ValueError(f"Unsupported agent: {agent_type}")
@@ -46,4 +46,4 @@ class AgentFactory:
     @staticmethod
     def get_supported_agents() -> list:
         """Get list of supported agent types"""
-        return list(CodingAgentType) 
+        return list(CodingAgentIdeType) 

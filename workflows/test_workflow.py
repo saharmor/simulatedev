@@ -13,7 +13,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agent_orchestrator import AgentOrchestrator
-from coding_agents import CodingAgentType
+from coding_agents import CodingAgentIdeType
 
 
 class TestWorkflow(AgentOrchestrator):
@@ -39,7 +39,7 @@ This is a basic test to verify that the coding agent can:
 
 Please implement this simple task and confirm completion."""
     
-    async def execute_test(self, agent_type: CodingAgentType, repo_url: str = None, 
+    async def execute_test(self, agent_type: CodingAgentIdeType, repo_url: str = None, 
                           project_path: str = None) -> str:
         """Execute the test workflow"""
         print("Starting test workflow execution...")
@@ -54,7 +54,7 @@ Please implement this simple task and confirm completion."""
         agent_execution_report_summary = await self.execute_workflow(agent_type, repo_url, test_prompt, project_path)
         return agent_execution_report_summary
     
-    async def execute_simple_hello_world(self, agent_type: CodingAgentType, 
+    async def execute_simple_hello_world(self, agent_type: CodingAgentIdeType, 
                                         project_path: str = None) -> str:
         """Execute a very simple hello world test without repository context"""
         simple_prompt = """Create a Python file called 'hello_world.py' that prints "hello world" when executed. 
