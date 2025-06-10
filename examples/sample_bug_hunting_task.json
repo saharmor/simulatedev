@@ -1,6 +1,4 @@
 {
-  "repo_url": "https://github.com/user/webapp-repo",
-  "workflow": "bug_hunting",
   "agents": [
     {
       "role": "Coder",

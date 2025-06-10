@@ -1,6 +1,4 @@
 {
-  "repo_url": "https://github.com/user/example-repo",
-  "workflow": "general_coding",
   "coding_task_prompt": "Build a Python script that scrapes article headlines from Hacker News and saves them to a CSV file. Create a robust web scraper that fetches the top 30 headlines from Hacker News homepage, handles errors gracefully, and saves the data to a CSV file with proper formatting",
   "agents": [
     {

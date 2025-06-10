@@ -352,6 +352,119 @@ def get_current_window_name():
         return "Unknown Window"
 
 
+def is_ide_open_with_project(app_name: str, project_name: str) -> bool:
+    """
+    Check if a specific IDE is running and has the specified project open.
+    
+    Args:
+        app_name (str): Name of the IDE application (e.g., "Cursor", "Windsurf")
+        project_name (str): Name of the project to check for in window titles
+        
+    Returns:
+        bool: True if the IDE is running with the specified project, False otherwise
+    """
+    try:
+        app_name = app_name.lower()
+        
+        if platform.system() == "Darwin":
+            # Handle different IDEs
+            if app_name == "windsurf":
+                # Windsurf runs as Electron, check its windows
+                script = '''
+                tell application "System Events"
+                    tell process "Electron"
+                        set windowTitles to name of every window
+                    end tell
+                end tell
+                return windowTitles
+                '''
+                try:
+                    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
+                    window_titles = result.stdout.strip().split(",")
+                    
+                    # Check if any window title contains the project name
+                    for title in window_titles:
+                        title = title.strip()
+                        if project_name.lower() in title.lower():
+                            print(f"Found Windsurf window with project '{project_name}': {title}")
+                            return True
+                    
+                    print(f"Windsurf is running but no window found with project '{project_name}'")
+                    print(f"Available windows: {[t.strip() for t in window_titles]}")
+                    return False
+                    
+                except subprocess.CalledProcessError:
+                    print("Windsurf (Electron) is not running")
+                    return False
+                    
+            elif app_name == "cursor":
+                # Cursor runs as its own app
+                script = f'''
+                tell application "System Events"
+                    tell process "Cursor"
+                        set windowTitles to name of every window
+                    end tell
+                end tell
+                return windowTitles
+                '''
+                try:
+                    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
+                    window_titles = result.stdout.strip().split(",")
+                    
+                    # Check if any window title contains the project name
+                    for title in window_titles:
+                        title = title.strip()
+                        if project_name.lower() in title.lower():
+                            print(f"Found Cursor window with project '{project_name}': {title}")
+                            return True
+                    
+                    print(f"Cursor is running but no window found with project '{project_name}'")
+                    print(f"Available windows: {[t.strip() for t in window_titles]}")
+                    return False
+                    
+                except subprocess.CalledProcessError:
+                    print("Cursor is not running")
+                    return False
+                    
+            else:
+                # Generic IDE check
+                app_name_capitalized = app_name.capitalize()
+                script = f'''
+                tell application "System Events"
+                    tell process "{app_name_capitalized}"
+                        set windowTitles to name of every window
+                    end tell
+                end tell
+                return windowTitles
+                '''
+                try:
+                    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
+                    window_titles = result.stdout.strip().split(",")
+                    
+                    # Check if any window title contains the project name
+                    for title in window_titles:
+                        title = title.strip()
+                        if project_name.lower() in title.lower():
+                            print(f"Found {app_name_capitalized} window with project '{project_name}': {title}")
+                            return True
+                    
+                    print(f"{app_name_capitalized} is running but no window found with project '{project_name}'")
+                    print(f"Available windows: {[t.strip() for t in window_titles]}")
+                    return False
+                    
+                except subprocess.CalledProcessError:
+                    print(f"{app_name_capitalized} is not running")
+                    return False
+                    
+        else:
+            print(f"IDE project checking not implemented for {platform.system()}")
+            return False
+            
+    except Exception as e:
+        print(f"Error checking if {app_name} is open with project '{project_name}': {e}")
+        return False
+
+
 def take_screenshot(target_width, target_height, encode_base64: bool = False, monitor_number: int = 0) -> str:
     """
     Capture screenshot using mss library with multi-monitor support.

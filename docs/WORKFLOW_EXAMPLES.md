@@ -16,8 +16,6 @@ All JSON task files now support these fields:
 
 ```json
 {
-  "repo_url": "https://github.com/user/repository",
-  "workflow": "workflow_name",
   "coding_task_prompt": "Custom prompt for general_coding workflow only",
   "agents": [
     {
@@ -33,9 +31,13 @@ All JSON task files now support these fields:
 - `agents`: Array of agent definitions
 
 ### Optional Fields
-- `repo_url`: GitHub repository URL to work on
-- `workflow`: Predefined workflow to use (`bug_hunting`, `code_optimization`, `general_coding`)
 - `coding_task_prompt`: Custom prompt (required only for `general_coding` workflow)
+
+### Command-Line Parameters
+- `--repo`: GitHub repository URL to work on
+- `--workflow`: Predefined workflow to use (`bug_hunting`, `code_optimization`, `general_coding`)
+
+**Note**: Repository URL and workflow type are now passed as command-line arguments instead of being embedded in the JSON. This provides better separation of concerns and matches the pattern used in single-agent workflows.
 
 ## Workflow Examples
 
@@ -45,8 +47,6 @@ Find and fix security vulnerabilities and bugs in a codebase. No `coding_task_pr
 
 ```json
 {
-  "repo_url": "https://github.com/user/webapp-repo",
-  "workflow": "bug_hunting",
   "agents": [
     {
       "role": "Coder",
@@ -59,7 +59,7 @@ Find and fix security vulnerabilities and bugs in a codebase. No `coding_task_pr
 
 **Usage:**
 ```bash
-python simulatedev.py --multi sample_bug_hunting_task.json
+python simulatedev.py --multi sample_bug_hunting_task.json --repo https://github.com/user/webapp-repo --workflow bug_hunting
 ```
 
 ### 2. Code Optimization Workflow
@@ -68,8 +68,6 @@ Optimize performance and improve code quality. No `coding_task_prompt` needed - 
 
 ```json
 {
-  "repo_url": "https://github.com/user/performance-critical-app",
-  "workflow": "code_optimization",
   "agents": [
     {
       "role": "Planner",
@@ -92,7 +90,7 @@ Optimize performance and improve code quality. No `coding_task_prompt` needed - 
 
 **Usage:**
 ```bash
-python simulatedev.py --multi sample_optimization_task.json
+python simulatedev.py --multi sample_optimization_task.json --repo https://github.com/user/performance-critical-app --workflow code_optimization
 ```
 
 ### 3. General Coding Workflow
@@ -101,8 +99,6 @@ Use custom prompts for specific coding tasks. The `coding_task_prompt` field is 
 
 ```json
 {
-  "repo_url": "https://github.com/user/example-repo",
-  "workflow": "general_coding",
   "coding_task_prompt": "Build a Python script that scrapes article headlines from Hacker News and saves them to a CSV file. Create a robust web scraper that fetches the top 30 headlines from Hacker News homepage, handles errors gracefully, and saves the data to a CSV file with proper formatting. Include proper error handling, rate limiting, and data validation.",
   "agents": [
     {
@@ -121,7 +117,7 @@ Use custom prompts for specific coding tasks. The `coding_task_prompt` field is 
 
 **Usage:**
 ```bash
-python simulatedev.py --multi sample_multi_agent_task.json
+python simulatedev.py --multi sample_multi_agent_task.json --repo https://github.com/user/example-repo --workflow general_coding
 ```
 
 ### 4. Multi-Agent Role System (No Workflow)
@@ -130,7 +126,6 @@ Use the traditional role-based system for complex collaborative tasks. Without a
 
 ```json
 {
-  "repo_url": "https://github.com/user/api-project",
   "agents": [
     {
       "role": "Planner",
@@ -153,24 +148,22 @@ Use the traditional role-based system for complex collaborative tasks. Without a
 
 **Usage:**
 ```bash
-python simulatedev.py --multi complex_api_task.json
+python simulatedev.py --multi complex_api_task.json --repo https://github.com/user/api-project
 ```
 
 ## Command Line Usage
 
 ### Multi-Agent with JSON File
 ```bash
-python simulatedev.py --multi task.json
+python simulatedev.py --multi task.json --repo https://github.com/user/repo --workflow general_coding
 ```
 
 ### Multi-Agent with JSON String
 ```bash
 python simulatedev.py --multi --json '{
-  "repo_url": "https://github.com/user/webapp",
-  "workflow": "general_coding",
   "coding_task_prompt": "Fix all responsive design issues in the CSS, ensure mobile compatibility",
   "agents": [{"role": "Coder", "coding_ide": "cursor", "model": "claude-sonnet-4"}]
-}'
+}' --repo https://github.com/user/webapp --workflow general_coding
 ```
 
 ### Interactive Mode
@@ -180,12 +173,12 @@ python simulatedev.py --multi --interactive
 
 ### Override Repository URL
 ```bash
-python simulatedev.py --multi task.json --repo https://github.com/different/repo
+python simulatedev.py --multi task.json --repo https://github.com/different/repo --workflow bug_hunting
 ```
 
 ### Skip Pull Request Creation
 ```bash
-python simulatedev.py --multi task.json --no-pr
+python simulatedev.py --multi task.json --repo https://github.com/user/repo --workflow code_optimization --no-pr
 ```
 
 ## Workflow Comparison

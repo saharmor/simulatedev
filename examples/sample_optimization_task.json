@@ -1,6 +1,4 @@
 {
-  "repo_url": "https://github.com/user/performance-critical-app",
-  "workflow": "code_optimization",
   "agents": [
     {
       "role": "Planner",

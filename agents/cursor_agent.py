@@ -7,6 +7,7 @@ import time
 import pyautogui
 from typing import Optional
 from .base import CodingAgent
+import os
 
 from utils.computer_use_utils import bring_to_front_window
 
@@ -74,24 +75,28 @@ Only analyze the right panel and provide nothing but valid JSON in your response
     
     async def open_coding_interface(self) -> bool:
         """Open Cursor IDE and chat interface"""
+        # Set current project for window title checking
+        project_path = os.getcwd()
+        self.set_current_project(project_path)
+        
         # First ensure Cursor application is running
         await self._ensure_cursor_app_open()
         
-        # Then check if chat interface is already running
-        if await self.is_coding_agent_open():
+        # Then check if chat interface is already running with correct project
+        if await self.is_coding_agent_open_with_project():
             return True
         
-        # Interface is not open, open chat interface with keyboard shortcut
+        # Interface is not open or not with correct project, open chat interface with keyboard shortcut
         print(f"Opening {self.agent_name} chat interface with shortcut: {self.keyboard_shortcut}")
         pyautogui.hotkey('command', 'l')
         time.sleep(2)  # Wait for interface to open
         
-        # Verify the chat interface opened by checking for input field again
-        if await self.is_coding_agent_open():
-            print(f"SUCCESS: {self.agent_name} interface opened successfully")
+        # Verify the chat interface opened with correct project
+        if await self.is_coding_agent_open_with_project():
+            print(f"SUCCESS: {self.agent_name} interface opened successfully with project")
             return True
         else:
-            print(f"WARNING: Could not verify {self.agent_name} interface opened")
+            print(f"WARNING: Could not verify {self.agent_name} interface opened with correct project")
             return False
     
     async def _ensure_cursor_app_open(self):

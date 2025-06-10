@@ -96,7 +96,7 @@ class UnifiedOrchestrator:
     @classmethod
     def create_multi_agent_request(cls, task: MultiAgentTask, repo_url: Optional[str] = None,
                                  target_dir: Optional[str] = None, create_pr: bool = True,
-                                 work_directory: Optional[str] = None) -> UnifiedRequest:
+                                 work_directory: Optional[str] = None, workflow: Optional[str] = None) -> UnifiedRequest:
         """
         Create a multi-agent request from a MultiAgentTask
         
@@ -106,6 +106,7 @@ class UnifiedOrchestrator:
             target_dir: Optional target directory for cloning
             create_pr: Whether to create a pull request
             work_directory: Optional work directory override
+            workflow: Optional workflow type (overrides task.workflow if provided)
             
         Returns:
             UnifiedRequest: A unified request with multiple agents
@@ -113,14 +114,31 @@ class UnifiedOrchestrator:
         # Use provided repo_url or fall back to task.repo_url
         effective_repo_url = repo_url or task.repo_url
         
+        # Use provided workflow or fall back to task.workflow
+        effective_workflow = workflow or (task.workflow.value if task.workflow else None)
+        
+        # Validate workflow requirements with effective workflow
+        if effective_workflow == "general_coding" and not task.coding_task_prompt:
+            raise ValueError("'coding_task_prompt' field is required when using 'general_coding' workflow")
+        
+        # Generate task description based on effective workflow
+        if effective_workflow == "general_coding":
+            task_description = task.coding_task_prompt or "General coding task"
+        elif effective_workflow == "bug_hunting":
+            task_description = "Find and fix security vulnerabilities and bugs"
+        elif effective_workflow == "code_optimization":
+            task_description = "Optimize performance and improve code quality"
+        else:
+            task_description = task.get_task_description()
+        
         return UnifiedRequest(
-            task_description=task.get_task_description(),
+            task_description=task_description,
             agents=task.agents,
             repo_url=effective_repo_url,
             target_dir=target_dir,
             create_pr=create_pr,
             work_directory=work_directory,
-            workflow=task.workflow,
+            workflow=effective_workflow,
             coding_task_prompt=task.coding_task_prompt
         )
     
@@ -198,8 +216,11 @@ class UnifiedOrchestrator:
                     # Create and execute agent
                     agent = AgentFactory.create_agent(agent_type, self.computer_use_client)
                     
-                    # Check if agent interface is already open, if not open it
-                    if not await agent.is_coding_agent_open():
+                    # Set current project for window title checking
+                    agent.set_current_project(work_directory)
+                    
+                    # Check if agent interface is already open with correct project, if not open it
+                    if not await agent.is_coding_agent_open_with_project():
                         await agent.open_coding_interface()
                     
                     response = await agent.execute_prompt(prompt)

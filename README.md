@@ -115,28 +115,26 @@ python simulatedev.py "Analyze codebase for inconsistencies" test --repo https:/
 For complex tasks requiring multiple specialized agents working together:
 
 ```bash
-# From JSON file
-python simulatedev.py --multi task.json --repo https://github.com/user/repo
+# Multi-agent mode
+python simulatedev.py --multi task.json --repo https://github.com/user/repo --workflow general_coding
 
 # Interactive mode
 python simulatedev.py --multi --interactive
 
 # From JSON string
 python simulatedev.py --multi --json '{
-  "task": "Build a REST API with comprehensive tests",
+  "coding_task_prompt": "Build a REST API with comprehensive tests",
   "agents": [
     {"coding_ide": "claude_code", "model": "Opus 4", "role": "Planner"},
     {"coding_ide": "cursor", "model": "N/A", "role": "Coder"},
     {"coding_ide": "windsurf", "model": "4", "role": "Tester"}
   ]
-}'
+}' --repo https://github.com/user/repo --workflow general_coding
 ```
 
 **Multi-Agent JSON Format:**
 ```json
 {
-  "repo_url": "https://github.com/user/repository",  
-  "workflow": "bug_hunting|code_optimization|general_coding",
   "coding_task_prompt": "Custom prompt (required only for general_coding workflow)",
   "agents": [
     {
@@ -159,9 +157,11 @@ python simulatedev.py --multi --json '{
 ```
 
 **Key Fields:**
-- `repo_url`: Repository URL to work on (can also be specified via `--repo` flag)
-- `workflow`: Optional predefined workflow (`bug_hunting`, `code_optimization`, `general_coding`)
 - `coding_task_prompt`: Custom task description (required only for `general_coding` workflow)
+
+**Command-Line Parameters:**
+- `--repo`: Repository URL to work on
+- `--workflow`: Optional predefined workflow (`bug_hunting`, `code_optimization`, `general_coding`)
 
 **Supported Roles:**
 - **Planner**: Creates implementation plans and breaks down complex tasks
@@ -181,8 +181,6 @@ SimulateDev now supports predefined workflows that can be specified in JSON:
 **Example with Workflow:**
 ```json
 {
-  "repo_url": "https://github.com/user/webapp",
-  "workflow": "bug_hunting",
   "agents": [
     {
       "coding_ide": "cursor",
@@ -191,6 +189,11 @@ SimulateDev now supports predefined workflows that can be specified in JSON:
     }
   ]
 }
+```
+
+**Usage:**
+```bash
+python simulatedev.py --multi task.json --repo https://github.com/user/webapp --workflow bug_hunting
 ```
 
 Note: For `bug_hunting` and `code_optimization` workflows, no `coding_task_prompt` is needed as the task is predefined.

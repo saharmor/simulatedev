@@ -45,9 +45,6 @@ import webbrowser
 from typing import Optional
 from dataclasses import dataclass
 
-# Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from utils.clone_repo import clone_repository
 from workflows.bug_hunting import BugHunter
 from workflows.code_optimization import CodeOptimizer

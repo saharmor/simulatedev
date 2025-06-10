@@ -39,8 +39,8 @@ class WorkflowType(Enum):
 class MultiAgentTask:
     """Definition of a task for multi-agent execution"""
     agents: List['AgentDefinition']
-    repo_url: str
-    workflow: WorkflowType
+    repo_url: Optional[str] = None
+    workflow: Optional[WorkflowType] = None
     coding_task_prompt: Optional[str] = None  # Required only for general_coding workflow
     
     def __post_init__(self):
@@ -58,10 +58,12 @@ class MultiAgentTask:
     
     def _validate_workflow_requirements(self):
         """Validate workflow-specific requirements"""
+        # Only validate if workflow is set - it might be overridden by command-line args later
         if self.workflow == WorkflowType.GENERAL_CODING and not self.coding_task_prompt:
             raise ValueError("'coding_task_prompt' field is required when using 'general_coding' workflow")
         if self.workflow and self.workflow != WorkflowType.GENERAL_CODING and self.coding_task_prompt:
-            raise ValueError("'coding_task_prompt' should only be provided for 'general_coding' workflow")
+            # This is just a warning case - allow it but note it's unusual
+            pass
     
     def get_task_description(self) -> str:
         """Get the task description based on workflow type"""
@@ -77,10 +79,12 @@ class MultiAgentTask:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
         result = {
-            "agents": [agent.to_dict() for agent in self.agents],
-            "repo_url": self.repo_url,
-            "workflow": self.workflow.value
+            "agents": [agent.to_dict() for agent in self.agents]
         }
+        if self.repo_url:
+            result["repo_url"] = self.repo_url
+        if self.workflow:
+            result["workflow"] = self.workflow.value
         if self.coding_task_prompt:
             result["coding_task_prompt"] = self.coding_task_prompt
         return result
@@ -90,11 +94,16 @@ class MultiAgentTask:
         """Create from dictionary (JSON deserialization)"""
         agents = [AgentDefinition.from_dict(agent_data) for agent_data in data["agents"]]
         
-        # Validate required fields
-        if "repo_url" not in data:
-            raise ValueError("Missing required field: 'repo_url'")
-        if "workflow" not in data:
-            raise ValueError("Missing required field: 'workflow'")
+        # repo_url and workflow are now optional in JSON
+        repo_url = data.get("repo_url")
+        workflow = data.get("workflow")
+        
+        # Convert workflow string to enum if provided
+        if workflow:
+            try:
+                workflow = WorkflowType(workflow)
+            except ValueError:
+                raise ValueError(f"Invalid workflow type: {workflow}. Valid types: {[w.value for w in WorkflowType]}")
         
         # Handle backward compatibility with old 'task' and 'prompt' fields
         coding_task_prompt = data.get("coding_task_prompt")
@@ -104,8 +113,8 @@ class MultiAgentTask:
         
         return cls(
             agents=agents,
-            repo_url=data["repo_url"],
-            workflow=data["workflow"],
+            repo_url=repo_url,
+            workflow=workflow,
             coding_task_prompt=coding_task_prompt
         )
 
@@ -194,6 +203,7 @@ class CodingAgent(ABC):
         self.claude = claude_computer_use
         self.agent_name = self.__class__.__name__.lower().replace('agent', '')
         self.output_file = "agent_execution_output.md"
+        self._current_project_name = None  # Track current project
     
     @property
     @abstractmethod
@@ -230,6 +240,19 @@ class CodingAgent(ABC):
         """Optional keyboard shortcut to open the agent interface"""
         return None
     
+    def set_current_project(self, project_path: str):
+        """Set the current project name for window title checking"""
+        self._current_project_name = os.path.basename(project_path)
+    
+    def is_ide_open_with_correct_project(self) -> bool:
+        """Check if the IDE is open with the correct project by checking window titles"""
+        if not self._current_project_name:
+            print(f"Warning: No project name set for {self.agent_name}, cannot verify project-specific window")
+            return False
+            
+        from utils.computer_use_utils import is_ide_open_with_project
+        return is_ide_open_with_project(self.window_name, self._current_project_name)
+    
     @abstractmethod
     async def is_coding_agent_open(self) -> bool:
         """Check if the agent is currently running and ready to accept commands
@@ -241,6 +264,26 @@ class CodingAgent(ABC):
             bool: True if the agent is running and ready, False otherwise
         """
         pass
+    
+    async def is_coding_agent_open_with_project(self) -> bool:
+        """Check if the agent is open AND has the correct project loaded
+        
+        This combines interface checking with project verification.
+        
+        Returns:
+            bool: True if the agent is running with the correct project, False otherwise
+        """
+        # First check if the basic interface is open
+        if not await self.is_coding_agent_open():
+            return False
+            
+        # Then check if it has the correct project
+        if not self.is_ide_open_with_correct_project():
+            print(f"{self.agent_name} interface is open but not with the correct project '{self._current_project_name}'")
+            return False
+            
+        print(f"SUCCESS: {self.agent_name} is open with the correct project '{self._current_project_name}'")
+        return True
     
     @abstractmethod
     async def open_coding_interface(self) -> bool:
