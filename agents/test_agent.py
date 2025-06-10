@@ -207,16 +207,16 @@ Provide nothing but valid JSON in your response."""
             return "No analysis results available"
         
         if not self._analysis_results:
-            return "✅ No inconsistencies found! The codebase appears to be well-structured."
+            return "No inconsistencies found! The codebase appears to be well-structured."
         
-        results = "## 🔍 Test Agent Analysis Results\n\n"
+        results = "## Test Agent Analysis Results\n\n"
         results += f"Found {len(self._analysis_results)} potential issues:\n\n"
         
         for i, issue in enumerate(self._analysis_results, 1):
             results += f"{i}. {issue}\n"
         
         results += "\n---\n\n"
-        results += "💡 Consider updating the README.md to reflect these findings.\n"
+        results += "Consider updating the README.md to reflect these findings.\n"
         results += "This analysis helps ensure the codebase documentation stays current."
         
         return results 

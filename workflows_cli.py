@@ -51,14 +51,16 @@ from workflows.code_optimization import CodeOptimizer
 from workflows.general_coding import GeneralCodingWorkflow
 from workflows.test_workflow import TestWorkflow
 from github_integration import GitHubIntegration
-from coding_agents import CodingAgentType
+from coding_agents import CodingAgentIdeType
 
+from common.config import config
+from common.exceptions import AgentTimeoutException, WorkflowTimeoutException
 
 @dataclass
 class WorkflowRequest:
     workflow_type: str
     repo_url: str
-    agent: CodingAgentType
+    agent: CodingAgentIdeType
     target_dir: Optional[str] = None
     create_pr: bool = True
 
@@ -89,9 +91,7 @@ class WorkflowOrchestrator:
     
     async def execute_workflow(self, request: WorkflowRequest) -> bool:
         """Execute the specified workflow"""
-        try:
-            from config import config
-            
+        try:            
             print(f"STARTING: {request.workflow_type} workflow...")
             print(f"Repository: {request.repo_url}")
             print(f"Agent: {request.agent.value}")
@@ -159,8 +159,6 @@ class WorkflowOrchestrator:
             
             return True
         except Exception as e:
-            from exceptions import AgentTimeoutException, WorkflowTimeoutException
-            
             if isinstance(e, (AgentTimeoutException, WorkflowTimeoutException)):
                 # Handle timeout scenarios gracefully
                 print(f"\n{e.get_user_friendly_message()}")
@@ -214,7 +212,7 @@ Examples:
     
     parser.add_argument(
         "agent",
-        choices=[agent.value for agent in CodingAgentType],
+        choices=[agent.value for agent in CodingAgentIdeType],
         help="The AI coding agent to use"
     )
     
@@ -244,7 +242,7 @@ async def main():
         args = parse_arguments()
         
         # Convert string to enum
-        agent_type = CodingAgentType(args.agent)
+        agent_type = CodingAgentIdeType(args.agent)
         
         # Create workflow request
         request = WorkflowRequest(

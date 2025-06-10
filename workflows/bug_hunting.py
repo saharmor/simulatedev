@@ -16,7 +16,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agent_orchestrator import AgentOrchestrator
-from coding_agents import CodingAgentType
+from coding_agents import CodingAgentIdeType
 
 
 class BugHunter(AgentOrchestrator):
@@ -95,7 +95,7 @@ Structure your response as follows:
 
 Please proceed with this advanced bug hunting process."""
 
-    async def hunt_bugs(self, agent_type: CodingAgentType, repo_url: str, project_path: str = None) -> str:
+    async def hunt_bugs(self, agent_type: CodingAgentIdeType, repo_url: str, project_path: str = None) -> str:
         """Execute a bug hunting workflow that maps, ranks, and implements one high-value bug"""
         prompt = self.generate_bug_hunting_prompt(repo_url)
         agent_execution_report_summary = await self.execute_workflow(agent_type, repo_url, prompt, project_path)

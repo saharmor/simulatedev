@@ -50,7 +50,7 @@ class ClaudeCodeAgent(CodingAgent):
         """Display Claude's progress based on JSON streaming output"""
         if json_obj.get('type') == 'system':
             if json_obj.get('subtype') == 'init':
-                print(f"🚀 Initializing Claude session...")
+                print(f"Initializing Claude session...")
                 print(f"   Model: {json_obj.get('model', 'unknown')}")
                 tools = json_obj.get('tools', [])
                 if tools:
@@ -64,33 +64,33 @@ class ClaudeCodeAgent(CodingAgent):
                 if content_item.get('type') == 'text':
                     text = content_item.get('text', '')
                     if text.strip():
-                        print(f"\n💬 {text}")
+                        print(f"\n{text}")
                 
                 elif content_item.get('type') == 'tool_use':
                     tool_name = content_item.get('name', 'unknown')
-                    print(f"\n🔧 Using tool: {tool_name}")
+                    print(f"\nUsing tool: {tool_name}")
                     
                     # Show some details about the tool use
                     if tool_name == 'Write':
                         input_data = content_item.get('input', {})
                         file_path = input_data.get('file_path', '')
                         if file_path:
-                            print(f"   📝 Creating file: {os.path.basename(file_path)}")
+                            print(f"   Creating file: {os.path.basename(file_path)}")
                     elif tool_name == 'Edit':
                         input_data = content_item.get('input', {})
                         file_path = input_data.get('file_path', '')
                         if file_path:
-                            print(f"   ✏️  Editing file: {os.path.basename(file_path)}")
+                            print(f"   Editing file: {os.path.basename(file_path)}")
                     elif tool_name == 'Read':
                         input_data = content_item.get('input', {})
                         file_path = input_data.get('file_path', '')
                         if file_path:
-                            print(f"   📖 Reading file: {os.path.basename(file_path)}")
+                            print(f"   Reading file: {os.path.basename(file_path)}")
                     elif tool_name == 'Bash':
                         input_data = content_item.get('input', {})
                         command = input_data.get('command', '')
                         if command:
-                            print(f"   ⚡ Running: {command[:50]}{'...' if len(command) > 50 else ''}")
+                            print(f"   Running: {command[:50]}{'...' if len(command) > 50 else ''}")
         
         elif json_obj.get('type') == 'user':
             message = json_obj.get('message', {})
@@ -100,23 +100,23 @@ class ClaudeCodeAgent(CodingAgent):
                 if content_item.get('type') == 'tool_result':
                     result_content = content_item.get('content', '')
                     if 'successfully' in result_content.lower():
-                        print(f"   ✅ Success")
+                        print(f"   Success")
                     elif 'error' in result_content.lower() or 'failed' in result_content.lower():
-                        print(f"   ❌ Error: {result_content[:100]}...")
+                        print(f"   Error: {result_content[:100]}...")
                     else:
-                        print(f"   📄 {result_content[:100]}{'...' if len(result_content) > 100 else ''}")
+                        print(f"   {result_content[:100]}{'...' if len(result_content) > 100 else ''}")
         
         elif json_obj.get('type') == 'result':
             if json_obj.get('subtype') == 'success':
                 result = json_obj.get('result', '')  
                 cost = json_obj.get('cost_usd', 0)
                 duration = json_obj.get('duration_ms', 0)
-                print(f"\n🎉 Task completed successfully!")
+                print(f"\nTask completed successfully!")
                 if result:
                     print(f"   Result: {result}")
                 print(f"   Duration: {duration/1000:.1f}s, Cost: ${cost:.4f}")
             else:
-                print(f"\n❌ Task failed: {json_obj.get('error', 'Unknown error')}")
+                print(f"\nTask failed: {json_obj.get('error', 'Unknown error')}")
 
     async def execute_prompt(self, prompt: str) -> AgentResponse:
         """Execute prompt in headless mode with file output"""

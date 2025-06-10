@@ -78,7 +78,7 @@ Analyze the requirements carefully and design an appropriate solution.
 {len(previous_coder_outputs)} previous coding attempt(s) were made:
 """
             for i, output in enumerate(previous_coder_outputs[-2:], 1):  # Show last 2 attempts
-                status = "✅ SUCCESS" if output['success'] else "❌ FAILED"
+                status = "SUCCESS" if output['success'] else "FAILED"
                 prompt += f"""
 ### Attempt {i} by {output['coding_ide']} ({status})
 Output: {output['output'][:500]}...

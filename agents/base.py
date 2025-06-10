@@ -6,15 +6,14 @@ Base classes and shared components for coding agents.
 import time
 import pyautogui
 import pyperclip
-import json
 import os
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 from enum import Enum
 
 
-class CodingAgentType(Enum):
+class CodingAgentIdeType(Enum):
     """Enum for supported coding agents"""
     CURSOR = "cursor"
     WINDSURF = "windsurf"
@@ -22,11 +21,119 @@ class CodingAgentType(Enum):
     TEST = "test"
 
 
+class AgentRole(Enum):
+    """Enum for agent roles in multi-agent workflows"""
+    PLANNER = "Planner"
+    CODER = "Coder"
+    TESTER = "Tester"
+
+
+@dataclass
+class MultiAgentTask:
+    """Definition of a task for multi-agent execution"""
+    task: str
+    agents: List['AgentDefinition']
+    
+    def __post_init__(self):
+        """Validate the task after initialization"""
+        self._validate_unique_roles()
+    
+    def _validate_unique_roles(self):
+        """Ensure each role appears only once"""
+        used_roles = set()
+        for i, agent in enumerate(self.agents):
+            if agent.role in used_roles:
+                raise ValueError(f"Duplicate role '{agent.role.value}' found at agent {i}. Each role can only be assigned to one agent.")
+            used_roles.add(agent.role)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            "task": self.task,
+            "agents": [agent.to_dict() for agent in self.agents]
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'MultiAgentTask':
+        """Create from dictionary (JSON deserialization)"""
+        agents = [AgentDefinition.from_dict(agent_data) for agent_data in data["agents"]]
+        return cls(task=data["task"], agents=agents)
+
+
+@dataclass
+class AgentDefinition:
+    """Definition of an agent with its role and model"""
+    coding_ide: str
+    model: str
+    role: AgentRole
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            "coding_ide": self.coding_ide,
+            "model": self.model,
+            "role": self.role.value
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'AgentDefinition':
+        """Create from dictionary (JSON deserialization)"""
+        # Support both old "name" and new "coding_ide" for backward compatibility
+        coding_ide = data.get("coding_ide") or data.get("name")
+        if not coding_ide:
+            raise ValueError("Missing required field: 'coding_ide' (or legacy 'name')")
+        
+        return cls(
+            coding_ide=coding_ide,
+            model=data["model"],
+            role=AgentRole(data["role"])
+        )
+
+
+@dataclass
+class AgentContext:
+    """Context passed between agents in multi-agent workflows"""
+    task_description: str
+    previous_outputs: List[Dict[str, Any]]
+    current_step: int
+    total_steps: int
+    work_directory: str
+    
+    def add_agent_output(self, coding_ide: str, role: AgentRole, output: str, success: bool):
+        """Add output from an agent to the context"""
+        self.previous_outputs.append({
+            "coding_ide": coding_ide,
+            "role": role.value,
+            "output": output,
+            "success": success,
+            "step": self.current_step
+        })
+    
+    def get_outputs_by_role(self, role: AgentRole) -> List[Dict[str, Any]]:
+        """Get all outputs from agents with a specific role"""
+        return [output for output in self.previous_outputs if output["role"] == role.value]
+    
+    def get_latest_output_by_role(self, role: AgentRole) -> Optional[Dict[str, Any]]:
+        """Get the most recent output from an agent with a specific role"""
+        outputs = self.get_outputs_by_role(role)
+        return outputs[-1] if outputs else None
+
+
 @dataclass
 class AgentResponse:
     """Response from an AI coding agent"""
     content: str
     success: bool
+    error_message: Optional[str] = None
+
+
+@dataclass
+class MultiAgentResponse:
+    """Response from multi-agent execution"""
+    success: bool
+    final_output: str
+    execution_log: List[Dict[str, Any]]
+    test_results: Optional[Dict[str, Any]] = None
     error_message: Optional[str] = None
 
 
@@ -180,8 +287,7 @@ class CodingAgent(ABC):
     async def _wait_for_completion(self, timeout_seconds: int = None):
         """Wait for the agent to complete processing"""
         from ide_completion_detector import wait_until_ide_finishes
-        from exceptions import AgentTimeoutException
-        from config import config
+        from common.config import config
         
         # Use configured timeout if not explicitly provided
         if not timeout_seconds:
