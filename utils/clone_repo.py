@@ -31,7 +31,7 @@ def parse_repo_name(repo_url):
     return repo_name
 
 
-def clone_repository(repo_url, target_dir=None):
+def clone_repository(repo_url, target_dir=None, delete_existing=False):
     """
     Clone a git repository to a local directory.
     
@@ -39,6 +39,7 @@ def clone_repository(repo_url, target_dir=None):
         repo_url (str): URL of the repository to clone
         target_dir (str, optional): Directory to clone into. If not specified,
                                   uses the repository name in the current directory.
+        delete_existing (bool): If True, delete existing directory before cloning
     
     Returns:
         bool: True if successful, False otherwise
@@ -48,6 +49,12 @@ def clone_repository(repo_url, target_dir=None):
         if not target_dir:
             repo_name = parse_repo_name(repo_url)
             target_dir = os.path.join(os.getcwd(), repo_name)
+        
+        # Delete existing directory if requested
+        if delete_existing and os.path.exists(target_dir):
+            import shutil
+            print(f"Deleting existing directory: {target_dir}")
+            shutil.rmtree(target_dir)
         
         # Create parent directory if it doesn't exist
         parent_dir = os.path.dirname(target_dir)
