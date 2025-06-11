@@ -62,6 +62,9 @@ class AgentOrchestrator:
         try:
             os.chdir(project_path)
             
+            # Set current project for window title checking
+            agent.set_current_project(project_path)
+            
             # Let the agent handle everything: IDE opening, interface setup, and preparation
             interface_ready = await agent.open_coding_interface()
             
@@ -87,6 +90,16 @@ class AgentOrchestrator:
             
             # Create agent and execute prompt
             agent = AgentFactory.create_agent(agent_type, self.claude)
+            
+            # Set current project for window title checking if we have one
+            if hasattr(self, '_current_project_path') and self._current_project_path:
+                agent.set_current_project(self._current_project_path)
+                
+                # Ensure the agent is open with the correct project before executing
+                if not await agent.is_coding_agent_open_with_project():
+                    print(f"Agent interface not open with correct project, opening...")
+                    await agent.open_coding_interface()
+            
             response = await agent.execute_prompt(prompt)
             
             if response.success:
