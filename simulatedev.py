@@ -6,24 +6,29 @@ This is the main CLI for SimulateDev that handles both single-agent and multi-ag
 using a unified architecture. Single-agent workflows are treated as multi-agent workflows 
 with one coder agent.
 
+A workflow must be specified using the --workflow flag. Available workflows:
+- general_coding: Custom coding tasks with your own prompt
+- bug_hunting: Find and fix security vulnerabilities and bugs  
+- code_optimization: Performance optimizations and improvements
+
 Usage:
     # Single-agent mode (most common)
-    python simulatedev.py "Fix responsive table design" cursor --repo https://github.com/user/repo
-    python simulatedev.py "Add error handling" windsurf --work-dir ./my-project
+    python simulatedev.py "Fix responsive table design" cursor --repo https://github.com/user/repo --workflow general_coding
+    python simulatedev.py "Add error handling" windsurf --work-dir ./my-project --workflow general_coding
     
     # Multi-agent mode
-    python simulatedev.py --multi task.json --repo https://github.com/user/repo
-    python simulatedev.py --multi --json '{"task":"Build app","agents":[...]}'
-    python simulatedev.py --multi --interactive
+    python simulatedev.py --multi task.json --repo https://github.com/user/repo --workflow bug_hunting
+    python simulatedev.py --multi --json '{"task":"Build app","agents":[...]}' --workflow code_optimization
+    python simulatedev.py --multi --interactive --workflow general_coding
 
 Examples:
     # Quick single-agent tasks
-    python simulatedev.py "Fix the login bug" cursor --repo https://github.com/myorg/webapp
-    python simulatedev.py "Add unit tests" windsurf --work-dir ./my-project --no-pr
+    python simulatedev.py "Fix the login bug" cursor --repo https://github.com/myorg/webapp --workflow general_coding
+    python simulatedev.py "Add unit tests" windsurf --work-dir ./my-project --no-pr --workflow general_coding
     
     # Multi-agent collaboration
-    python simulatedev.py --multi task.json --repo https://github.com/myorg/webapp
-    python simulatedev.py --multi --interactive
+    python simulatedev.py --multi task.json --repo https://github.com/myorg/webapp --workflow bug_hunting
+    python simulatedev.py --multi --interactive --workflow code_optimization
     
     # Complex multi-agent with JSON
     python simulatedev.py --multi --json '{
@@ -33,7 +38,7 @@ Examples:
             {"coding_ide": "cursor", "model": "N/A", "role": "Coder"},
             {"coding_ide": "windsurf", "model": "4", "role": "Tester"}
         ]
-    }'
+    }' --workflow general_coding
 """
 
 import argparse
@@ -59,10 +64,12 @@ def validate_json_input(data: Dict[str, Any]) -> MultiAgentTask:
         raise ValueError("'agents' must be a non-empty list")
     
     # For general_coding workflow, coding_task_prompt is required
-    if data.get("workflow") == "general_coding" and not data.get("coding_task_prompt"):
-        # Check for backward compatibility
-        if not data.get("prompt") and not data.get("task"):
-            raise ValueError("'coding_task_prompt' is required for 'general_coding' workflow")
+    # Note: workflow might be passed as command-line argument, so check both JSON and assume general_coding if prompt is provided
+    workflow_in_json = data.get("workflow")
+    has_coding_prompt = data.get("coding_task_prompt") or data.get("prompt") or data.get("task")
+    
+    if workflow_in_json == "general_coding" and not has_coding_prompt:
+        raise ValueError("'coding_task_prompt' is required for 'general_coding' workflow")
     
     # Validate and parse agents
     agents = []
@@ -122,13 +129,13 @@ def interactive_multi_agent_mode() -> MultiAgentTask:
     print("Multi-Agent Task Builder")
     print("=" * 40)
     
-    # Get repository URL
-    repo_url = input("Enter repository URL (optional, press Enter to skip): ").strip()
+    # Get repository URL (optional since it can be passed via --repo)
+    repo_url = input("Enter repository URL (optional, can also use --repo flag): ").strip()
     if not repo_url:
         repo_url = None
     
-    # Get workflow type
-    print("\nAvailable workflows:")
+    # Get workflow type (required, but can be overridden by --workflow flag)
+    print("\nWorkflow selection (required - will be overridden by --workflow flag if provided):")
     print("  1. general_coding - Custom coding tasks with your own prompt")
     print("  2. bug_hunting - Find and fix security vulnerabilities and bugs")
     print("  3. code_optimization - Performance optimizations and improvements")
@@ -229,13 +236,15 @@ def parse_arguments():
         epilog="""
 Examples:
   # Single-agent (default mode)
-  python simulatedev.py "Fix responsive design" cursor --repo https://github.com/user/repo
-  python simulatedev.py "Add error handling" windsurf --work-dir ./project
+  python simulatedev.py "Fix responsive design" cursor --repo https://github.com/user/repo --workflow general_coding
+  python simulatedev.py "Add error handling" windsurf --work-dir ./project --workflow general_coding
   
   # Multi-agent mode
-  python simulatedev.py --multi task.json --repo https://github.com/user/repo
-  python simulatedev.py --multi --json '{"task":"Build app","agents":[...]}'
-  python simulatedev.py --multi --interactive
+  python simulatedev.py --multi task.json --repo https://github.com/user/repo --workflow bug_hunting
+  python simulatedev.py --multi --json '{"task":"Build app","agents":[...]}' --workflow code_optimization
+  python simulatedev.py --multi --interactive --workflow general_coding
+
+Note: A workflow must be specified using the --workflow flag.
         """
     )
     
@@ -256,6 +265,7 @@ Examples:
     parser.add_argument("--repo", help="Repository URL to clone")
     parser.add_argument("--target-dir", help="Target directory for cloning")
     parser.add_argument("--work-dir", help="Working directory for the task")
+    parser.add_argument("--workflow", choices=["general_coding", "bug_hunting", "code_optimization"], help="Workflow type (REQUIRED)", required=True)
     parser.add_argument("--no-pr", action="store_true", help="Skip creating pull request")
     parser.add_argument("--output", help="Output file for execution report")
     parser.add_argument("--no-report", action="store_true", help="Skip saving execution report")
@@ -349,7 +359,8 @@ async def execute_multi_agent(args) -> bool:
             repo_url=args.repo,
             target_dir=args.target_dir,
             create_pr=not args.no_pr,
-            work_directory=args.work_dir
+            work_directory=args.work_dir,
+            workflow=args.workflow
         )
         
         # Print summary
@@ -394,11 +405,11 @@ async def main():
             print("Please specify a valid mode:")
             print()
             print("Single-agent (default):")
-            print("  python simulatedev.py 'Fix bug' cursor --repo https://github.com/user/repo")
+            print("  python simulatedev.py 'Fix bug' cursor --repo https://github.com/user/repo --workflow general_coding")
             print()
             print("Multi-agent:")
-            print("  python simulatedev.py --multi task.json")
-            print("  python simulatedev.py --multi --interactive")
+            print("  python simulatedev.py --multi task.json --workflow bug_hunting")
+            print("  python simulatedev.py --multi --interactive --workflow code_optimization")
             print()
             print("Use --help for more information")
             return False
