@@ -35,6 +35,7 @@ class UnifiedRequest:
     work_directory: Optional[str] = None
     workflow: Optional[str] = None
     coding_task_prompt: Optional[str] = None  # For general_coding workflow
+    delete_existing: bool = False  # Delete existing repository directory before cloning
 
 
 class UnifiedOrchestrator:
@@ -55,7 +56,8 @@ class UnifiedOrchestrator:
     @classmethod
     def create_single_agent_request(cls, task_description: str, agent_type: Union[str, CodingAgentIdeType], 
                                   repo_url: Optional[str] = None, target_dir: Optional[str] = None,
-                                  create_pr: bool = True, work_directory: Optional[str] = None) -> UnifiedRequest:
+                                  create_pr: bool = True, work_directory: Optional[str] = None,
+                                  delete_existing: bool = False) -> UnifiedRequest:
         """
         Create a single-agent request (convenience method for backward compatibility)
         
@@ -90,13 +92,15 @@ class UnifiedOrchestrator:
             repo_url=repo_url,
             target_dir=target_dir,
             create_pr=create_pr,
-            work_directory=work_directory
+            work_directory=work_directory,
+            delete_existing=delete_existing
         )
     
     @classmethod
     def create_multi_agent_request(cls, task: MultiAgentTask, repo_url: Optional[str] = None,
                                  target_dir: Optional[str] = None, create_pr: bool = True,
-                                 work_directory: Optional[str] = None, workflow: Optional[str] = None) -> UnifiedRequest:
+                                 work_directory: Optional[str] = None, workflow: Optional[str] = None,
+                                 delete_existing: bool = False) -> UnifiedRequest:
         """
         Create a multi-agent request from a MultiAgentTask
         
@@ -139,7 +143,8 @@ class UnifiedOrchestrator:
             create_pr=create_pr,
             work_directory=work_directory,
             workflow=effective_workflow,
-            coding_task_prompt=task.coding_task_prompt
+            coding_task_prompt=task.coding_task_prompt,
+            delete_existing=delete_existing
         )
     
 
@@ -153,7 +158,7 @@ class UnifiedOrchestrator:
             # Clone repository if URL provided
             if request.target_dir:
                 repo_path = request.target_dir
-                success = clone_repository(request.repo_url, request.target_dir)
+                success = clone_repository(request.repo_url, request.target_dir, request.delete_existing)
                 if not success:
                     raise Exception("Failed to clone repository")
             else:
@@ -163,7 +168,7 @@ class UnifiedOrchestrator:
                     repo_name = repo_name[:-4]
                 
                 repo_path = os.path.join(self.base_dir, repo_name)
-                success = clone_repository(request.repo_url, repo_path)
+                success = clone_repository(request.repo_url, repo_path, request.delete_existing)
                 if not success:
                     raise Exception("Failed to clone repository")
             
@@ -361,6 +366,10 @@ class UnifiedOrchestrator:
 
     async def execute_unified_request(self, request: UnifiedRequest) -> MultiAgentResponse:
         """Execute a unified request (single or multi-agent)"""
+        # Determine if this is single or multi-agent (define early to avoid variable scope issues)
+        is_single_agent = len(request.agents) == 1 and request.agents[0].role == AgentRole.CODER
+        workflow_type = "Single-Agent" if is_single_agent else "Multi-Agent"
+        
         try:
             # Setup work directory
             work_directory = self._setup_work_directory(request)
@@ -411,9 +420,7 @@ class UnifiedOrchestrator:
                 
                 return response
             
-            # Determine if this is single or multi-agent
-            is_single_agent = len(request.agents) == 1 and request.agents[0].role == AgentRole.CODER
-            workflow_type = "Single-Agent" if is_single_agent else "Multi-Agent"
+
             
             print(f"Starting {workflow_type} execution")
             print(f"Task: {request.task_description}")
