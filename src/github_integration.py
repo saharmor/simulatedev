@@ -395,16 +395,17 @@ class GitHubIntegration:
             print(f"ERROR: Error creating pull request: {str(e)}")
             return None
     
-    def generate_commit_and_pr_content_with_claude(self, agent_execution_report_summary: str, agent_name: str) -> Dict[str, Any]:
+    def generate_commit_and_pr_content_with_claude(self, agent_execution_report_summary: str, workflow_name: str, coding_ides_info: Optional[str] = None) -> Dict[str, Any]:
         """
         Use Claude to generate both commit message and PR content in a single API call
         
         Args:
             agent_execution_report_summary: The summary/output from the coding agent
-            agent_name: Name of the agent used
+            workflow_name: Name of the workflow used (preset workflow name or task description for general coding)
+            coding_ides_info: Optional information about coding IDEs used (roles, models, etc.)
             
         Returns:
-            Dict with 'commit_message', 'pr_title', 'pr_description', and 'pr_changes_summary' keys
+            Dict with 'commit_message', 'pr_title', 'pr_description', 'pr_changes_summary', and 'branch_name' keys
         """
         try:
             from anthropic import Anthropic
@@ -413,7 +414,7 @@ class GitHubIntegration:
             api_key = os.getenv("ANTHROPIC_API_KEY")
             if not api_key:
                 print("WARNING: No ANTHROPIC_API_KEY found, using default formats")
-                return self._generate_default_commit_and_pr_content(agent_name)
+                return self._generate_default_commit_and_pr_content(workflow_name)
             
             # Initialize Anthropic client
             client = Anthropic(api_key=api_key)
@@ -425,13 +426,15 @@ Given a coding agent's execution report summary, original prompt, and agent name
 2. A concise, descriptive PR title (max 60 characters)
 3. A professional PR description 
 4. A clear summary of what changed
+5. A descriptive branch name for the changes
 
 Format your response as JSON with these exact keys:
 {
     "commit_message": "Professional git commit message following conventional commit format",
     "pr_title": "Brief, descriptive PR title",
     "pr_description": "Professional description of the changes",
-    "pr_changes_summary": "Clear summary of what was modified/added/removed"
+    "pr_changes_summary": "Clear summary of what was modified/added/removed",
+    "branch_name": "Descriptive branch name following git conventions"
 }
 
 Guidelines for commit message:
@@ -447,16 +450,37 @@ Guidelines for PR content:
 - Description should be 2-3 sentences explaining the purpose and approach
 - Changes summary should list the key files/features modified
 - Keep it professional and technical but accessible
-- Focus on what was accomplished, not just what was requested"""
+- Focus on what was accomplished, not just what was requested
+- If coding IDE information is provided, include a brief mention of the tools/models used
 
-            user_message = f"""
-Agent Used: {agent_name}
+Guidelines for branch name:
+- Use kebab-case (lowercase with hyphens)
+- Be descriptive but concise (max 50 characters)
+- Include the type of change (feature/, fix/, refactor/, etc.)
+- Examples: "feature/user-auth", "fix/login-bug", "refactor/api-endpoints"
+- Avoid special characters except hyphens and forward slashes"""
 
-Agent Execution Report Summary:
-{agent_execution_report_summary}
-
-Please generate a professional git commit message and PR content based on this information.
-"""
+            # Build user message with optional IDE information
+            user_message_parts = [
+                f"Workflow: {workflow_name}",
+                "",
+                "Agent Execution Report Summary:",
+                agent_execution_report_summary
+            ]
+            
+            if coding_ides_info:
+                user_message_parts.extend([
+                    "",
+                    "Coding IDEs Information:",
+                    coding_ides_info
+                ])
+            
+            user_message_parts.extend([
+                "",
+                "Please generate a professional git commit message and PR content based on this information."
+            ])
+            
+            user_message = "\n".join(user_message_parts)
 
             response = client.messages.create(
                 model="claude-3-7-sonnet-20250219",
@@ -484,7 +508,7 @@ Please generate a professional git commit message and PR content based on this i
                 parsed_response = json.loads(response_text)
                 
                 # Validate required keys
-                required_keys = ['commit_message', 'pr_title', 'pr_description', 'pr_changes_summary']
+                required_keys = ['commit_message', 'pr_title', 'pr_description', 'pr_changes_summary', 'branch_name']
                 if all(key in parsed_response for key in required_keys):
                     # Basic validation for commit message
                     commit_msg = parsed_response['commit_message']
@@ -493,63 +517,82 @@ Please generate a professional git commit message and PR content based on this i
                         return parsed_response
                     else:
                         print("WARNING: Claude generated invalid commit message, using default formats")
-                        return self._generate_default_commit_and_pr_content(agent_name)
+                        return self._generate_default_commit_and_pr_content(workflow_name)
                 else:
                     print("WARNING: Claude response missing required keys, using default formats")
-                    return self._generate_default_commit_and_pr_content(agent_name)
+                    return self._generate_default_commit_and_pr_content(workflow_name)
                     
             except json.JSONDecodeError as e:
                 print(f"WARNING: Failed to parse Claude response as JSON: {e}")
                 print(f"Response was: {response_text}")
-                return self._generate_default_commit_and_pr_content(agent_name)
+                return self._generate_default_commit_and_pr_content(workflow_name)
                 
         except Exception as e:
             print(f"WARNING: Error calling Claude for content generation: {str(e)}")
-            return self._generate_default_commit_and_pr_content(agent_name)
+            return self._generate_default_commit_and_pr_content(workflow_name)
     
-    def _generate_default_commit_and_pr_content(self, agent_name: str) -> Dict[str, Any]:
+    def _generate_default_commit_and_pr_content(self, workflow_name: str) -> Dict[str, Any]:
         """Generate default commit message and PR content when Claude processing fails"""
+        from datetime import datetime
+        
+        # Generate default branch name with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        sanitized_workflow_name = workflow_name.replace(" ", "-").replace("(", "").replace(")", "").replace("_", "-").lower()
+        default_branch_name = f"simulatedev/{sanitized_workflow_name}_{timestamp}"
+        
         return {
-            "commit_message": f"SimulateDev by {agent_name}",
-            "pr_title": f"[SimulateDev] {agent_name[:50]}{'...' if len(agent_name) > 50 else ''}",
-            "pr_description": f"Automated changes generated by the {agent_name.title()} AI coding agent.",
-            "pr_changes_summary": f"The AI agent analyzed the repository and implemented changes according to the request: \"{agent_name}\""
+            "commit_message": f"SimulateDev: {workflow_name}",
+            "pr_title": f"[SimulateDev] {workflow_name[:50]}{'...' if len(workflow_name) > 50 else ''}",
+            "pr_description": f"Automated changes generated by SimulateDev workflow.",
+            "pr_changes_summary": f"Changes implemented according to the workflow: \"{workflow_name}\"",
+            "branch_name": default_branch_name
         }
 
-    def generate_pr_description(self, agent_name: str, pr_title: str, pr_description: str, pr_changes_summary: str) -> tuple[str, str]:
+    def generate_pr_description(self, workflow_name: str, pr_title: str, pr_description: str, pr_changes_summary: str, coding_ides_info: Optional[str] = None) -> tuple[str, str]:
         """
         Generate formatted PR title and description
         
         Args:
-            agent_name: Name of the agent used
+            workflow_name: Name of the workflow used (preset workflow name or task description for general coding)
             pr_title: PR title from Claude or default
             pr_description: PR description from Claude or default
             pr_changes_summary: Changes summary from Claude or default
+            coding_ides_info: Optional information about coding IDEs used
             
         Returns:
             tuple[str, str]: (pr_title, formatted_pr_description)
         """
-        from datetime import datetime
+        # Build the formatted description with optional IDE information
+        description_parts = [
+            "## Automated Changes by SimulateDev",
+            "",
+            f"**Workflow:** {workflow_name}"
+        ]
         
-        formatted_pr_description = f"""
-## Automated Changes by SimulateDev
-
-**Agent Used:** {agent_name.title()}  
-**Generated:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-
----
-
-{pr_description}
-
-### What changed?
-{pr_changes_summary}
-
-### Review Instructions
-Please carefully review all changes before merging. While AI agents are powerful, human oversight is always recommended.
-
----
-*Generated by [SimulateDev](https://github.com/saharmor/simulatedev)*
-        """
+        if coding_ides_info:
+            description_parts.extend([
+                f"**Coding IDEs:** {coding_ides_info}",
+                ""
+            ])
+        else:
+            description_parts.append("")
+        
+        description_parts.extend([
+            "---",
+            "",
+            pr_description,
+            "",
+            "### What changed?",
+            pr_changes_summary,
+            "",
+            "### Review Instructions",
+            "Please carefully review all changes before merging. While AI agents are powerful, human oversight is always recommended.",
+            "",
+            "---",
+            "*Generated by [SimulateDev](https://github.com/saharmor/simulatedev)*"
+        ])
+        
+        formatted_pr_description = "\n".join(description_parts)
         
         return pr_title, formatted_pr_description.strip()
 
@@ -557,53 +600,52 @@ Please carefully review all changes before merging. While AI agents are powerful
         self,
         repo_path: str,
         repo_url: str,
-        agent_name: str,
-        agent_execution_report_summary: Optional[str] = None
+        workflow_name: str,
+        agent_execution_report_summary: Optional[str] = None,
+        coding_ides_info: Optional[str] = None
     ) -> Optional[str]:
         """
         Complete workflow: create branch, commit changes, push, and create PR
         
         Args:
             agent_execution_report_summary: Optional summary/output from the coding agent for better content generation
+            coding_ides_info: Optional information about coding IDEs used (roles, models, etc.)
         
         Returns:
             Optional[str]: PR URL if successful, None otherwise
         """
-        import time
-        from datetime import datetime
-        
-        # Generate unique branch name
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        branch_name = f"simulatedev/{agent_name}_{timestamp}"
-        
         # Setup git config
         if not self.setup_git_config(repo_path):
             return None
         
-        # Create branch
-        if not self.create_branch(repo_path, branch_name):
-            return None
-        
         # Generate commit message and PR content using Claude (single API call)
         if agent_execution_report_summary:
-            content = self.generate_commit_and_pr_content_with_claude(agent_execution_report_summary, agent_name)
+            content = self.generate_commit_and_pr_content_with_claude(agent_execution_report_summary, workflow_name, coding_ides_info)
             commit_message = content["commit_message"]
+            branch_name = content["branch_name"]
             pr_title, pr_description = self.generate_pr_description(
-                agent_name,
+                workflow_name,
                 content["pr_title"],
                 content["pr_description"],
-                content["pr_changes_summary"]
+                content["pr_changes_summary"],
+                coding_ides_info
             )
         else:
             # Use default formats when no agent output is provided
-            default_content = self._generate_default_commit_and_pr_content(agent_name)
+            default_content = self._generate_default_commit_and_pr_content(workflow_name)
             commit_message = default_content["commit_message"]
+            branch_name = default_content["branch_name"]
             pr_title, pr_description = self.generate_pr_description(
-                agent_name,
+                workflow_name,
                 default_content["pr_title"],
                 default_content["pr_description"],
-                default_content["pr_changes_summary"]
+                default_content["pr_changes_summary"],
+                coding_ides_info
             )
+        
+        # Create branch
+        if not self.create_branch(repo_path, branch_name):
+            return None
         
         if not self.commit_changes(repo_path, commit_message):
             return None
@@ -628,8 +670,9 @@ Please carefully review all changes before merging. While AI agents are powerful
         self,
         repo_path: str,
         original_repo_url: str,
-        agent_name: str,
-        agent_execution_report_summary: Optional[str] = None
+        workflow_name: str,
+        agent_execution_report_summary: Optional[str] = None,
+        coding_ides_info: Optional[str] = None
     ) -> Optional[str]:
         """
         Smart workflow that handles permissions automatically:
@@ -644,17 +687,18 @@ Please carefully review all changes before merging. While AI agents are powerful
         
         if has_push_permissions:
             print("SUCCESS: Have push permissions, working directly on original repository")
-            return self.full_workflow(repo_path, original_repo_url, agent_name, agent_execution_report_summary)
+            return self.full_workflow(repo_path, original_repo_url, workflow_name, agent_execution_report_summary, coding_ides_info)
         else:
             print("INFO: No push permissions, using fork workflow...")
-            return self.fork_workflow(repo_path, original_repo_url, agent_name, agent_execution_report_summary)
+            return self.fork_workflow(repo_path, original_repo_url, workflow_name, agent_execution_report_summary, coding_ides_info)
     
     def fork_workflow(
         self,
         repo_path: str,
         original_repo_url: str,
-        agent_name: str,
-        agent_execution_report_summary: Optional[str] = None
+        workflow_name: str,
+        agent_execution_report_summary: Optional[str] = None,
+        coding_ides_info: Optional[str] = None
     ) -> Optional[str]:
         """
         Fork-based workflow for repositories where we don't have push permissions
@@ -662,9 +706,6 @@ Please carefully review all changes before merging. While AI agents are powerful
         Returns:
             Optional[str]: PR URL if successful, None otherwise
         """
-        import time
-        from datetime import datetime
-        
         # Step 1: Fork the repository
         print("INFO: Forking repository...")
         fork_url = self.fork_repository(original_repo_url)
@@ -683,33 +724,34 @@ Please carefully review all changes before merging. While AI agents are powerful
         if not self.setup_git_config(repo_path):
             return None
         
-        # Step 4: Create branch
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        branch_name = f"simulatedev/{agent_name}_{timestamp}"
-        
-        if not self.create_branch(repo_path, branch_name):
-            return None
-        
-        # Step 5: Generate commit message and PR content using Claude (single API call)
+        # Step 4: Generate commit message and PR content using Claude (single API call)
         if agent_execution_report_summary:
-            content = self.generate_commit_and_pr_content_with_claude(agent_execution_report_summary, agent_name)
+            content = self.generate_commit_and_pr_content_with_claude(agent_execution_report_summary, workflow_name, coding_ides_info)
             commit_message = content["commit_message"]
+            branch_name = content["branch_name"]
             pr_title, pr_description = self.generate_pr_description(
-                agent_name,
+                workflow_name,
                 content["pr_title"],
                 content["pr_description"],
-                content["pr_changes_summary"]
+                content["pr_changes_summary"],
+                coding_ides_info
             )
         else:
             # Use default formats when no agent output is provided
-            default_content = self._generate_default_commit_and_pr_content(agent_name)
+            default_content = self._generate_default_commit_and_pr_content(workflow_name)
             commit_message = default_content["commit_message"]
+            branch_name = default_content["branch_name"]
             pr_title, pr_description = self.generate_pr_description(
-                agent_name,
+                workflow_name,
                 default_content["pr_title"],
                 default_content["pr_description"],
-                default_content["pr_changes_summary"]
+                default_content["pr_changes_summary"],
+                coding_ides_info
             )
+        
+        # Step 5: Create branch
+        if not self.create_branch(repo_path, branch_name):
+            return None
         
         if not self.commit_changes(repo_path, commit_message):
             return None
