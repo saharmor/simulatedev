@@ -218,10 +218,12 @@ async def execute_task(args) -> bool:
             )
         else:
             # Multi-agent
+            from agents.base import WorkflowType
+            workflow_enum = WorkflowType(args.workflow) if args.workflow else None
             multi_agent_task = MultiAgentTask(
                 agents=agents,
                 repo_url=repo_url,
-                workflow=args.workflow,
+                workflow=workflow_enum,
                 coding_task_prompt=args.task
             )
             task_request = Orchestrator.create_request(

@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SimulateDev CLI Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0;
+            min-height: 600px;
+        }
+
+        .form-section {
+            padding: 40px;
+            background: #f8f9fa;
+        }
+
+        .output-section {
+            padding: 40px;
+            background: #ffffff;
+            border-left: 1px solid #e9ecef;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 25px;
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #34495e;
+            font-size: 0.95rem;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background: white;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin: 0;
+        }
+
+        .agents-section {
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 15px;
+            background: white;
+        }
+
+        .agent-item {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr auto;
+            gap: 15px;
+            align-items: end;
+            margin-bottom: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .agent-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: #27ae60;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #229954;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+            padding: 8px 16px;
+            font-size: 0.9rem;
+        }
+
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+            margin-top: 15px;
+        }
+
+        .btn-secondary:hover {
+            background: #7f8c8d;
+        }
+
+        .output-box {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+            border: 1px solid #34495e;
+        }
+
+        .copy-btn {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .copy-btn.copied {
+            background: #27ae60;
+        }
+
+        .help-text {
+            font-size: 0.85rem;
+            color: #7f8c8d;
+            margin-top: 5px;
+            font-style: italic;
+        }
+
+        .required {
+            color: #e74c3c;
+        }
+
+        .env-section {
+            margin-top: 30px;
+        }
+
+        .config-card {
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #3498db;
+        }
+
+        .instructions-box {
+            flex: 1;
+            max-height: none;
+            min-height: 300px;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+
+            .output-section {
+                border-left: none;
+                border-top: 1px solid #e9ecef;
+            }
+
+            .agent-item {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .form-section,
+            .output-section {
+                padding: 20px;
+            }
+        }
+
+        .workflow-description {
+            background: #e8f4fd;
+            border: 1px solid #bee5eb;
+            border-radius: 6px;
+            padding: 12px;
+            margin-top: 8px;
+            font-size: 0.9rem;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 SimulateDev CLI Generator</h1>
+            <p>Generate CLI commands and environment configuration for AI-powered coding tasks</p>
+        </div>
+
+        <div class="main-content">
+            <div class="form-section">
+                <h2 class="section-title">Configuration</h2>
+                
+                <form id="simulatedevForm">
+                    <!-- Environment Configuration -->
+                    <div class="config-card">
+                        <h3 class="card-title">Environment Configuration</h3>
+                        <div class="form-group">
+                            <label for="anthropicKey">Anthropic API Key <span class="required">*</span></label>
+                            <input type="password" id="anthropicKey" placeholder="sk-ant-..." required>
+                            <div class="help-text">
+                                <strong>Used for:</strong> Claude Computer Use to automate IDE interactions and generate PR content<br>
+                                <strong>Get your key from:</strong> https://console.anthropic.com/
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="googleKey">Google Gemini API Key <span class="required">*</span></label>
+                            <input type="password" id="googleKey" placeholder="AIza..." required>
+                            <div class="help-text">
+                                <strong>Used for:</strong> Analyzing IDE state using screenshots (still working, done, etc.)<br>
+                                <strong>Get your key from:</strong> https://aistudio.google.com/apikey
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="githubToken">GitHub Token (Optional)</label>
+                            <input type="password" id="githubToken" placeholder="ghp_...">
+                            <div class="help-text">
+                                <strong>Used for:</strong> Creating pull requests, pushing code changes, and repository management<br>
+                                <strong>Required permissions:</strong> repo, pull_requests<br>
+                                <strong>Create at:</strong> https://github.com/settings/tokens
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Task Configuration -->
+                    <div class="config-card">
+                        <h3 class="card-title">Task Configuration</h3>
+                        
+                        <div class="form-group">
+                            <label for="workflow">Workflow Type <span class="required">*</span></label>
+                            <select id="workflow" required>
+                                <option value="">Select a workflow...</option>
+                                <option value="general_coding">Custom coding task</option>
+                                <option value="bug_hunting">Bug Hunting</option>
+                                <option value="code_optimization">Code Optimization</option>
+                            </select>
+                            <div id="workflowDescription" class="workflow-description" style="display: none;"></div>
+                        </div>
+
+                        <div class="form-group" id="taskDescriptionGroup" style="display: none;">
+                            <label for="taskDescription">Task Description <span class="required">*</span></label>
+                            <textarea id="taskDescription" placeholder="Describe the coding task you want to accomplish..."></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="repoUrl">GitHub Repository URL <span class="required">*</span></label>
+                            <input type="url" id="repoUrl" placeholder="https://github.com/username/repository" required>
+                            <div class="help-text">Must be a valid GitHub repository URL</div>
+                        </div>
+                    </div>
+
+                    <!-- Coding Agents -->
+                    <div class="form-group">
+                        <label>Coding Agents Configuration</label>
+                        <div class="agents-section">
+                            <div id="agentsContainer">
+                                <!-- Default agent will be added by JavaScript -->
+                            </div>
+                            <button type="button" class="btn btn-secondary" onclick="addAgent()">+ Add Agent</button>
+                        </div>
+                        <div class="help-text">Configure one or more AI agents to work on your task. Each role can only be assigned once.</div>
+                    </div>
+
+                    <!-- Optional Parameters -->
+                    <div class="config-card">
+                        <h3 class="card-title">Options</h3>
+                        
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="noPr">
+                            <label for="noPr">Skip creating pull request</label>
+                        </div>
+
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="deleteExisting" checked>
+                            <label for="deleteExisting">Delete existing repository directory before cloning</label>
+                        </div>
+                    </div>
+
+                    <button type="button" class="btn btn-primary" onclick="generateCommands()" style="margin-top: 30px; width: 100%;">
+                        Generate Commands
+                    </button>
+                </form>
+            </div>
+
+            <div class="output-section">
+                <h2 class="section-title">Generated Output</h2>
+                
+                <div class="env-section">
+                    <h3 style="margin-bottom: 15px; color: #2c3e50;">Environment File (.env)</h3>
+                    <div id="envOutput" class="output-box">Generate commands to see the .env file content...</div>
+                    <button type="button" class="btn btn-success copy-btn" onclick="copyToClipboard('envOutput', this)">
+                        Copy .env Content
+                    </button>
+                </div>
+
+                <div style="margin-top: 30px;">
+                    <h3 style="margin-bottom: 15px; color: #2c3e50;">CLI Command</h3>
+                    <div id="cliOutput" class="output-box">Generate commands to see the CLI command...</div>
+                    <button type="button" class="btn btn-success copy-btn" onclick="copyToClipboard('cliOutput', this)">
+                        Copy CLI Command
+                    </button>
+                </div>
+
+                <div style="margin-top: 30px; flex: 1; display: flex; flex-direction: column;">
+                    <h3 style="margin-bottom: 15px; color: #2c3e50;">Setup Instructions</h3>
+                    <div id="instructionsOutput" class="output-box instructions-box">Generate commands to see setup instructions...</div>
+                    <button type="button" class="btn btn-success copy-btn" onclick="copyToClipboard('instructionsOutput', this)">
+                        Copy Instructions
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Available agent configurations
+        const agentConfigs = {
+            ides: ['cursor', 'windsurf', 'claude_code', 'test'],
+            roles: ['Planner', 'Coder', 'Tester'],
+            models: [
+                'Claude Sonnet 3.5',
+                'Claude Opus 3',
+                'claude-4-sonnet',
+                'GPT-4',
+                'GPT-4 Turbo',
+                'Gemini Pro'
+            ]
+        };
+
+        // Workflow descriptions
+        const workflowDescriptions = {
+            'general_coding': 'Custom coding tasks with your own prompt. Perfect for feature development, bug fixes, and general programming tasks.',
+            'bug_hunting': 'Automatically find and fix security vulnerabilities and bugs in your codebase.',
+            'code_optimization': 'Analyze and optimize your code for better performance, readability, and maintainability.'
+        };
+
+        let agentCounter = 0;
+
+        // Initialize with default agent
+        document.addEventListener('DOMContentLoaded', function() {
+            addAgent(true); // Add default agent
+            
+            // Add workflow description handler
+            document.getElementById('workflow').addEventListener('change', function() {
+                const description = document.getElementById('workflowDescription');
+                const taskDescriptionGroup = document.getElementById('taskDescriptionGroup');
+                const taskDescriptionField = document.getElementById('taskDescription');
+                const selectedWorkflow = this.value;
+                
+                if (selectedWorkflow && workflowDescriptions[selectedWorkflow]) {
+                    description.textContent = workflowDescriptions[selectedWorkflow];
+                    description.style.display = 'block';
+                } else {
+                    description.style.display = 'none';
+                }
+
+                // Show/hide task description based on workflow
+                if (selectedWorkflow === 'general_coding') {
+                    taskDescriptionGroup.style.display = 'block';
+                    taskDescriptionField.required = true;
+                } else {
+                    taskDescriptionGroup.style.display = 'none';
+                    taskDescriptionField.required = false;
+                    taskDescriptionField.value = ''; // Clear the field when hidden
+                }
+            });
+        });
+
+        function addAgent(isDefault = false) {
+            const container = document.getElementById('agentsContainer');
+            const agentDiv = document.createElement('div');
+            agentDiv.className = 'agent-item';
+            agentDiv.id = `agent-${agentCounter}`;
+
+            // Get used roles to disable them in new dropdowns
+            const usedRoles = getUsedRoles();
+
+            agentDiv.innerHTML = `
+                <div>
+                    <label>IDE</label>
+                    <select name="ide" required>
+                        <option value="">Select IDE...</option>
+                        ${agentConfigs.ides.map(ide => `<option value="${ide}" ${isDefault && ide === 'cursor' ? 'selected' : ''}>${ide}</option>`).join('')}
+                    </select>
+                </div>
+                <div>
+                    <label>Model</label>
+                    <select name="model" required>
+                        <option value="">Select Model...</option>
+                        ${agentConfigs.models.map(model => `<option value="${model}" ${isDefault && model === 'claude-4-sonnet' ? 'selected' : ''}>${model}</option>`).join('')}
+                    </select>
+                </div>
+                <div>
+                    <label>Role</label>
+                    <select name="role" required onchange="updateRoleDropdowns()">
+                        <option value="">Select Role...</option>
+                        ${agentConfigs.roles.map(role => `<option value="${role}" ${isDefault && role === 'Coder' ? 'selected' : ''} ${usedRoles.includes(role) ? 'disabled' : ''}>${role}</option>`).join('')}
+                    </select>
+                </div>
+                <div>
+                    ${!isDefault ? `<button type="button" class="btn btn-danger" onclick="removeAgent('${agentDiv.id}')">Remove</button>` : ''}
+                </div>
+            `;
+
+            container.appendChild(agentDiv);
+            agentCounter++;
+            updateRoleDropdowns();
+        }
+
+        function removeAgent(agentId) {
+            const agent = document.getElementById(agentId);
+            if (agent) {
+                agent.remove();
+                updateRoleDropdowns();
+            }
+        }
+
+        function getUsedRoles() {
+            const roleSelects = document.querySelectorAll('select[name="role"]');
+            return Array.from(roleSelects).map(select => select.value).filter(value => value);
+        }
+
+        function updateRoleDropdowns() {
+            const usedRoles = getUsedRoles();
+            const roleSelects = document.querySelectorAll('select[name="role"]');
+            
+            roleSelects.forEach(select => {
+                const currentValue = select.value;
+                const options = select.querySelectorAll('option');
+                
+                options.forEach(option => {
+                    if (option.value && option.value !== currentValue) {
+                        option.disabled = usedRoles.includes(option.value);
+                    }
+                });
+            });
+        }
+
+        function generateCommands() {
+            // Validate form
+            const form = document.getElementById('simulatedevForm');
+            if (!form.checkValidity()) {
+                form.reportValidity();
+                return;
+            }
+
+            // Validate task description for general_coding workflow
+            const workflow = document.getElementById('workflow').value;
+            const taskDescription = document.getElementById('taskDescription').value;
+            if (workflow === 'general_coding' && !taskDescription.trim()) {
+                alert('Task description is required for custom coding tasks.');
+                return;
+            }
+
+            // Validate agents
+            const agents = getAgentsConfig();
+            if (agents.length === 0) {
+                alert('Please configure at least one agent.');
+                return;
+            }
+
+            // Generate .env content
+            generateEnvFile();
+            
+            // Generate CLI command
+            generateCliCommand();
+            
+            // Generate setup instructions
+            generateInstructions();
+        }
+
+        function getAgentsConfig() {
+            const agentItems = document.querySelectorAll('.agent-item');
+            const agents = [];
+
+            agentItems.forEach(item => {
+                const ide = item.querySelector('select[name="ide"]').value;
+                const model = item.querySelector('select[name="model"]').value;
+                const role = item.querySelector('select[name="role"]').value;
+
+                if (ide && model && role) {
+                    agents.push({
+                        coding_ide: ide,
+                        model: model,
+                        role: role
+                    });
+                }
+            });
+
+            return agents;
+        }
+
+        function generateEnvFile() {
+            const anthropicKey = document.getElementById('anthropicKey').value;
+            const googleKey = document.getElementById('googleKey').value;
+            const githubToken = document.getElementById('githubToken').value;
+
+            const envContent = `# SimulateDev Environment Configuration
+# Copy this content to a .env file in your project root
+
+# Required: Anthropic API Key for Claude Computer Use
+# Get your key from: https://console.anthropic.com/
+ANTHROPIC_API_KEY=${anthropicKey || 'your_anthropic_api_key_here'}
+
+# Required: Google Gemini API Key for IDE state analysis
+# Get your key from: https://ai.google.dev/
+GOOGLE_API_KEY=${googleKey || 'your_google_api_key_here'}
+
+# Optional: GitHub Personal Access Token for pull request creation
+# Create a token at: https://github.com/settings/tokens
+# Required permissions: repo, pull_requests
+GITHUB_TOKEN=${githubToken || 'your_github_token_here'}
+
+# Optional: Configure git user for commits (if not set globally)
+GIT_USER_NAME="SimulateDev Bot"
+GIT_USER_EMAIL="simulatedev@example.com"
+
+# Optional: Agent execution timeout in seconds (default: 1200 = 20 minutes)
+# Increase for complex tasks, decrease for faster feedback
+AGENT_TIMEOUT_SECONDS=1200`;
+
+            document.getElementById('envOutput').textContent = envContent;
+        }
+
+        function generateCliCommand() {
+            const taskDescription = document.getElementById('taskDescription').value;
+            const repoUrl = document.getElementById('repoUrl').value;
+            const workflow = document.getElementById('workflow').value;
+            const noPr = document.getElementById('noPr').checked;
+            const deleteExisting = document.getElementById('deleteExisting').checked;
+
+            const agents = getAgentsConfig();
+
+            // For general_coding workflow, use the task description; for others, use workflow-specific descriptions
+            let taskParamRaw = '';
+            if (workflow === 'general_coding') {
+                taskParamRaw = taskDescription;
+            } else if (workflow === 'bug_hunting') {
+                taskParamRaw = 'Find and fix security vulnerabilities and bugs';
+            } else if (workflow === 'code_optimization') {
+                taskParamRaw = 'Optimize performance and improve code quality';
+            }
+
+            // Escape exclamation marks for zsh compatibility
+            const taskParam = taskParamRaw.replace(/!/g, '\\!');
+
+            let command = `python simulatedev.py --task "${taskParam}" --repo "${repoUrl}" --workflow ${workflow}`;
+
+            // Add agents if more than one or if not default
+            if (agents.length > 1 || (agents.length === 1 && (agents[0].coding_ide !== 'cursor' || agents[0].model !== 'claude-4-sonnet' || agents[0].role !== 'Coder'))) {
+                const agentsJson = JSON.stringify(agents).replace(/"/g, '\\"');
+                command += ` --coding-agents "${agentsJson}"`;
+            }
+
+            if (noPr) {
+                command += ` --no-pr`;
+            }
+
+            if (deleteExisting) {
+                command += ` --delete-existing`;
+            }
+
+            document.getElementById('cliOutput').textContent = command;
+        }
+
+        function generateInstructions() {
+            const instructions = `Setup Instructions:
+
+1. Save the .env content to a file named '.env' in your SimulateDev project root
+2. Make sure you have Python 3.8+ installed
+3. Install dependencies: pip install -r requirements.txt
+4. Run the generated CLI command
+
+Prerequisites:
+- Valid Anthropic API key with Claude access
+- Valid Google Gemini API key
+- GitHub token (optional, for PR creation)
+- Target repository must be accessible
+
+Workflow Types:
+- general_coding: Custom tasks with your own prompt
+- bug_hunting: Automated vulnerability and bug detection
+- code_optimization: Performance and code quality improvements
+
+Agent Roles:
+- Planner: Analyzes requirements and creates implementation plans
+- Coder: Implements the actual code changes
+- Tester: Creates and runs tests for the implemented features
+
+Note: Each role can only be assigned to one agent in multi-agent setups.`;
+
+            document.getElementById('instructionsOutput').textContent = instructions;
+        }
+
+        function copyToClipboard(elementId, button) {
+            const element = document.getElementById(elementId);
+            const text = element.textContent;
+            
+            navigator.clipboard.writeText(text).then(function() {
+                const originalText = button.textContent;
+                button.textContent = 'Copied!';
+                button.classList.add('copied');
+                
+                setTimeout(function() {
+                    button.textContent = originalText;
+                    button.classList.remove('copied');
+                }, 2000);
+            }).catch(function(err) {
+                console.error('Could not copy text: ', err);
+                alert('Failed to copy to clipboard. Please copy manually.');
+            });
+        }
+    </script>
+</body>
+</html>
