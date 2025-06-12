@@ -166,103 +166,81 @@ class Orchestrator:
             coder_role = RoleFactory.create_role(AgentRole.CODER)
             return coder_role.create_prompt(context.task_description, context, agent_definition)
     
-    async def _execute_agent_with_retry(self, agent_definition: AgentDefinition, 
-                                      prompt: str, context: AgentContext, 
-                                      work_directory: str) -> Dict[str, Any]:
-        """Execute an agent with retry logic"""
+    async def _execute_agent(self, agent_definition: AgentDefinition, 
+                            prompt: str, context: AgentContext, 
+                            work_directory: str) -> Dict[str, Any]:
+        """Execute an agent"""
         try:
             agent_type = CodingAgentIdeType(agent_definition.coding_ide.lower().strip())
         except ValueError:
             raise ValueError(f"Unsupported agent type: {agent_definition.coding_ide}. Valid agent types are: {', '.join([e.value for e in CodingAgentIdeType])}")
         
-        # Get role-specific configuration
+        # Get role instance for post-execution processing
         try:
             role_instance = RoleFactory.create_role(agent_definition.role)
-            max_retries = role_instance.get_max_retries()
-            should_retry = role_instance.should_retry_on_failure()
         except ValueError:
-            # Fallback to default values
-            max_retries = 1
-            should_retry = True
+            role_instance = None
         
-        for attempt in range(max_retries + 1):
+        try:
+            print(f"Executing {agent_definition.coding_ide} ({agent_definition.role.value})")
+            
+            # Change to work directory
+            original_cwd = os.getcwd()
+            os.chdir(work_directory)
+            
             try:
-                print(f"Executing {agent_definition.coding_ide} ({agent_definition.role.value}) - Attempt {attempt + 1}")
+                # Create and execute agent
+                agent = AgentFactory.create_agent(agent_type, self.computer_use_client)
                 
-                # Change to work directory
-                original_cwd = os.getcwd()
-                os.chdir(work_directory)
+                # Set current project for window title checking
+                agent.set_current_project(work_directory)
                 
-                try:
-                    # Create and execute agent
-                    agent = AgentFactory.create_agent(agent_type, self.computer_use_client)
-                    
-                    # Set current project for window title checking
-                    agent.set_current_project(work_directory)
-                    
-                    # Check if agent interface is already open with correct project, if not open it
-                    if not await agent.is_coding_agent_open_with_project():
-                        await agent.open_coding_interface()
-                    
-                    response = await agent.execute_prompt(prompt)
-                    
-                    result = {
-                        "coding_ide": agent_definition.coding_ide,
-                        "agent_model": agent_definition.model,
-                        "role": agent_definition.role.value,
-                        "attempt": attempt + 1,
-                        "success": response.success,
-                        "output": response.content,
-                        "error": response.error_message,
-                        "timestamp": time.time()
-                    }
-                    
-                    # Apply role-specific post-execution processing
+                # Check if agent interface is already open with correct project, if not open it
+                if not await agent.is_coding_agent_open_with_project():
+                    await agent.open_coding_interface()
+                
+                response = await agent.execute_prompt(prompt)
+                
+                result = {
+                    "coding_ide": agent_definition.coding_ide,
+                    "agent_model": agent_definition.model,
+                    "role": agent_definition.role.value,
+                    "success": response.success,
+                    "output": response.content,
+                    "error": response.error_message,
+                    "timestamp": time.time()
+                }
+                
+                # Apply role-specific post-execution processing
+                if role_instance:
                     try:
                         result = role_instance.post_execution_hook(result, context)
                     except Exception as e:
                         print(f"Warning: Post-execution hook failed: {e}")
-                    
-                    if response.success:
-                        print(f"{agent_definition.coding_ide} completed successfully")
-                        return result
-                    else:
-                        print(f"{agent_definition.coding_ide} failed: {response.error_message}")
-                        if attempt < max_retries and should_retry:
-                            print(f"Retrying {agent_definition.coding_ide}...")
-                        else:
-                            return result
                 
-                finally:
-                    os.chdir(original_cwd)
-                    
-            except Exception as e:
-                error_msg = f"Exception executing {agent_definition.coding_ide}: {str(e)}"
-                print(f"{error_msg}")
+                if response.success:
+                    print(f"{agent_definition.coding_ide} completed successfully")
+                else:
+                    print(f"{agent_definition.coding_ide} failed: {response.error_message}")
                 
-                if attempt >= max_retries:
-                    return {
-                        "coding_ide": agent_definition.coding_ide,
-                        "agent_model": agent_definition.model,
-                        "role": agent_definition.role.value,
-                        "attempt": attempt + 1,
-                        "success": False,
-                        "output": "",
-                        "error": error_msg,
-                        "timestamp": time.time()
-                    }
-        
-        # Should not reach here, but just in case
-        return {
-            "coding_ide": agent_definition.coding_ide,
-            "agent_model": agent_definition.model,
-            "role": agent_definition.role.value,
-            "attempt": max_retries + 1,
-            "success": False,
-            "output": "",
-            "error": "Maximum retries exceeded",
-            "timestamp": time.time()
-        }
+                return result
+            
+            finally:
+                os.chdir(original_cwd)
+                
+        except Exception as e:
+            error_msg = f"Exception executing {agent_definition.coding_ide}: {str(e)}"
+            print(f"{error_msg}")
+            
+            return {
+                "coding_ide": agent_definition.coding_ide,
+                "agent_model": agent_definition.model,
+                "role": agent_definition.role.value,
+                "success": False,
+                "output": "",
+                "error": error_msg,
+                "timestamp": time.time()
+            }
     
     def save_agent_response(self, repo_url: Optional[str], agent_name: str, response: str) -> Optional[str]:
         """Save the agent response to a file"""
@@ -344,8 +322,8 @@ class Orchestrator:
                     agent_def.role, context, agent_def, request.workflow_type
                 )
                 
-                # Execute agent with retry
-                result = await self._execute_agent_with_retry(
+                # Execute agent
+                result = await self._execute_agent(
                     agent_def, prompt, context, work_directory
                 )
                 

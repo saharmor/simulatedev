@@ -180,13 +180,7 @@ As a coder in a general coding workflow, prioritize:
         """Get description of the Coder role"""
         return "Software Developer - Implements solutions and creates working code"
     
-    def should_retry_on_failure(self) -> bool:
-        """Coders should be retried if they fail"""
-        return True
-    
-    def get_max_retries(self) -> int:
-        """Coders get standard retries"""
-        return 1
+
     
     def post_execution_hook(self, result: Dict[str, Any], 
                           context: AgentContext) -> Dict[str, Any]:

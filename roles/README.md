@@ -22,8 +22,6 @@ roles/
 Abstract base class that defines the interface for all roles:
 - `create_prompt()` - Generate role-specific prompts
 - `get_role_description()` - Human-readable role description
-- `should_retry_on_failure()` - Retry configuration
-- `get_max_retries()` - Maximum retry attempts
 - `post_execution_hook()` - Post-process execution results
 
 ### Role Implementations
@@ -31,7 +29,6 @@ Abstract base class that defines the interface for all roles:
 #### PlannerRole (planner_role.py)
 - **Purpose**: Creates comprehensive implementation plans
 - **Specialization**: Strategic planning and requirement analysis
-- **Max Retries**: 2 (planning is critical)
 - **Features**: 
   - Extracts plan sections for easier access by other roles
   - Considers previous planning attempts
@@ -40,7 +37,6 @@ Abstract base class that defines the interface for all roles:
 #### CoderRole (coder_role.py)
 - **Purpose**: Implements solutions based on plans
 - **Specialization**: Software development and coding
-- **Max Retries**: 1 (standard retry)
 - **Features**:
   - Extracts implementation details (files, technologies, features)
   - Calculates confidence scores
@@ -50,7 +46,6 @@ Abstract base class that defines the interface for all roles:
 #### TesterRole (tester_role.py)
 - **Purpose**: Validates implementations and ensures quality
 - **Specialization**: Quality assurance and testing
-- **Max Retries**: 1 (testing is often final step)
 - **Features**:
   - Comprehensive test analysis and metrics
   - Issue categorization (critical, major, minor)
@@ -88,8 +83,8 @@ class CustomRole(BaseRole):
     def create_prompt(self, task, context, agent_def):
         return f"Custom prompt for: {task}"
     
-    def get_max_retries(self):
-        return 3
+    def get_role_description(self):
+        return "Custom role implementation"
 
 # Register the custom role
 RoleFactory.register_role(AgentRole.CODER, CustomRole)
@@ -101,8 +96,7 @@ The orchestrator automatically uses the role system:
 # The orchestrator now automatically:
 # 1. Creates appropriate role instances
 # 2. Uses role-specific prompts
-# 3. Applies role-specific retry logic
-# 4. Processes results with role hooks
+# 3. Processes results with role hooks
 
 orchestrator = MultiAgentOrchestrator()
 result = await orchestrator.execute_multi_agent_task(task)
@@ -133,7 +127,7 @@ result = await orchestrator.execute_multi_agent_task(task)
 ### Enhanced Features
 - Post-execution result processing
 - Role-specific metrics and analysis
-- Intelligent retry strategies
+- Streamlined execution flow
 
 ## Migration from Old System
 

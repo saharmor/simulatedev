@@ -242,13 +242,7 @@ As a tester in a general coding workflow, prioritize these testing areas:
         """Get description of the Tester role"""
         return "Quality Assurance Tester - Validates implementations and ensures quality"
     
-    def should_retry_on_failure(self) -> bool:
-        """Testers should be retried if they fail"""
-        return True
-    
-    def get_max_retries(self) -> int:
-        """Testers get fewer retries since testing is often the final step"""
-        return 1
+
     
     def post_execution_hook(self, result: Dict[str, Any], 
                           context: AgentContext) -> Dict[str, Any]:

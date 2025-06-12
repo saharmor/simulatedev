@@ -138,13 +138,7 @@ As a planner in a general coding workflow, your plan should prioritize:
         """Get description of the Planner role"""
         return "Project Planner - Creates comprehensive implementation plans and strategies"
     
-    def should_retry_on_failure(self) -> bool:
-        """Planners should be retried if they fail"""
-        return True
-    
-    def get_max_retries(self) -> int:
-        """Planners get more retries since planning is critical"""
-        return 2
+
     
     def post_execution_hook(self, result: Dict[str, Any], 
                           context: AgentContext) -> Dict[str, Any]:

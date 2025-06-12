@@ -89,13 +89,7 @@ Follow best practices and ensure the solution meets the specified requirements.
         """Get a human-readable description of this role"""
         return f"{self.role.value.title()} Role"
     
-    def should_retry_on_failure(self) -> bool:
-        """Determine if this role should be retried on failure"""
-        return True
-    
-    def get_max_retries(self) -> int:
-        """Get the maximum number of retries for this role"""
-        return 1
+
     
     def post_execution_hook(self, result: Dict[str, Any], 
                           context: AgentContext) -> Dict[str, Any]:
