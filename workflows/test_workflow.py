@@ -12,12 +12,15 @@ import os
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.agent_orchestrator import AgentOrchestrator
+from src.orchestrator import Orchestrator
 from coding_agents import CodingAgentIdeType
 
 
-class TestWorkflow(AgentOrchestrator):
+class TestWorkflow:
     """Simple test workflow for end-to-end agent testing"""
+    
+    def __init__(self):
+        self.orchestrator = Orchestrator()
     
     def create_test_prompt(self) -> str:
         """Create a simple test prompt that asks the agent to print hello world"""
@@ -51,8 +54,17 @@ Please implement this simple task and confirm completion."""
         test_prompt = self.create_test_prompt()
         print(f"Test prompt: {test_prompt[:100]}...")
         
-        agent_execution_report_summary = await self.execute_workflow(agent_type, repo_url, test_prompt, project_path)
-        return agent_execution_report_summary
+        # Create single-agent request using unified orchestrator
+        request = Orchestrator.create_single_agent_request(
+            task_description=test_prompt,
+            agent_type=agent_type.value,
+            workflow_type="test",
+            repo_url=repo_url,
+            work_directory=project_path
+        )
+        
+        response = await self.orchestrator.execute_task(request)
+        return response.final_output
     
     async def execute_simple_hello_world(self, agent_type: CodingAgentIdeType, 
                                         project_path: str = None) -> str:
@@ -70,5 +82,14 @@ This is a simple test of the agent's basic functionality."""
         print("Executing simple hello world test...")
         print(f"Working directory: {project_path or os.getcwd()}")
         
-        agent_execution_report_summary = await self.execute_workflow(agent_type, "test_simple", simple_prompt, project_path) 
-        return agent_execution_report_summary
+        # Create single-agent request using unified orchestrator
+        request = Orchestrator.create_single_agent_request(
+            task_description=simple_prompt,
+            agent_type=agent_type.value,
+            workflow_type="test",
+            repo_url="test_simple",
+            work_directory=project_path
+        )
+        
+        response = await self.orchestrator.execute_task(request)
+        return response.final_output

@@ -311,4 +311,14 @@ After completing the above task, please save a comprehensive summary of everythi
             else:
                 print(f"ERROR: {self.agent_name} command not available. Please install Claude Code.")
                 print("Install instructions: https://github.com/anthropics/claude-code")
-                return False 
+                return False
+    
+    async def close_coding_interface(self) -> bool:
+        """Close Claude Code interface (no-op for headless mode)
+        
+        For headless mode, there's no persistent interface to close.
+        This method exists for consistency with other agents.
+        """
+        print(f"INFO: {self.agent_name} is headless - no interface to close")
+        print(f"Headless agents don't maintain persistent interfaces that need closing")
+        return True 

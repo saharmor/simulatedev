@@ -9,7 +9,7 @@ from typing import Optional
 from .base import CodingAgent
 import os
 
-from utils.computer_use_utils import bring_to_front_window
+from utils.computer_use_utils import bring_to_front_window, close_ide_window_for_project
 
 class CursorAgent(CodingAgent):
     """Cursor AI coding agent implementation"""
@@ -97,6 +97,41 @@ Only analyze the right panel and provide nothing but valid JSON in your response
             return True
         else:
             print(f"WARNING: Could not verify {self.agent_name} interface opened with correct project")
+            return False
+    
+    async def close_coding_interface(self) -> bool:
+        """Close Cursor IDE window for the current project only"""
+        try:
+            if not self._current_project_name:
+                print(f"WARNING: No project name set for {self.agent_name}, cannot close project-specific window")
+                return True  # Return True since we can't identify what to close
+            
+            print(f"Closing {self.agent_name} window for project: {self._current_project_name}")
+            
+            # Check if Cursor is open with our project
+            if not self.is_ide_open_with_correct_project():
+                print(f"INFO: {self.agent_name} is not open with project '{self._current_project_name}', nothing to close")
+                return True
+            
+            # Use utility function to close the specific Cursor window
+            close_success = close_ide_window_for_project(self.window_name, self._current_project_name)
+            
+            if close_success:
+                # Wait a moment for the window to close
+                time.sleep(2)
+                
+                # Verify the window was closed
+                if not self.is_ide_open_with_correct_project():
+                    print(f"SUCCESS: {self.agent_name} window for project '{self._current_project_name}' was closed")
+                    return True
+                else:
+                    print(f"WARNING: {self.agent_name} window for project '{self._current_project_name}' may still be open")
+                    return False
+            else:
+                return False
+                
+        except Exception as e:
+            print(f"ERROR: Failed to close {self.agent_name} interface: {str(e)}")
             return False
     
     async def _ensure_cursor_app_open(self):

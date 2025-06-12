@@ -3,7 +3,7 @@
 General Coding Workflow Module
 
 This module provides the default workflow for handling user-provided coding prompts,
-extending the agent orchestrator with general-purpose coding functionality.
+extending the unified orchestrator with general-purpose coding functionality.
 """
 
 import sys
@@ -12,12 +12,15 @@ import os
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.agent_orchestrator import AgentOrchestrator
+from src.orchestrator import Orchestrator
 from coding_agents import CodingAgentIdeType
 
 
-class GeneralCodingWorkflow(AgentOrchestrator):
+class GeneralCodingWorkflow:
     """General-purpose orchestrator for user-defined coding tasks"""
+    
+    def __init__(self):
+        self.orchestrator = Orchestrator()
     
     def enhance_user_prompt(self, user_prompt: str, repo_url: str) -> str:
         """Enhance a user prompt with additional context and instructions"""
@@ -45,8 +48,18 @@ Please proceed with implementing this task."""
                                  user_prompt: str, project_path: str = None) -> str:
         """Execute a general coding task workflow"""
         enhanced_prompt = self.enhance_user_prompt(user_prompt, repo_url)
-        agent_execution_report_summary = await self.execute_workflow(agent_type, repo_url, enhanced_prompt, project_path)
-        return agent_execution_report_summary
+        
+        # Create single-agent request using unified orchestrator
+        request = Orchestrator.create_single_agent_request(
+            task_description=enhanced_prompt,
+            agent_type=agent_type.value,
+            workflow_type="general_coding",
+            repo_url=repo_url,
+            work_directory=project_path
+        )
+        
+        response = await self.orchestrator.execute_task(request)
+        return response.final_output
     
     def create_simple_prompt(self, user_request: str) -> str:
         """Create a simple, direct prompt without additional enhancement"""
@@ -55,5 +68,14 @@ Please proceed with implementing this task."""
     async def execute_simple_task(self, agent_type: CodingAgentIdeType, repo_url: str,
                                  user_prompt: str, project_path: str = None) -> str:
         """Execute a simple task without prompt enhancement"""
-        agent_execution_report_summary = await self.execute_workflow(agent_type, repo_url, user_prompt, project_path)
-        return agent_execution_report_summary
+        # Create single-agent request using unified orchestrator
+        request = Orchestrator.create_single_agent_request(
+            task_description=user_prompt,
+            agent_type=agent_type.value,
+            workflow_type="general_coding",
+            repo_url=repo_url,
+            work_directory=project_path
+        )
+        
+        response = await self.orchestrator.execute_task(request)
+        return response.final_output

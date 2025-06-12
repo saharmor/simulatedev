@@ -2,8 +2,8 @@
 """
 Workflows Package
 
-This package contains specialized workflow modules for different use cases,
-each extending the AgentOrchestrator with specific functionality.
+This package contains specialized workflow modules for different coding use cases,
+each using the unified Orchestrator with specific functionality and prompts tailored for particular tasks.
 """
 
 from .bug_hunting import BugHunter

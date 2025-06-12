@@ -223,6 +223,17 @@ class Orchestrator:
                 else:
                     print(f"{agent_definition.coding_ide} failed: {response.error_message}")
                 
+                # Close the coding interface for this project after task completion
+                try:
+                    print(f"Closing {agent_definition.coding_ide} interface for current project...")
+                    close_success = await agent.close_coding_interface()
+                    if close_success:
+                        print(f"SUCCESS: {agent_definition.coding_ide} interface closed")
+                    else:
+                        print(f"WARNING: Failed to close {agent_definition.coding_ide} interface")
+                except Exception as e:
+                    print(f"WARNING: Error closing {agent_definition.coding_ide} interface: {str(e)}")
+                
                 return result
             
             finally:

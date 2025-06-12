@@ -465,6 +465,59 @@ def is_ide_open_with_project(app_name: str, project_name: str) -> bool:
         return False
 
 
+def close_ide_window_for_project(app_name: str, project_name: str) -> bool:
+    """
+    Close a specific IDE window that contains the project name.
+    
+    Args:
+        app_name (str): Name of the IDE application (e.g., "Cursor", "Windsurf")
+        project_name (str): Name of the project to close the window for
+        
+    Returns:
+        bool: True if window was closed successfully, False otherwise
+    """
+    try:
+        app_name = app_name.lower()
+        
+        if platform.system() == "Darwin":
+            # Handle different IDEs
+            if app_name == "windsurf":
+                # Windsurf runs as Electron, target the Electron process
+                process_name = "Electron"
+            elif app_name == "cursor":
+                # Cursor runs as its own process
+                process_name = "Cursor"
+            else:
+                # Generic IDE - use capitalized app name
+                process_name = app_name.capitalize()
+            
+            # Use AppleScript to close the specific window containing the project name
+            close_script = f'''
+            tell application "System Events"
+                tell process "{process_name}"
+                    repeat with w in windows
+                        if name of w contains "{project_name}" then
+                            click button 1 of w
+                            exit repeat
+                        end if
+                    end repeat
+                end tell
+            end tell
+            '''
+            
+            subprocess.run(["osascript", "-e", close_script], check=True)
+            print(f"SUCCESS: Attempted to close {app_name} window for project '{project_name}'")
+            return True
+            
+        else:
+            print(f"IDE window closing not implemented for {platform.system()}")
+            return False
+            
+    except Exception as e:
+        print(f"ERROR: Failed to close {app_name} window for project '{project_name}': {e}")
+        return False
+
+
 def take_screenshot(target_width, target_height, encode_base64: bool = False, monitor_number: int = 0) -> str:
     """
     Capture screenshot using mss library with multi-monitor support.

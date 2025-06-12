@@ -300,6 +300,20 @@ class CodingAgent(ABC):
         """
         pass
     
+    @abstractmethod
+    async def close_coding_interface(self) -> bool:
+        """Close the agent's coding interface for the current project
+        
+        Each agent should implement its own logic for:
+        1. Checking if the interface is open with the current project
+        2. Closing only the interface/window for the current project
+        3. Leaving other projects/windows untouched
+        
+        Returns:
+            bool: True if interface was closed successfully or wasn't open, False on error
+        """
+        pass
+    
     async def get_input_field_coordinates(self):
         """Get the coordinates of the input field"""
         result = await self.claude.get_coordinates_from_claude(self.input_field_prompt)

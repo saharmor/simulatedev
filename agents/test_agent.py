@@ -101,6 +101,12 @@ Provide nothing but valid JSON in your response."""
         print("Test Agent: Interface ready")
         return True
 
+    async def close_coding_interface(self) -> bool:
+        """Close test agent interface (no actual interface to close)"""
+        print("Test Agent: Closing interface...")
+        print("Test Agent: Interface closed (no persistent interface to close)")
+        return True
+
     async def _run_analysis(self, prompt: str):
         """Run the actual codebase analysis"""
         print("Test Agent: Analyzing codebase structure...")

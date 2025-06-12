@@ -3,7 +3,7 @@
 Bug Hunting Module
 
 This module provides specialized functionality for AI-powered bug discovery,
-extending the agent orchestrator with bug-specific prompts and workflows.
+extending the unified orchestrator with bug-specific prompts and workflows.
 """
 
 import pyautogui
@@ -15,12 +15,15 @@ import os
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.agent_orchestrator import AgentOrchestrator
+from src.orchestrator import Orchestrator
 from coding_agents import CodingAgentIdeType
 
 
-class BugHunter(AgentOrchestrator):
+class BugHunter:
     """Specialized orchestrator for bug hunting workflows"""
+    
+    def __init__(self):
+        self.orchestrator = Orchestrator()
     
     def generate_bug_hunting_prompt(self, repo_url: str) -> str:
         """Generate a bug hunting prompt that maps, ranks, and implements one bug"""
@@ -98,5 +101,15 @@ Please proceed with this advanced bug hunting process."""
     async def hunt_bugs(self, agent_type: CodingAgentIdeType, repo_url: str, project_path: str = None) -> str:
         """Execute a bug hunting workflow that maps, ranks, and implements one high-value bug"""
         prompt = self.generate_bug_hunting_prompt(repo_url)
-        agent_execution_report_summary = await self.execute_workflow(agent_type, repo_url, prompt, project_path)
-        return agent_execution_report_summary
+        
+        # Create single-agent request using unified orchestrator
+        request = Orchestrator.create_single_agent_request(
+            task_description=prompt,
+            agent_type=agent_type.value,
+            workflow_type="bug_hunting",
+            repo_url=repo_url,
+            work_directory=project_path
+        )
+        
+        response = await self.orchestrator.execute_task(request)
+        return response.final_output
