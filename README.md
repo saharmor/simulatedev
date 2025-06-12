@@ -60,6 +60,41 @@ graph LR
 
 ### Installation
 
+Choose between local installation or Docker (recommended for easier setup):
+
+#### Option 1: Docker (Recommended)
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/your-username/simulatedev.git
+   cd simulatedev
+   ```
+
+2. **Set up environment variables:**
+   ```bash
+   cp env.example .env
+   # Edit .env with your API keys
+   ```
+
+3. **Build and run with Docker:**
+   ```bash
+   # Build the image
+   make build
+   
+   # Run a task
+   make run TASK="Fix responsive design" REPO="https://github.com/user/repo"
+   
+   # Or use docker-compose directly
+   docker-compose run --rm simulatedev python3 simulatedev.py \
+     --task "Your coding task" \
+     --repo https://github.com/user/repo \
+     --workflow general_coding
+   ```
+
+See [DOCKER.md](DOCKER.md) for comprehensive Docker documentation.
+
+#### Option 2: Local Installation
+
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/your-username/simulatedev.git
@@ -80,7 +115,6 @@ graph LR
 4. **Configure your API keys in `.env`:**
    ```env
    ANTHROPIC_API_KEY=your_anthropic_key_here
-   GOOGLE_API_KEY=your_google_key_here
    GITHUB_TOKEN=your_github_token_here  # Optional, for PR creation
    ```
 
@@ -244,8 +278,7 @@ All configuration is managed through environment variables in your `.env` file:
 
 | Variable | Purpose | Required | Default | Notes |
 |----------|---------|----------|---------|-------|
-| `ANTHROPIC_API_KEY` | UI element detection | Yes | - | [Get key](https://console.anthropic.com/) |
-| `GOOGLE_API_KEY` | IDE state analysis | Yes | - | [Get key](https://ai.google.dev/) |
+| `ANTHROPIC_API_KEY` | UI element detection and IDE state analysis | Yes | - | [Get key](https://console.anthropic.com/) |
 | `GITHUB_TOKEN` | Pull request creation | Optional | - | [Get token](https://github.com/settings/tokens) |
 | `AGENT_TIMEOUT_SECONDS` | Agent execution timeout | Optional | 600 | 30-7200 seconds (0.5-120 minutes) |
 | `GIT_USER_NAME` | Git commit author | Optional | "SimulateDev Bot" | For commits and PRs |
@@ -356,7 +389,6 @@ You can also set environment variables directly:
 
 ```bash
 export ANTHROPIC_API_KEY="your_key"
-export GOOGLE_API_KEY="your_key" 
 export GITHUB_TOKEN="your_token"
 python simulatedev.py "Refactor code" cursor --repo https://github.com/user/repo
 ```

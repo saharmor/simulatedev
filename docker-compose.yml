@@ -26,9 +26,6 @@ services:
       # Mount workspace directory for persistent storage
       - ./workspace:/home/simulatedev/workspace
       
-      # Mount git configuration if you want to persist it
-      - ./docker-volumes/git-config:/home/simulatedev/.gitconfig
-      
       # Mount SSH keys if needed for private repositories
       - ~/.ssh:/home/simulatedev/.ssh:ro
       

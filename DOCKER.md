@@ -20,7 +20,6 @@ cp env.example .env
 
 # Edit .env with your actual API keys
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
-GOOGLE_API_KEY=your_google_api_key_here
 GITHUB_TOKEN=your_github_token_here
 GIT_USER_NAME="Your Name"
 GIT_USER_EMAIL="your.email@example.com"
@@ -138,8 +137,7 @@ All environment variables from `env.example` are supported:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | Yes | Claude Computer Use API key |
-| `GOOGLE_API_KEY` | Yes | Gemini API key for IDE analysis |
+| `ANTHROPIC_API_KEY` | Yes | Claude Computer Use and IDE analysis API key |
 | `GITHUB_TOKEN` | No | For creating pull requests |
 | `GIT_USER_NAME` | No | Git commit author name |
 | `GIT_USER_EMAIL` | No | Git commit author email |

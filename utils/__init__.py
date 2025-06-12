@@ -9,7 +9,7 @@ from .clone_repo import clone_repository, parse_repo_name
 from .computer_use_utils import ClaudeComputerUse, take_screenshot, bring_to_front_window
 from .ide_completion_detector import (
     get_window_list, find_window_by_title, capture_screen, 
-    capture_window_by_title, initialize_gemini_client, 
+    capture_window_by_title, initialize_claude_client, 
     analyze_ide_state, wait_until_ide_finishes
 )
 
@@ -23,7 +23,7 @@ __all__ = [
     'find_window_by_title',
     'capture_screen',
     'capture_window_by_title',
-    'initialize_gemini_client',
+    'initialize_claude_client',
     'analyze_ide_state',
     'wait_until_ide_finishes'
 ] 

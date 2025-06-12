@@ -21,12 +21,14 @@ if [ -z "$ANTHROPIC_API_KEY" ]; then
     echo "WARNING: ANTHROPIC_API_KEY not set. This is required for Claude Computer Use."
 fi
 
-
-
 # Set up X11 display if not already configured
 if [ -z "$DISPLAY" ]; then
     export DISPLAY=:99
 fi
+
+# Create .Xauthority file to avoid X11 authentication errors
+touch /home/simulatedev/.Xauthority
+chmod 600 /home/simulatedev/.Xauthority
 
 # Start Xvfb (X Virtual Framebuffer) for GUI applications
 echo "Starting virtual display..."
@@ -34,7 +36,10 @@ Xvfb $DISPLAY -screen 0 1920x1080x24 -ac +extension GLX +render -noreset &
 XVFB_PID=$!
 
 # Wait for X server to start
-sleep 2
+sleep 3
+
+# Set XAUTHORITY environment variable
+export XAUTHORITY=/home/simulatedev/.Xauthority
 
 # Verify X server is running
 if ! xdpyinfo -display $DISPLAY >/dev/null 2>&1; then
