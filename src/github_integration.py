@@ -548,7 +548,7 @@ Guidelines for branch name:
             "branch_name": default_branch_name
         }
 
-    def generate_pr_description(self, workflow_name: str, pr_title: str, pr_description: str, pr_changes_summary: str, coding_ides_info: Optional[str] = None) -> tuple[str, str]:
+    def generate_pr_description(self, workflow_name: str, pr_title: str, pr_description: str, pr_changes_summary: str, coding_ides_info: Optional[str] = None, task_description: Optional[str] = None) -> tuple[str, str]:
         """
         Generate formatted PR title and description
         
@@ -562,30 +562,43 @@ Guidelines for branch name:
         Returns:
             tuple[str, str]: (pr_title, formatted_pr_description)
         """
-        # Build the formatted description with optional IDE information
+        # Build the formatted description with the new format
         description_parts = [
-            "## Automated Changes by SimulateDev",
+            "# Automated Changes by SimulateDev",
             "",
-            f"**Workflow:** {workflow_name}"
+            "## Setup"
         ]
         
-        if coding_ides_info:
-            description_parts.extend([
-                f"**Coding IDEs:** {coding_ides_info}",
-                ""
-            ])
+        # Add task description as subheader
+        description_parts.append("### Task")
+        if task_description:
+            description_parts.append(task_description)
         else:
-            description_parts.append("")
+            description_parts.append(workflow_name)
+        
+        description_parts.append("")
+        
+        # Add coding agents information as subheader with numbered list
+        description_parts.append("### Coding agents used")
+        if coding_ides_info:
+            # Split the coding_ides_info by comma and create numbered list
+            agents = [agent.strip() for agent in coding_ides_info.split(',')]
+            for i, agent in enumerate(agents, 1):
+                description_parts.append(f"{i}. {agent}")
+        else:
+            description_parts.append("1. Not specified")
         
         description_parts.extend([
+            "",
             "---",
             "",
+            "## Summary",
             pr_description,
             "",
-            "### What changed?",
+            "## What changed?",
             pr_changes_summary,
             "",
-            "### Review Instructions",
+            "## Review Instructions",
             "Please carefully review all changes before merging. While AI agents are powerful, human oversight is always recommended.",
             "",
             "---",
@@ -602,7 +615,8 @@ Guidelines for branch name:
         repo_url: str,
         workflow_name: str,
         agent_execution_report_summary: Optional[str] = None,
-        coding_ides_info: Optional[str] = None
+        coding_ides_info: Optional[str] = None,
+        task_description: Optional[str] = None
     ) -> Optional[str]:
         """
         Complete workflow: create branch, commit changes, push, and create PR
@@ -628,7 +642,8 @@ Guidelines for branch name:
                 content["pr_title"],
                 content["pr_description"],
                 content["pr_changes_summary"],
-                coding_ides_info
+                coding_ides_info,
+                task_description
             )
         else:
             # Use default formats when no agent output is provided
@@ -640,7 +655,8 @@ Guidelines for branch name:
                 default_content["pr_title"],
                 default_content["pr_description"],
                 default_content["pr_changes_summary"],
-                coding_ides_info
+                coding_ides_info,
+                task_description
             )
         
         # Create branch
@@ -672,7 +688,8 @@ Guidelines for branch name:
         original_repo_url: str,
         workflow_name: str,
         agent_execution_report_summary: Optional[str] = None,
-        coding_ides_info: Optional[str] = None
+        coding_ides_info: Optional[str] = None,
+        task_description: Optional[str] = None
     ) -> Optional[str]:
         """
         Smart workflow that handles permissions automatically:
@@ -687,10 +704,10 @@ Guidelines for branch name:
         
         if has_push_permissions:
             print("SUCCESS: Have push permissions, working directly on original repository")
-            return self.full_workflow(repo_path, original_repo_url, workflow_name, agent_execution_report_summary, coding_ides_info)
+            return self.full_workflow(repo_path, original_repo_url, workflow_name, agent_execution_report_summary, coding_ides_info, task_description)
         else:
             print("INFO: No push permissions, using fork workflow...")
-            return self.fork_workflow(repo_path, original_repo_url, workflow_name, agent_execution_report_summary, coding_ides_info)
+            return self.fork_workflow(repo_path, original_repo_url, workflow_name, agent_execution_report_summary, coding_ides_info, task_description)
     
     def fork_workflow(
         self,
@@ -698,7 +715,8 @@ Guidelines for branch name:
         original_repo_url: str,
         workflow_name: str,
         agent_execution_report_summary: Optional[str] = None,
-        coding_ides_info: Optional[str] = None
+        coding_ides_info: Optional[str] = None,
+        task_description: Optional[str] = None
     ) -> Optional[str]:
         """
         Fork-based workflow for repositories where we don't have push permissions
@@ -734,7 +752,8 @@ Guidelines for branch name:
                 content["pr_title"],
                 content["pr_description"],
                 content["pr_changes_summary"],
-                coding_ides_info
+                coding_ides_info,
+                task_description
             )
         else:
             # Use default formats when no agent output is provided
@@ -746,7 +765,8 @@ Guidelines for branch name:
                 default_content["pr_title"],
                 default_content["pr_description"],
                 default_content["pr_changes_summary"],
-                coding_ides_info
+                coding_ides_info,
+                task_description
             )
         
         # Step 5: Create branch

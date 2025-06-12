@@ -70,7 +70,8 @@ class WorkflowOrchestrator:
     
     def __init__(self):
         self.github_integration = GitHubIntegration()
-        self.base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scanned_repos")
+        # Use config for directory paths
+        self.base_dir = config.scanned_repos_path
         os.makedirs(self.base_dir, exist_ok=True)
     
     def get_workflow_instance(self, workflow_type: str):
@@ -138,11 +139,25 @@ class WorkflowOrchestrator:
             if request.create_pr:
                 print("\nCREATING: pull request...")
                 
+                # Map workflow types to task descriptions
+                workflow_task_descriptions = {
+                    'bugs': 'Find and fix one high-impact bug',
+                    'optimize': 'Find and implement one high-value performance optimization',
+                    'refactor': 'Code quality improvements and refactoring',
+                    'low-hanging': 'Find and implement one impressive low-hanging fruit improvement',
+                    'test': 'Simple hello world test for end-to-end agent testing'
+                }
+                
+                task_description = workflow_task_descriptions.get(request.workflow_type, f"{request.workflow_type} workflow")
+                coding_ides_info = f"{request.agent.value} with claude-sonnet-4 as Coder"
+                
                 pr_url = self.github_integration.smart_workflow(
                     repo_path=repo_path,
                     original_repo_url=request.repo_url,
-                    agent_name=f"{request.agent.value}-{request.workflow_type}",
-                    agent_execution_report_summary=agent_execution_report_summary
+                    workflow_name=f"{request.agent.value}-{request.workflow_type}",
+                    agent_execution_report_summary=agent_execution_report_summary,
+                    coding_ides_info=coding_ides_info,
+                    task_description=task_description
                 )
                 
                 if pr_url:
@@ -258,7 +273,7 @@ async def main():
             from urllib.parse import urlparse
             parsed_path = urlparse(args.repo_url).path.rstrip('/')
             repo_name = os.path.splitext(os.path.basename(parsed_path))[0]
-            repo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scanned_repos", repo_name)
+            repo_path = os.path.join(config.scanned_repos_path, repo_name)
             if os.path.exists(repo_path):
                 shutil.rmtree(repo_path)
                 print(f"Deleted existing repository folder: {repo_path}")

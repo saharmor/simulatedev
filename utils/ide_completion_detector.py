@@ -361,6 +361,7 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
             print(f"Failed to initialize Gemini API. Cannot monitor {ide_name} state.")
             return False
             
+        print("-" * 30)
         print(f"Starting to monitor {ide_name} state...")
         print(f"Will wait up to {timeout_in_seconds} seconds for completion")
         
@@ -450,6 +451,7 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
         # If we get here, we timed out
         final_elapsed = time.time() - start_time
         print(f"TIMEOUT: {ide_name} did not finish within {timeout_in_seconds} seconds (actual elapsed: {int(final_elapsed)}s)")
+        print("-" * 30)
         return False
     except KeyboardInterrupt:
         print("\nMonitoring stopped by user.")

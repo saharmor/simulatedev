@@ -15,9 +15,8 @@ import json
 import os
 import sys
 import time
-import subprocess
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 from datetime import datetime
 
 # Add the project root to Python path

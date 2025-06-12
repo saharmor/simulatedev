@@ -14,12 +14,33 @@ from typing import Optional
 class Config:
     """Configuration manager for SimulateDev"""
     
+    # Execution output directory structure
+    EXECUTION_OUTPUT_DIR = "execution_output"
+    SCANNED_REPOS_DIR = "scanned_repos"
+    REPORTS_DIR = "reports"
+    
     def __init__(self):
         # Load environment variables from .env file if it exists
         load_dotenv()
         
         # Cache loaded values
         self._agent_timeout_seconds: Optional[int] = None
+    
+    @property
+    def execution_output_path(self) -> str:
+        """Get the full path to the execution output directory"""
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(project_root, self.EXECUTION_OUTPUT_DIR)
+    
+    @property
+    def scanned_repos_path(self) -> str:
+        """Get the full path to the scanned repositories directory"""
+        return os.path.join(self.execution_output_path, self.SCANNED_REPOS_DIR)
+    
+    @property
+    def reports_path(self) -> str:
+        """Get the full path to the reports directory"""
+        return os.path.join(self.execution_output_path, self.REPORTS_DIR)
     
     @property
     def agent_timeout_seconds(self) -> int:
@@ -94,6 +115,9 @@ class Config:
         print(f"  Google API Key: {'✓ Set' if self.google_api_key else '✗ Missing'}")
         print(f"  GitHub Token: {'✓ Set' if self.github_token else '✗ Not set (optional)'}")
         print(f"  Git User: {self.git_user_name} <{self.git_user_email}>")
+        print(f"  Execution Output: {self.execution_output_path}")
+        print(f"  Scanned Repos: {self.scanned_repos_path}")
+        print(f"  Reports: {self.reports_path}")
 
 
 # Global configuration instance

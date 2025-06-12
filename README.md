@@ -415,7 +415,9 @@ simulatedev/
 │   └── WORKFLOW_EXAMPLES.md    # Comprehensive workflow examples
 ├── coding_agents.py            # Backward compatibility layer
 ├── requirements.txt            # Dependencies
-└── scanned_repos/             # Cloned repositories
+└── execution_output/          # All execution files and outputs
+    ├── scanned_repos/         # Cloned repositories
+    └── reports/               # Agent execution reports
 ```
 
 ### Architecture

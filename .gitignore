@@ -172,7 +172,7 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-scanned_repos/
+execution_output/
 screenshot.png
 .DS_Store
 .vscode/launch.json

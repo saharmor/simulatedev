@@ -23,6 +23,7 @@ from agents import (
 from roles import RoleFactory
 from utils.clone_repo import clone_repository
 from src.github_integration import GitHubIntegration
+from common.config import config
 
 
 @dataclass
@@ -46,11 +47,11 @@ class Orchestrator:
         self.github_integration = GitHubIntegration()
         self.execution_log = []
         
-        # Create necessary directories
-        self.base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scanned_repos")
+        # Create necessary directories using config
+        self.base_dir = config.scanned_repos_path
         os.makedirs(self.base_dir, exist_ok=True)
         
-        self.responses_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "CodingAgentResponses")
+        self.responses_dir = config.reports_path
         os.makedirs(self.responses_dir, exist_ok=True)
     
     @classmethod
@@ -394,11 +395,19 @@ class Orchestrator:
             if request.create_pr and request.repo_url and overall_success:
                 print("\nProcessing changes and creating pull request...")
                 try:
+                    # Construct agent information for PR description
+                    agent_info_parts = []
+                    for agent in request.agents:
+                        agent_info_parts.append(f"{agent.coding_ide} with {agent.model} as {agent.role.value}")
+                    coding_ides_info = ", ".join(agent_info_parts)
+                    
                     pr_url = self.github_integration.smart_workflow(
                         repo_path=work_directory,
                         original_repo_url=request.repo_url,
-                        agent_name=f"{execution_type}",
-                        agent_execution_report_summary=final_output[:1000] + "..." if len(final_output) > 1000 else final_output
+                        workflow_name=f"{execution_type}",
+                        agent_execution_report_summary=final_output[:1000] + "..." if len(final_output) > 1000 else final_output,
+                        coding_ides_info=coding_ides_info,
+                        task_description=request.task_description
                     )
                     
                     if pr_url:
