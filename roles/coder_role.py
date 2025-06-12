@@ -21,7 +21,7 @@ class CoderRole(BaseRole):
     def create_prompt(self, task: str, context: AgentContext, 
                      agent_definition: AgentDefinition) -> str:
         """Create a comprehensive coding prompt"""
-        prompt = f"""You are {agent_definition.coding_ide} ({agent_definition.model}), acting as a SOFTWARE DEVELOPER.
+        prompt = f"""You are {agent_definition.coding_ide}, acting as a SOFTWARE DEVELOPER.
 
 ## TASK TO IMPLEMENT
 {task}

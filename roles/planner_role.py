@@ -21,7 +21,7 @@ class PlannerRole(BaseRole):
     def create_prompt(self, task: str, context: AgentContext, 
                      agent_definition: AgentDefinition) -> str:
         """Create a comprehensive planning prompt"""
-        prompt = f"""You are {agent_definition.coding_ide} ({agent_definition.model}), acting as a PROJECT PLANNER.
+        prompt = f"""You are {agent_definition.coding_ide}, acting as a PROJECT PLANNER.
 
 ## TASK TO PLAN
 {task}

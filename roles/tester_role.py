@@ -21,7 +21,7 @@ class TesterRole(BaseRole):
     def create_prompt(self, task: str, context: AgentContext, 
                      agent_definition: AgentDefinition) -> str:
         """Create a comprehensive testing prompt"""
-        prompt = f"""You are {agent_definition.coding_ide} ({agent_definition.model}), acting as a SOFTWARE TESTER.
+        prompt = f"""You are {agent_definition.coding_ide}, acting as a SOFTWARE TESTER.
 
 ## ORIGINAL TASK
 {task}

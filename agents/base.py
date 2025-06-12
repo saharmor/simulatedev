@@ -390,25 +390,27 @@ class CodingAgent(ABC):
     
     async def _read_output_file(self) -> str:
         """Read the output file and return its content"""
+        import glob
+        
+        # First try the current working directory
         file_path = os.path.join(os.getcwd(), self.output_file)
         
-        # Wait for file to exist (max 10 seconds)
-        for i in range(10):
-            if os.path.exists(file_path):
-                break
-            time.sleep(1)
+        if os.path.exists(file_path):
+            found_file = file_path
         else:
-            raise Exception(f"Output file {self.output_file} was not created")
+            # Search recursively in current directory and subdirectories
+            search_pattern = os.path.join(os.getcwd(), "**", self.output_file)
+            matching_files = glob.glob(search_pattern, recursive=True)
+            
+            if matching_files:
+                # Use the first match found
+                found_file = matching_files[0]
+                print(f"Found {self.output_file} at: {found_file}")
+            else:
+                raise Exception(f"Output file {self.output_file} was not found in current directory or subdirectories")
         
         # Read the file
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(found_file, 'r', encoding='utf-8') as f:
             content = f.read()
-        
-        # Clean up the file after reading
-        try:
-            os.remove(file_path)
-            print(f"Cleaned up {self.output_file}")
-        except:
-            pass  # Ignore cleanup errors
         
         return content 
