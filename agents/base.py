@@ -330,8 +330,8 @@ class CodingAgent(ABC):
             print(f"Asking {self.agent_name} to save output to {self.output_file}...")
             save_prompt = f"""Save a comprehensive summary of everything you did to a file called '{self.output_file}' in the current directory. Include:
 - All changes made
-- Explanations of what was done
-"""
+- Explanations of what was done"""
+            
             await self._send_prompt_to_interface(save_prompt)
             time.sleep(3)
 
@@ -412,5 +412,9 @@ class CodingAgent(ABC):
         # Read the file
         with open(found_file, 'r', encoding='utf-8') as f:
             content = f.read()
+        
+        # delete the file
+        os.remove(found_file)
+        print(f"Cleaned up {self.output_file} from {found_file}")
         
         return content 
