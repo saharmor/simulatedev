@@ -276,13 +276,15 @@ python workflows_cli.py bugs https://github.com/user/repo cursor --no-pr
 
 All configuration is managed through environment variables in your `.env` file:
 
+**🎉 New Feature**: When you provide a `GITHUB_TOKEN`, SimulateDev can automatically detect your GitHub username and email! You can still override these by setting `GIT_USER_NAME` and `GIT_USER_EMAIL` if needed.
+
 | Variable | Purpose | Required | Default | Notes |
 |----------|---------|----------|---------|-------|
 | `ANTHROPIC_API_KEY` | UI element detection and IDE state analysis | Yes | - | [Get key](https://console.anthropic.com/) |
 | `GITHUB_TOKEN` | Pull request creation | Optional | - | [Get token](https://github.com/settings/tokens) |
 | `AGENT_TIMEOUT_SECONDS` | Agent execution timeout | Optional | 600 | 30-7200 seconds (0.5-120 minutes) |
-| `GIT_USER_NAME` | Git commit author | Optional | "SimulateDev Bot" | For commits and PRs |
-| `GIT_USER_EMAIL` | Git commit email | Optional | "simulatedev@example.com" | For commits and PRs |
+| `GIT_USER_NAME` | Git commit author | Optional | Auto-detected from GitHub | Set to override GitHub account name |
+| `GIT_USER_EMAIL` | Git commit email | Optional | Auto-detected from GitHub | Set to override GitHub account email |
 
 ### Timeout Configuration
 

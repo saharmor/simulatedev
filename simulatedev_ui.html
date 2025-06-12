@@ -487,7 +487,8 @@
                             <div class="help-text">
                                 <strong>Used for:</strong> Creating pull requests, pushing code changes, and repository management<br>
                                 <strong>Required permissions:</strong> repo, pull_requests<br>
-                                <strong>Create at:</strong> https://github.com/settings/tokens
+                                <strong>Create at:</strong> https://github.com/settings/tokens<br>
+                                <strong>✨ Bonus:</strong> Automatically detects your GitHub name and email for commits!
                             </div>
                         </div>
                     </div>
@@ -903,7 +904,10 @@ ANTHROPIC_API_KEY=${anthropicKey || 'your_anthropic_api_key_here'}
 # Required permissions: repo, pull_requests
 GITHUB_TOKEN=${githubToken || 'your_github_token_here'}
 
-# Optional: Configure git user for commits (if not set globally)
+# Optional: Configure git user for commits
+# If both are provided: Uses your custom values (overrides GitHub account info)
+# If only one is provided: Uses GitHub info for the missing value
+# If neither is provided: Auto-detects from GitHub token (if available)
 GIT_USER_NAME="SimulateDev Bot"
 GIT_USER_EMAIL="simulatedev@example.com"
 

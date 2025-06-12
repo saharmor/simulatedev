@@ -53,6 +53,52 @@ class GitHubIntegration:
             print(f"ERROR: Error getting authenticated user: {str(e)}")
             return None
     
+    def get_authenticated_user_info(self) -> Optional[Dict[str, Any]]:
+        """Get the authenticated user's full information including name and email"""
+        if not self.github_token:
+            return None
+        
+        try:
+            # Get basic user info
+            user_response = requests.get(
+                "https://api.github.com/user",
+                headers=self.base_headers
+            )
+            
+            if user_response.status_code != 200:
+                print(f"ERROR: Failed to get user info: {user_response.status_code}")
+                return None
+            
+            user_data = user_response.json()
+            
+            # Get user emails to find primary email
+            emails_response = requests.get(
+                "https://api.github.com/user/emails",
+                headers=self.base_headers
+            )
+            
+            primary_email = None
+            if emails_response.status_code == 200:
+                emails = emails_response.json()
+                # Find primary email
+                for email_info in emails:
+                    if email_info.get("primary", False):
+                        primary_email = email_info.get("email")
+                        break
+                # Fallback to first email if no primary found
+                if not primary_email and emails:
+                    primary_email = emails[0].get("email")
+            
+            return {
+                "login": user_data.get("login"),
+                "name": user_data.get("name") or user_data.get("login"),  # Fallback to username if no name set
+                "email": primary_email or f"{user_data.get('login')}@users.noreply.github.com"  # Fallback to GitHub noreply email
+            }
+            
+        except Exception as e:
+            print(f"ERROR: Error getting user info: {str(e)}")
+            return None
+    
     def check_push_permissions(self, repo_url: str) -> bool:
         """Check if we have push permissions to the repository"""
         if not self.github_token:
@@ -165,14 +211,38 @@ class GitHubIntegration:
     def setup_git_config(self, repo_path: str):
         """Setup git configuration for the repository"""
         try:
-            # Set up git user (required for commits)
+            # Check if user has explicitly set git config in environment
+            env_git_name = os.getenv("GIT_USER_NAME")
+            env_git_email = os.getenv("GIT_USER_EMAIL")
+            
+            if env_git_name and env_git_email:
+                # User has explicitly provided both name and email - respect their choice
+                git_name = env_git_name
+                git_email = env_git_email
+                print(f"INFO: Using user-provided git config - Name: {git_name}, Email: {git_email}")
+            else:
+                # Try to auto-detect from GitHub API
+                user_info = self.get_authenticated_user_info()
+                
+                if user_info:
+                    # Use GitHub info for missing values, env vars for provided ones
+                    git_name = env_git_name or user_info["name"]
+                    git_email = env_git_email or user_info["email"]
+                    print(f"INFO: Using GitHub user info - Name: {git_name}, Email: {git_email}")
+                else:
+                    # Fallback to defaults for missing values
+                    git_name = env_git_name or "SimulateDev Bot"
+                    git_email = env_git_email or "simulatedev@example.com"
+                    print(f"INFO: Using fallback git config - Name: {git_name}, Email: {git_email}")
+            
+            # Set up git user
             subprocess.run(
-                ["git", "config", "user.name", "SimulateDev Bot"],
+                ["git", "config", "user.name", git_name],
                 cwd=repo_path,
                 check=True
             )
             subprocess.run(
-                ["git", "config", "user.email", "simulatedev@example.com"],
+                ["git", "config", "user.email", git_email],
                 cwd=repo_path,
                 check=True
             )
@@ -689,8 +759,27 @@ def test_github_integration():
     username = integration.get_authenticated_user()
     if username:
         print(f"SUCCESS: Authenticated as: {username}")
+        
+        # Test getting full user info
+        print("\nTesting user info retrieval...")
+        user_info = integration.get_authenticated_user_info()
+        if user_info:
+            print(f"SUCCESS: User info retrieved:")
+            print(f"  Login: {user_info['login']}")
+            print(f"  Name: {user_info['name']}")
+            print(f"  Email: {user_info['email']}")
+            
+            # Demonstrate git config behavior
+            print(f"\nGit Config Behavior Examples:")
+            print(f"1. No env vars set → Uses GitHub: {user_info['name']} <{user_info['email']}>")
+            print(f"2. Both env vars set → Uses env vars (overrides GitHub)")
+            print(f"3. Only GIT_USER_NAME set → Uses custom name + GitHub email")
+            print(f"4. Only GIT_USER_EMAIL set → Uses GitHub name + custom email")
+        else:
+            print("WARNING: Could not retrieve user info")
     else:
         print("WARNING: Not authenticated or no token provided")
+        print("Git config will use environment variables or defaults")
     
     # Test parsing repo URL
     test_repo_url = "https://github.com/octocat/Hello-World"
