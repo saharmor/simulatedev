@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  simulatedev:
+    build: .
+    image: simulatedev:latest
+    container_name: simulatedev
+    environment:
+      # Required API keys - set these in your .env file
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      
+      # Optional GitHub token for PR creation
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      
+      # Optional git configuration
+      - GIT_USER_NAME=${GIT_USER_NAME:-SimulateDev Bot}
+      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-simulatedev@example.com}
+      
+      # Optional timeout configuration
+      - AGENT_TIMEOUT_SECONDS=${AGENT_TIMEOUT_SECONDS:-600}
+      
+      # Display configuration for GUI applications
+      - DISPLAY=:99
+    
+    volumes:
+      # Mount workspace directory for persistent storage
+      - ./workspace:/home/simulatedev/workspace
+      
+      # Mount git configuration if you want to persist it
+      - ./docker-volumes/git-config:/home/simulatedev/.gitconfig
+      
+      # Mount SSH keys if needed for private repositories
+      - ~/.ssh:/home/simulatedev/.ssh:ro
+      
+      # Mount the current directory for development (optional)
+      # - .:/app
+    
+    # Keep container running for interactive use
+    stdin_open: true
+    tty: true
+    
+    # Network configuration
+    network_mode: bridge
+    
+    # Resource limits (adjust as needed)
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+
+  # Optional: Add a service for development with live code reloading
+  simulatedev-dev:
+    build: .
+    image: simulatedev:latest
+    container_name: simulatedev-dev
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GIT_USER_NAME=${GIT_USER_NAME:-SimulateDev Bot}
+      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-simulatedev@example.com}
+      - AGENT_TIMEOUT_SECONDS=${AGENT_TIMEOUT_SECONDS:-600}
+      - DISPLAY=:99
+    
+    volumes:
+      # Mount source code for development
+      - .:/app
+      - ./workspace:/home/simulatedev/workspace
+      - ~/.ssh:/home/simulatedev/.ssh:ro
+    
+    stdin_open: true
+    tty: true
+    
+    # Override command for development
+    command: /bin/bash
+    
+    profiles:
+      - dev 

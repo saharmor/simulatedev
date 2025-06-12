@@ -70,10 +70,7 @@ class Config:
         """Get the Anthropic API key"""
         return os.getenv('ANTHROPIC_API_KEY')
     
-    @property
-    def google_api_key(self) -> Optional[str]:
-        """Get the Google API key"""
-        return os.getenv('GOOGLE_API_KEY')
+
     
     @property
     def github_token(self) -> Optional[str]:
@@ -97,9 +94,6 @@ class Config:
         if not self.anthropic_api_key:
             missing_keys.append('ANTHROPIC_API_KEY')
         
-        if not self.google_api_key:
-            missing_keys.append('GOOGLE_API_KEY')
-        
         if missing_keys:
             print(f"ERROR: Missing required environment variables: {', '.join(missing_keys)}")
             print("Please create a .env file based on env.example and add your API keys")
@@ -112,7 +106,6 @@ class Config:
         print("Configuration Summary:")
         print(f"  Agent Timeout: {self.agent_timeout_seconds} seconds ({self.agent_timeout_seconds/60:.1f} minutes)")
         print(f"  Anthropic API Key: {'✓ Set' if self.anthropic_api_key else '✗ Missing'}")
-        print(f"  Google API Key: {'✓ Set' if self.google_api_key else '✗ Missing'}")
         print(f"  GitHub Token: {'✓ Set' if self.github_token else '✗ Not set (optional)'}")
         print(f"  Git User: {self.git_user_name} <{self.git_user_email}>")
         print(f"  Execution Output: {self.execution_output_path}")

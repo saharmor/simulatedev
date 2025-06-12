@@ -12,10 +12,10 @@ import json
 import time
 import subprocess
 from PIL import Image
-import google.generativeai as genai
 from dotenv import load_dotenv
 
 from utils.computer_use_utils import take_screenshot, ClaudeComputerUse
+from utils.claude_client import analyze_ide_state_with_claude
 import pyautogui
 
 def get_window_list():
@@ -221,9 +221,9 @@ def capture_window_by_title(title_substring, app_name=None):
         print(f"Error capturing window: {e}")
         return None, None
 
-def initialize_gemini_client():
+def initialize_claude_client():
     """
-    Initialize the Google Gemini API.
+    Initialize the Claude API client.
     
     Returns:
         bool: True if initialization is successful, False otherwise.
@@ -232,18 +232,18 @@ def initialize_gemini_client():
         # Load environment variables from .env file if it exists
         load_dotenv()
         
-        # Get API key from environment variables
-        api_key = os.environ.get('GOOGLE_API_KEY')
-        if not api_key:
-            print("Error: GOOGLE_API_KEY environment variable not set.")
-            print("Please create a .env file with the line: GOOGLE_API_KEY=your_api_key_here")
+        # Import the global claude client
+        from utils.claude_client import claude_client
+        
+        # Check if Claude client is available
+        if not claude_client.is_available():
+            print("Error: ANTHROPIC_API_KEY environment variable not set or Claude client unavailable.")
+            print("Please create a .env file with the line: ANTHROPIC_API_KEY=your_api_key_here")
             return False
         
-        # Configure the Gemini API
-        genai.configure(api_key=api_key)
         return True
     except Exception as e:
-        print(f"Error initializing Gemini client: {e}")
+        print(f"Error initializing Claude client: {e}")
         return False
 
 def analyze_ide_state(image_input, interface_state_analysis_prompt):
@@ -258,47 +258,8 @@ def analyze_ide_state(image_input, interface_state_analysis_prompt):
         tuple: (bool, str, str) - (Whether the IDE is done, State, Reasoning)
     """
     try:
-        # Load and prepare the image
-        if isinstance(image_input, str):
-            # It's a file path
-            img = Image.open(image_input)
-        else:
-            # It's a BytesIO buffer
-            img = Image.open(image_input)
-        
-        # Ensure image is in RGB format for compatibility
-        if img.mode != "RGB":
-            img = img.convert("RGB")
-        
-        # Get Gemini model
-        model = genai.GenerativeModel('gemini-2.5-flash-preview-05-20')
-        
-        # Get response from Gemini
-        response = model.generate_content([interface_state_analysis_prompt, img])
-        response_text = response.text.strip()
-        
-        # Extract JSON from response text
-        try:
-            # Look for JSON content between triple backticks if present
-            if "```json" in response_text and "```" in response_text.split("```json", 1)[1]:
-                json_content = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
-            elif "```" in response_text and "```" in response_text.split("```", 1)[1]:
-                json_content = response_text.split("```", 1)[1].split("```", 1)[0].strip()
-            else:
-                json_content = response_text
-            
-            # Parse the JSON
-            analysis = json.loads(json_content)
-            
-            state = analysis["interface_state"].lower()
-            reasoning = analysis["reasoning"]
-            
-            # Determine if IDE is done
-            is_done = state == "done"
-            return is_done, state, reasoning                
-        except json.JSONDecodeError:
-            return False, "processing", "JSON parsing failed"  # Default to processing if JSON parsing fails
-            
+        # Use the shared Claude client for IDE state analysis
+        return analyze_ide_state_with_claude(image_input, interface_state_analysis_prompt)
     except Exception as e:
         print(f"Error analyzing IDE state: {e}")
         return False, f"error: {str(e)}", str(e)
@@ -356,9 +317,9 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
         import tempfile
         temp_dir = tempfile.mkdtemp()
         
-        # Initialize Gemini API
-        if not initialize_gemini_client():
-            print(f"Failed to initialize Gemini API. Cannot monitor {ide_name} state.")
+        # Initialize Claude API
+        if not initialize_claude_client():
+            print(f"Failed to initialize Claude API. Cannot monitor {ide_name} state.")
             return False
             
         print("-" * 30)
