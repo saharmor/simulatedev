@@ -269,6 +269,7 @@ Note: A workflow must be specified using the --workflow flag.
     parser.add_argument("--no-pr", action="store_true", help="Skip creating pull request")
     parser.add_argument("--output", help="Output file for execution report")
     parser.add_argument("--no-report", action="store_true", help="Skip saving execution report")
+    parser.add_argument("--delete-existing", action="store_true", help="Delete existing repository directory before cloning")
     
     return parser.parse_args()
 
@@ -303,7 +304,8 @@ async def execute_single_agent(args) -> bool:
             repo_url=repo_url,
             target_dir=args.target_dir,
             create_pr=not args.no_pr,
-            work_directory=args.work_dir
+            work_directory=args.work_dir,
+            delete_existing=args.delete_existing
         )
         
         # Print summary
@@ -360,7 +362,8 @@ async def execute_multi_agent(args) -> bool:
             target_dir=args.target_dir,
             create_pr=not args.no_pr,
             work_directory=args.work_dir,
-            workflow=args.workflow
+            workflow=args.workflow,
+            delete_existing=args.delete_existing
         )
         
         # Print summary

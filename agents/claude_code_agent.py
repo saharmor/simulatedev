@@ -248,15 +248,67 @@ After completing the above task, please save a comprehensive summary of everythi
             print(f"INFO: Could not check for Claude Code command: {str(e)}")
             return False
     
-    async def open_coding_interface(self) -> bool:
-        """Verify Claude Code is available and ready for headless mode"""
-        print(f"Checking {self.agent_name} availability...")
+    def is_ide_open_with_correct_project(self) -> bool:
+        """Check if Claude Code is in the correct project directory
         
-        # In headless mode, we just need to verify the command exists
-        if await self.is_coding_agent_open():
-            print(f"SUCCESS: {self.agent_name} is ready for headless operation")
+        For headless mode, this means checking if we're in the correct working directory
+        """
+        if not self._current_project_name:
+            print(f"Warning: No project name set for {self.agent_name}, cannot verify project-specific directory")
+            return False
+        
+        current_dir = os.getcwd()
+        current_project = os.path.basename(current_dir)
+        
+        if self._current_project_name.lower() in current_project.lower():
+            print(f"SUCCESS: Claude Code is in the correct project directory '{current_project}'")
             return True
         else:
-            print(f"ERROR: {self.agent_name} command not available. Please install Claude Code.")
-            print("Install instructions: https://github.com/anthropics/claude-code")
-            return False 
+            print(f"Claude Code is in directory '{current_project}' but expected project '{self._current_project_name}'")
+            return False
+    
+    async def is_coding_agent_open_with_project(self) -> bool:
+        """Check if Claude Code is available AND in the correct project directory
+        
+        This combines command availability checking with project directory verification.
+        
+        Returns:
+            bool: True if Claude Code is available and in the correct project directory, False otherwise
+        """
+        # First check if the command is available
+        if not await self.is_coding_agent_open():
+            return False
+            
+        # Then check if we're in the correct project directory
+        if not self.is_ide_open_with_correct_project():
+            print(f"{self.agent_name} command is available but not in the correct project directory '{self._current_project_name}'")
+            return False
+            
+        print(f"SUCCESS: {self.agent_name} is available and in the correct project directory '{self._current_project_name}'")
+        return True
+    
+    async def open_coding_interface(self) -> bool:
+        """Verify Claude Code is available and ready for headless mode with correct project"""
+        print(f"Checking {self.agent_name} availability...")
+        
+        # Set current project if we have a repo_dir
+        if hasattr(self, 'repo_dir') and self.repo_dir:
+            self.set_current_project(self.repo_dir)
+        
+        # Check if available and in correct project
+        if await self.is_coding_agent_open_with_project():
+            print(f"SUCCESS: {self.agent_name} is ready for headless operation in correct project")
+            return True
+        else:
+            # If command is available but wrong directory, try to change to correct directory
+            if await self.is_coding_agent_open():
+                if self._current_project_name:
+                    print(f"Claude Code is available but not in correct project directory")
+                    print(f"Current directory: {os.getcwd()}")
+                    print(f"Expected project: {self._current_project_name}")
+                    print(f"Note: For headless mode, ensure you're running from the correct project directory")
+                return False
+            else:
+                print(f"ERROR: {self.agent_name} command not available. Please install Claude Code.")
+                print("Install instructions: https://github.com/anthropics/claude-code")
+                return False 
