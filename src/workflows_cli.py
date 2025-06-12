@@ -2,8 +2,8 @@
 """
 SimulateDev Workflows CLI - AI Coding Workflow Launcher
 
-This tool allows you to run AI coding workflows on GitHub repositories.
-Each workflow follows a systematic approach: Map → Rank → Choose → Implement
+This tool provides a command-line interface for running predefined AI coding workflows 
+on GitHub repositories using the unified orchestrator.
 
 Usage:
     python workflows_cli.py <workflow> <repo_url> <agent_name>
@@ -42,144 +42,80 @@ import os
 import shutil
 import sys
 import webbrowser
-from typing import Optional
-from dataclasses import dataclass
+from urllib.parse import urlparse
 
-from utils.clone_repo import clone_repository
-from workflows.bug_hunting import BugHunter
-from workflows.code_optimization import CodeOptimizer
-from workflows.general_coding import GeneralCodingWorkflow
-from workflows.test_workflow import TestWorkflow
-from src.github_integration import GitHubIntegration
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.orchestrator import Orchestrator
 from coding_agents import CodingAgentIdeType
-
 from common.config import config
 from common.exceptions import AgentTimeoutException, WorkflowTimeoutException
 
-@dataclass
-class WorkflowRequest:
-    workflow_type: str
-    repo_url: str
-    agent: CodingAgentIdeType
-    target_dir: Optional[str] = None
-    create_pr: bool = True
 
-
-class WorkflowOrchestrator:
-    """Orchestrator for AI coding workflows"""
-    
-    def __init__(self):
-        self.github_integration = GitHubIntegration()
-        # Use config for directory paths
-        self.base_dir = config.scanned_repos_path
-        os.makedirs(self.base_dir, exist_ok=True)
-    
-    def get_workflow_instance(self, workflow_type: str):
-        """Get the appropriate workflow instance based on type"""
-        workflows = {
-            'bugs': BugHunter(),
-            'optimize': CodeOptimizer(),
-            'refactor': CodeOptimizer(),  # Uses refactor method
-            'low-hanging': CodeOptimizer(),  # Uses low-hanging fruit method
-            'general': GeneralCodingWorkflow(),
-            'test': TestWorkflow()
-        }
+async def execute_workflow(workflow_type: str, repo_url: str, agent_type: str,
+                          target_dir: str = None, create_pr: bool = True, 
+                          delete_existing: bool = False) -> bool:
+    """Execute a predefined workflow using the unified orchestrator"""
+    try:
+        print(f"STARTING: {workflow_type} workflow...")
+        print(f"Repository: {repo_url}")
+        print(f"Agent: {agent_type}")
+        print(f"Timeout: {config.agent_timeout_seconds} seconds ({config.agent_timeout_seconds/60:.1f} minutes)")
+        print(f"Approach: Systematic (map → rank → choose → implement one)")
+        print(f"Create PR: {create_pr}")
         
-        if workflow_type not in workflows:
-            raise ValueError(f"Unknown workflow type: {workflow_type}")
+        # Handle repository deletion if requested
+        if delete_existing:
+            parsed_path = urlparse(repo_url).path.rstrip('/')
+            repo_name = os.path.splitext(os.path.basename(parsed_path))[0]
+            if repo_name.endswith('.git'):
+                repo_name = repo_name[:-4]
+            repo_path = os.path.join(config.scanned_repos_path, repo_name)
+            if os.path.exists(repo_path):
+                shutil.rmtree(repo_path)
+                print(f"Deleted existing repository folder: {repo_path}")
         
-        return workflows[workflow_type]
-    
-    async def execute_workflow(self, request: WorkflowRequest) -> bool:
-        """Execute the specified workflow"""
-        try:            
-            print(f"STARTING: {request.workflow_type} workflow...")
-            print(f"Repository: {request.repo_url}")
-            print(f"Agent: {request.agent.value}")
-            print(f"Timeout: {config.agent_timeout_seconds} seconds ({config.agent_timeout_seconds/60:.1f} minutes)")
-            print(f"Approach: Systematic (map → rank → choose → implement one)")
-            print(f"Create PR: {request.create_pr}")
+        # Create workflow request using the unified orchestrator
+        orchestrator = Orchestrator()
+        request = Orchestrator.create_request(
+            workflow_type=workflow_type,
+            repo_url=repo_url,
+            agent_type=agent_type,
+            target_dir=target_dir,
+            create_pr=create_pr,
+            delete_existing=delete_existing
+        )
+        
+        # Execute the workflow
+        response = await orchestrator.execute_task(request)
+        
+        if response.success:
+            print(f"\nCOMPLETED: {workflow_type.title()} workflow completed successfully!")
             
-            # Get workflow instance
-            workflow = self.get_workflow_instance(request.workflow_type)
+            # Open PR in browser if created
+            if hasattr(response, 'pr_url') and response.pr_url:
+                print("Opening pull request in your default browser...")
+                webbrowser.open(response.pr_url)
+                print(f"\nREVIEW: You can review the changes at: {response.pr_url}")
             
-            # Step 1: Clone repository
-            print("\nCLONING: repository...")
-            if request.target_dir:
-                repo_path = request.target_dir
-                success = clone_repository(request.repo_url, request.target_dir)
-                if not success:
-                    print("ERROR: Failed to clone repository")
-                    return False
-            else:
-                repo_path = workflow.clone_repository(request.repo_url)
-            
-            print(f"SUCCESS: Repository cloned to: {repo_path}")
-            
-            # Step 2: Execute the specific workflow
-            print(f"\nEXECUTING: {request.workflow_type} workflow...")
-            
-            if request.workflow_type == 'bugs':
-                agent_execution_report_summary = await workflow.hunt_bugs(request.agent, request.repo_url, repo_path)
-            elif request.workflow_type == 'optimize':
-                agent_execution_report_summary = await workflow.optimize_performance(request.agent, request.repo_url, repo_path)
-            elif request.workflow_type == 'refactor':
-                agent_execution_report_summary = await workflow.refactor_code(request.agent, request.repo_url, repo_path)
-            elif request.workflow_type == 'low-hanging':
-                agent_execution_report_summary = await workflow.find_low_hanging_fruit(request.agent, request.repo_url, repo_path)
-            elif request.workflow_type == 'test':
-                agent_execution_report_summary = await workflow.execute_simple_hello_world(request.agent, repo_path)
-            else:
-                # General workflow would need a prompt, but we're focusing on specialized workflows here
-                raise ValueError(f"Unsupported workflow in execute_workflow: {request.workflow_type}")
-            
-            print("SUCCESS: Workflow completed")
-            
-            # Step 3: Create pull request if requested
-            if request.create_pr:
-                print("\nCREATING: pull request...")
-                
-                # Map workflow types to task descriptions
-                workflow_task_descriptions = {
-                    'bugs': 'Find and fix one high-impact bug',
-                    'optimize': 'Find and implement one high-value performance optimization',
-                    'refactor': 'Code quality improvements and refactoring',
-                    'low-hanging': 'Find and implement one impressive low-hanging fruit improvement',
-                    'test': 'Simple hello world test for end-to-end agent testing'
-                }
-                
-                task_description = workflow_task_descriptions.get(request.workflow_type, f"{request.workflow_type} workflow")
-                coding_ides_info = f"{request.agent.value} with claude-sonnet-4 as Coder"
-                
-                pr_url = self.github_integration.smart_workflow(
-                    repo_path=repo_path,
-                    original_repo_url=request.repo_url,
-                    workflow_name=f"{request.agent.value}-{request.workflow_type}",
-                    agent_execution_report_summary=agent_execution_report_summary,
-                    coding_ides_info=coding_ides_info,
-                    task_description=task_description
-                )
-                
-                if pr_url:
-                    print(f"SUCCESS: Pull request created: {pr_url}")
-                    print("Opening pull request in your default browser...")
-                    webbrowser.open(pr_url)
-                    print(f"\nREVIEW: You can review the changes at: {pr_url}")
-                else:
-                    print("WARNING: Pull request creation failed")
-            else:
-                print("\nSKIPPING: pull request creation")
-            
-            print(f"\nRESULTS: Summary:\n{agent_execution_report_summary}")
-            
+            print(f"\nRESULTS: Summary:\n{response.final_output}")
             return True
-        except Exception as e:
-            if isinstance(e, (AgentTimeoutException, WorkflowTimeoutException)):
-                # Handle timeout scenarios gracefully
-                print(f"\n{e.get_user_friendly_message()}")
-            else:
-                print(f"ERROR: Workflow execution failed: {str(e)}")
+        else:
+            print(f"\nFAILED: {workflow_type.title()} workflow did not complete successfully.")
+            if response.error_message:
+                print(f"Error: {response.error_message}")
+            print("Check the output above for specific details about what went wrong.")
             return False
+            
+    except Exception as e:
+        if isinstance(e, (AgentTimeoutException, WorkflowTimeoutException)):
+            # Handle timeout scenarios gracefully
+            print(f"\n{e.get_user_friendly_message()}")
+        else:
+            print(f"ERROR: Workflow execution failed: {str(e)}")
+        return False
 
 
 def parse_arguments():
@@ -256,38 +192,19 @@ async def main():
     try:
         args = parse_arguments()
         
-        # Convert string to enum
-        agent_type = CodingAgentIdeType(args.agent)
-        
-        # Create workflow request
-        request = WorkflowRequest(
+        # Execute workflow using the unified orchestrator
+        success = await execute_workflow(
             workflow_type=args.workflow,
             repo_url=args.repo_url,
-            agent=agent_type,
+            agent_type=args.agent,
             target_dir=args.target_dir,
             create_pr=not args.no_pr,
+            delete_existing=args.delete_existing
         )
         
-        if args.delete_existing:
-            # delete local repo directory using same logic as AgentOrchestrator
-            from urllib.parse import urlparse
-            parsed_path = urlparse(args.repo_url).path.rstrip('/')
-            repo_name = os.path.splitext(os.path.basename(parsed_path))[0]
-            repo_path = os.path.join(config.scanned_repos_path, repo_name)
-            if os.path.exists(repo_path):
-                shutil.rmtree(repo_path)
-                print(f"Deleted existing repository folder: {repo_path}")
-        
-        # Initialize and run workflow orchestrator
-        orchestrator = WorkflowOrchestrator()
-        success = await orchestrator.execute_workflow(request)
-        
         if success:
-            print(f"\nCOMPLETED: {args.workflow.title()} workflow completed successfully!")
             sys.exit(0)
         else:
-            print(f"\nFAILED: {args.workflow.title()} workflow did not complete successfully.")
-            print("Check the output above for specific details about what went wrong.")
             sys.exit(1)
             
     except KeyboardInterrupt:

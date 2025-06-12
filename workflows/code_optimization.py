@@ -6,24 +6,12 @@ This module provides specialized functionality for AI-powered code optimization,
 extending the unified orchestrator with optimization-specific prompts and workflows.
 """
 
-import pyautogui
-import pyperclip
-import time
-import sys
-import os
-
-# Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from src.orchestrator import Orchestrator
-from coding_agents import CodingAgentIdeType
-
 
 class CodeOptimizer:
-    """Specialized orchestrator for code optimization workflows"""
+    """Prompt generator for code optimization workflows"""
     
     def __init__(self):
-        self.orchestrator = Orchestrator()
+        pass
     
     def generate_low_hanging_fruit_prompt(self, repo_url: str) -> str:
         """Generate a prompt for finding and implementing one high-value, easy improvement"""
@@ -225,54 +213,3 @@ Working on: {repo_url}
 - Follow the existing code style and conventions
 
 Please proceed with your refactoring analysis and implementation."""
-
-    async def optimize_performance(self, agent_type: CodingAgentIdeType, repo_url: str, 
-                                  project_path: str = None) -> str:
-        """Execute a performance optimization workflow that maps, ranks, and implements one high-value optimization"""
-        prompt = self.generate_performance_optimization_prompt(repo_url)
-        
-        # Create single-agent request using unified orchestrator
-        request = Orchestrator.create_single_agent_request(
-            task_description=prompt,
-            agent_type=agent_type.value,
-            workflow_type="code_optimization",
-            repo_url=repo_url,
-            work_directory=project_path
-        )
-        
-        response = await self.orchestrator.execute_task(request)
-        return response.final_output
-    
-    async def refactor_code(self, agent_type: CodingAgentIdeType, repo_url: str, 
-                           project_path: str = None) -> str:
-        """Execute a code refactoring workflow"""
-        prompt = self.generate_refactoring_prompt(repo_url)
-        
-        # Create single-agent request using unified orchestrator
-        request = Orchestrator.create_single_agent_request(
-            task_description=prompt,
-            agent_type=agent_type.value,
-            workflow_type="code_optimization",
-            repo_url=repo_url,
-            work_directory=project_path
-        )
-        
-        response = await self.orchestrator.execute_task(request)
-        return response.final_output
-    
-    async def find_low_hanging_fruit(self, agent_type: CodingAgentIdeType, repo_url: str, 
-                                    project_path: str = None) -> str:
-        """Execute a low-hanging fruit workflow that maps, ranks, and implements one high-value improvement"""
-        prompt = self.generate_low_hanging_fruit_prompt(repo_url)
-        
-        # Create single-agent request using unified orchestrator
-        request = Orchestrator.create_single_agent_request(
-            task_description=prompt,
-            agent_type=agent_type.value,
-            workflow_type="code_optimization",
-            repo_url=repo_url,
-            work_directory=project_path
-        )
-        
-        response = await self.orchestrator.execute_task(request)
-        return response.final_output

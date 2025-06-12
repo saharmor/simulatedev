@@ -37,7 +37,7 @@ class TaskRequest:
     create_pr: bool = True
     work_directory: Optional[str] = None
     delete_existing: bool = False
-
+    
 
 class Orchestrator:
     """Unified orchestrator for all agent execution scenarios"""
@@ -55,34 +55,103 @@ class Orchestrator:
         os.makedirs(self.responses_dir, exist_ok=True)
     
     @classmethod
-    def create_single_agent_request(cls, task_description: str, agent_type: str, 
-                                  workflow_type: Optional[str] = None,
-                                  repo_url: Optional[str] = None, 
-                                  target_dir: Optional[str] = None,
-                                  create_pr: bool = True, 
-                                  work_directory: Optional[str] = None,
-                                  delete_existing: bool = False) -> TaskRequest:
+    def create_request(cls, 
+                      # Core parameters
+                      task_description: Optional[str] = None,
+                      agents: Optional[List[AgentDefinition]] = None,
+                      
+                      # Workflow parameters (for predefined workflows)
+                      workflow_type: Optional[str] = None,
+                      
+                      # Single agent parameters (convenience)
+                      agent_type: Optional[str] = None,
+                      agent_model: str = "claude-sonnet-4",
+                      agent_role: AgentRole = AgentRole.CODER,
+                      
+                      # Multi-agent parameters (convenience)
+                      multi_agent_task: Optional[MultiAgentTask] = None,
+                      
+                      # Common parameters
+                      repo_url: Optional[str] = None,
+                      target_dir: Optional[str] = None,
+                      create_pr: bool = True,
+                      work_directory: Optional[str] = None,
+                      delete_existing: bool = False) -> TaskRequest:
         """
-        Create a single-agent request (convenience method)
-        Single-agent is just multi-agent with one CODER agent
-        """
-        # Convert string to CodingAgentIdeType if needed
-        try:
-            agent_enum = CodingAgentIdeType(agent_type.lower().strip())
-        except ValueError:
-            raise ValueError(f"Unsupported agent type: {agent_type}. Valid agent types are: {', '.join([e.value for e in CodingAgentIdeType])}")
+        Unified request creation method for all agent execution scenarios.
         
-        # Create a single coder agent
-        agent_def = AgentDefinition(
-            coding_ide=agent_enum.value,
-            model="N/A",  # Default model
-            role=AgentRole.CODER
-        )
+        Usage patterns:
+        1. Predefined workflow: create_request(workflow_type="bugs", repo_url="...", agent_type="cursor")
+        2. Single agent: create_request(task_description="...", agent_type="cursor")
+        3. Multi-agent: create_request(task_description="...", agents=[...])
+        4. From MultiAgentTask: create_request(multi_agent_task=task)
+        """
+        
+        # Determine the scenario and generate appropriate task_description and agents
+        final_task_description = None
+        final_agents = None
+        final_workflow_type = workflow_type
+        
+        # Scenario 1: Predefined workflow
+        if workflow_type and workflow_type in ['bugs', 'optimize', 'refactor', 'low-hanging', 'test']:
+            if not repo_url:
+                raise ValueError("repo_url is required for predefined workflows")
+            if not agent_type:
+                raise ValueError("agent_type is required for predefined workflows")
+                
+            # Generate workflow-specific prompt
+            final_task_description = cls._generate_workflow_prompt(workflow_type, repo_url)
+            
+            # Create single coder agent
+            try:
+                agent_enum = CodingAgentIdeType(agent_type.lower().strip())
+            except ValueError:
+                raise ValueError(f"Unsupported agent type: {agent_type}. Valid agent types are: {', '.join([e.value for e in CodingAgentIdeType])}")
+            
+            final_agents = [AgentDefinition(
+                coding_ide=agent_enum.value,
+                model=agent_model,
+                role=agent_role
+            )]
+        
+        # Scenario 2: Multi-agent task object
+        elif multi_agent_task:
+            final_task_description = multi_agent_task.get_task_description()
+            final_agents = multi_agent_task.agents
+            final_workflow_type = workflow_type or (multi_agent_task.workflow.value if multi_agent_task.workflow else None)
+            repo_url = repo_url or multi_agent_task.repo_url
+        
+        # Scenario 3: Explicit agents provided
+        elif agents:
+            if not task_description:
+                raise ValueError("task_description is required when providing explicit agents")
+            final_task_description = task_description
+            final_agents = agents
+        
+        # Scenario 4: Single agent (convenience)
+        elif agent_type:
+            if not task_description:
+                raise ValueError("task_description is required for single agent requests")
+                
+            try:
+                agent_enum = CodingAgentIdeType(agent_type.lower().strip())
+            except ValueError:
+                raise ValueError(f"Unsupported agent type: {agent_type}. Valid agent types are: {', '.join([e.value for e in CodingAgentIdeType])}")
+            
+            final_agents = [AgentDefinition(
+                coding_ide=agent_enum.value,
+                model=agent_model,
+                role=agent_role
+            )]
+            final_task_description = task_description
+        
+        else:
+            raise ValueError("Must provide one of: workflow_type, multi_agent_task, agents, or agent_type")
         
         return TaskRequest(
-            task_description=task_description,
-            agents=[agent_def],
-            workflow_type=workflow_type,
+            task_description=final_task_description,
+            agents=final_agents,
+            workflow_type=final_workflow_type,
             repo_url=repo_url,
             target_dir=target_dir,
             create_pr=create_pr,
@@ -91,32 +160,42 @@ class Orchestrator:
         )
     
     @classmethod
-    def create_multi_agent_request(cls, task: MultiAgentTask, 
-                                 workflow_type: Optional[str] = None,
-                                 repo_url: Optional[str] = None,
-                                 target_dir: Optional[str] = None, 
-                                 create_pr: bool = True,
-                                 work_directory: Optional[str] = None, 
-                                 delete_existing: bool = False) -> TaskRequest:
-        """
-        Create a multi-agent request from a MultiAgentTask
-        """
-        # Use provided repo_url or fall back to task.repo_url
-        effective_repo_url = repo_url or task.repo_url
+    def _generate_workflow_prompt(cls, workflow_type: str, repo_url: str) -> str:
+        """Generate workflow-specific prompts"""
+        # Import workflow classes here to avoid circular imports
+        from workflows.bug_hunting import BugHunter
+        from workflows.code_optimization import CodeOptimizer
+        from workflows.general_coding import GeneralCodingWorkflow
+        from workflows.test_workflow import TestWorkflow
         
-        # Use provided workflow_type or fall back to task.workflow
-        effective_workflow = workflow_type or (task.workflow.value if task.workflow else None)
+        workflow_instances = {
+            'bugs': BugHunter(),
+            'optimize': CodeOptimizer(),
+            'refactor': CodeOptimizer(),
+            'low-hanging': CodeOptimizer(),
+            'general': GeneralCodingWorkflow(),
+            'test': TestWorkflow()
+        }
         
-        return TaskRequest(
-            task_description=task.get_task_description(),
-            agents=task.agents,
-            workflow_type=effective_workflow,
-            repo_url=effective_repo_url,
-            target_dir=target_dir,
-            create_pr=create_pr,
-            work_directory=work_directory,
-            delete_existing=delete_existing
-        )
+        if workflow_type not in workflow_instances:
+            raise ValueError(f"Unknown workflow type: {workflow_type}")
+        
+        workflow_instance = workflow_instances[workflow_type]
+        
+        if workflow_type == 'bugs':
+            return workflow_instance.generate_bug_hunting_prompt(repo_url)
+        elif workflow_type == 'optimize':
+            return workflow_instance.generate_performance_optimization_prompt(repo_url)
+        elif workflow_type == 'refactor':
+            return workflow_instance.generate_refactoring_prompt(repo_url)
+        elif workflow_type == 'low-hanging':
+            return workflow_instance.generate_low_hanging_fruit_prompt(repo_url)
+        elif workflow_type == 'test':
+            return workflow_instance.create_simple_hello_world_prompt()
+        else:
+            raise ValueError(f"Unsupported workflow in _generate_workflow_prompt: {workflow_type}")
+    
+
     
     def _setup_work_directory(self, request: TaskRequest) -> str:
         """Setup and return the work directory for the request"""

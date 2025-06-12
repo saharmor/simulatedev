@@ -200,13 +200,15 @@ async def execute_task(args) -> bool:
         repo_url = args.repo
         work_directory = args.work_dir
         
-        # Create task request
+        # Create task request using unified method
         if len(agents) == 1:
             # Single agent
             agent = agents[0]
-            task_request = Orchestrator.create_single_agent_request(
+            task_request = Orchestrator.create_request(
                 task_description=args.task,
                 agent_type=agent.coding_ide,
+                agent_model=agent.model,
+                agent_role=agent.role,
                 workflow_type=args.workflow,
                 repo_url=repo_url,
                 target_dir=args.target_dir,
@@ -222,8 +224,8 @@ async def execute_task(args) -> bool:
                 workflow=args.workflow,
                 coding_task_prompt=args.task
             )
-            task_request = Orchestrator.create_multi_agent_request(
-                task=multi_agent_task,
+            task_request = Orchestrator.create_request(
+                multi_agent_task=multi_agent_task,
                 workflow_type=args.workflow,
                 repo_url=repo_url,
                 target_dir=args.target_dir,

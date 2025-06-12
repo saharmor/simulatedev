@@ -34,95 +34,116 @@ This package contains specialized workflow modules for different coding use case
 
 ## Usage Examples
 
-### Basic Workflow Usage
+### Basic Workflow Usage (via Unified Orchestrator)
 ```python
-from workflows.general_coding import GeneralCodingWorkflow
-from coding_agents import CodingAgentIdeType
+from src.orchestrator import Orchestrator
 
-# Initialize workflow
-workflow = GeneralCodingWorkflow()
+# Initialize orchestrator
+orchestrator = Orchestrator()
 
-# Execute coding task
-result = await workflow.execute_coding_task(
-    agent_type=CodingAgentIdeType.CURSOR,
+# Create workflow request (UNIFIED METHOD)
+request = Orchestrator.create_request(
+    workflow_type="bugs",  # or "optimize", "refactor", "low-hanging", "test"
     repo_url="https://github.com/user/repo",
-    user_prompt="Add error handling to the API endpoints",
-    project_path="/path/to/project"
+    agent_type="cursor",
+    create_pr=True
 )
+
+# Execute workflow
+response = await orchestrator.execute_task(request)
+print(response.final_output)
 ```
 
-### Bug Hunting Workflow
+### Alternative Usage Patterns
 ```python
-from workflows.bug_hunting import BugHunter
-from coding_agents import CodingAgentIdeType
-
-# Initialize bug hunter
-bug_hunter = BugHunter()
-
-# Hunt for bugs
-result = await bug_hunter.hunt_bugs(
-    agent_type=CodingAgentIdeType.WINDSURF,
-    repo_url="https://github.com/user/repo",
-    project_path="/path/to/project"
+# Single agent with custom task
+request = Orchestrator.create_request(
+    task_description="Fix the responsive design issues",
+    agent_type="cursor",
+    repo_url="https://github.com/user/repo"
 )
+
+# Multi-agent with explicit agents
+from agents import AgentDefinition, AgentRole
+agents = [
+    AgentDefinition(coding_ide="cursor", model="claude-sonnet-4", role=AgentRole.CODER),
+    AgentDefinition(coding_ide="windsurf", model="claude-sonnet-4", role=AgentRole.TESTER)
+]
+request = Orchestrator.create_request(
+    task_description="Build a REST API with tests",
+    agents=agents,
+    repo_url="https://github.com/user/repo"
+)
+
+# Multi-agent with MultiAgentTask object
+from agents import MultiAgentTask
+task = MultiAgentTask(agents=agents, coding_task_prompt="Build API")
+request = Orchestrator.create_request(multi_agent_task=task)
 ```
 
-### Performance Optimization
-```python
-from workflows.code_optimization import CodeOptimizer
-from coding_agents import CodingAgentIdeType
+### CLI Usage (Recommended)
+```bash
+# Bug hunting workflow
+python workflows_cli.py bugs https://github.com/user/repo cursor
 
-# Initialize optimizer
-optimizer = CodeOptimizer()
+# Performance optimization
+python workflows_cli.py optimize https://github.com/user/repo windsurf
 
-# Optimize performance
-result = await optimizer.optimize_performance(
-    agent_type=CodingAgentIdeType.CLAUDE_CODE,
-    repo_url="https://github.com/user/repo",
-    project_path="/path/to/project"
-)
+# Code refactoring
+python workflows_cli.py refactor https://github.com/user/repo cursor
 ```
 
 ## Creating Custom Workflows
 
 To create a new workflow:
 
-1. **Use the Unified Orchestrator**:
+1. **Create a Prompt Generator Class**:
 ```python
-from src.orchestrator import Orchestrator
-from coding_agents import CodingAgentIdeType
-
 class MyCustomWorkflow:
-    def __init__(self):
-        self.orchestrator = Orchestrator()
+    """Custom workflow prompt generator"""
     
-    async def execute_custom_task(self, agent_type: CodingAgentIdeType, repo_url: str, project_path: str = None):
-        # Create single-agent request
-        request = Orchestrator.create_single_agent_request(
-            task_description="Your custom prompt here",
-            agent_type=agent_type.value,
-            workflow_type="custom",
-            repo_url=repo_url,
-            work_directory=project_path
-        )
+    def __init__(self):
+        pass  # No orchestrator needed - just generates prompts
+    
+    def generate_custom_prompt(self, repo_url: str) -> str:
+        """Generate a custom workflow prompt"""
+        return f"""Your custom prompt for {repo_url}
         
-        # Execute task
-        response = await self.orchestrator.execute_task(request)
-        return response.final_output
+        ## Instructions
+        - Custom workflow instructions here
+        - Specific to your use case
+        
+        Please proceed with the custom task."""
 ```
 
-2. **Add specialized prompt generation methods**
-3. **Implement workflow-specific logic**
-4. **Add comprehensive error handling**
+2. **Add to Orchestrator's _generate_workflow_prompt method**:
+```python
+# In orchestrator.py, add to workflow_instances dict:
+'custom': MyCustomWorkflow(),
+
+# Add to prompt generation logic:
+elif workflow_type == 'custom':
+    return workflow_instance.generate_custom_prompt(repo_url)
+```
+
+3. **Add to CLI choices** (optional):
+```python
+# In workflows_cli.py, add to choices:
+choices=["bugs", "optimize", "refactor", "low-hanging", "test", "custom"]
+```
 
 ## Workflow Architecture
 
 ```
-Unified Orchestrator (base functionality)
-├── GeneralCodingWorkflow (uses Orchestrator)
-├── BugHunter (uses Orchestrator)  
-├── CodeOptimizer (uses Orchestrator)
-└── TestWorkflow (uses Orchestrator)
+Unified Orchestrator (handles all execution)
+├── Workflow Request Creation (create_workflow_request)
+├── Agent Execution & Management
+├── Repository Cloning & PR Creation
+└── Uses Workflow Classes for Prompt Generation:
+    ├── GeneralCodingWorkflow (prompt generation only)
+    ├── BugHunter (prompt generation only)  
+    ├── CodeOptimizer (prompt generation only)
+    └── TestWorkflow (prompt generation only)
 ```
 
 ## Key Benefits
