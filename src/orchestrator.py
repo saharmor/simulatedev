@@ -2,15 +2,16 @@
 """
 Unified Orchestrator Module
 
-This module provides a unified interface for both single-agent and multi-agent workflows.
-Single-agent workflows are treated as a special case of multi-agent workflows with one coder agent.
+This module provides a single orchestrator for all agent execution scenarios.
+Single-agent execution is treated as multi-agent with one agent.
+Workflows are task type modifiers that influence role-specific prompts.
 """
 
 import os
 import json
 import time
 import webbrowser
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -25,21 +26,20 @@ from src.github_integration import GitHubIntegration
 
 
 @dataclass
-class UnifiedRequest:
-    """Unified request structure for both single and multi-agent workflows"""
+class TaskRequest:
+    """Unified request structure for all agent execution scenarios"""
     task_description: str
     agents: List[AgentDefinition]
+    workflow_type: Optional[str] = None  # bug_hunting, code_optimization, general_coding, etc.
     repo_url: Optional[str] = None
     target_dir: Optional[str] = None
     create_pr: bool = True
     work_directory: Optional[str] = None
-    workflow: Optional[str] = None
-    coding_task_prompt: Optional[str] = None  # For general_coding workflow
-    delete_existing: bool = False  # Delete existing repository directory before cloning
+    delete_existing: bool = False
 
 
-class UnifiedOrchestrator:
-    """Unified orchestrator for both single-agent and multi-agent workflows"""
+class Orchestrator:
+    """Unified orchestrator for all agent execution scenarios"""
     
     def __init__(self):
         self.computer_use_client = ClaudeComputerUse()
@@ -54,41 +54,34 @@ class UnifiedOrchestrator:
         os.makedirs(self.responses_dir, exist_ok=True)
     
     @classmethod
-    def create_single_agent_request(cls, task_description: str, agent_type: Union[str, CodingAgentIdeType], 
-                                  repo_url: Optional[str] = None, target_dir: Optional[str] = None,
-                                  create_pr: bool = True, work_directory: Optional[str] = None,
-                                  delete_existing: bool = False) -> UnifiedRequest:
+    def create_single_agent_request(cls, task_description: str, agent_type: str, 
+                                  workflow_type: Optional[str] = None,
+                                  repo_url: Optional[str] = None, 
+                                  target_dir: Optional[str] = None,
+                                  create_pr: bool = True, 
+                                  work_directory: Optional[str] = None,
+                                  delete_existing: bool = False) -> TaskRequest:
         """
-        Create a single-agent request (convenience method for backward compatibility)
-        
-        Args:
-            task_description: The coding task to perform
-            agent_type: The agent type (string or CodingAgentIdeType enum)
-            repo_url: Optional repository URL to clone
-            target_dir: Optional target directory for cloning
-            create_pr: Whether to create a pull request
-            work_directory: Optional work directory override
-            
-        Returns:
-            UnifiedRequest: A unified request with one coder agent
+        Create a single-agent request (convenience method)
+        Single-agent is just multi-agent with one CODER agent
         """
         # Convert string to CodingAgentIdeType if needed
-        if isinstance(agent_type, str):
-            try:
-                agent_type = CodingAgentIdeType(agent_type.lower().strip())
-            except ValueError:
-                raise ValueError(f"Unsupported agent type: {agent_type}. Valid agent types are: {', '.join([e.value for e in CodingAgentIdeType])}")
+        try:
+            agent_enum = CodingAgentIdeType(agent_type.lower().strip())
+        except ValueError:
+            raise ValueError(f"Unsupported agent type: {agent_type}. Valid agent types are: {', '.join([e.value for e in CodingAgentIdeType])}")
         
         # Create a single coder agent
         agent_def = AgentDefinition(
-            coding_ide=agent_type.value,
+            coding_ide=agent_enum.value,
             model="N/A",  # Default model
             role=AgentRole.CODER
         )
         
-        return UnifiedRequest(
+        return TaskRequest(
             task_description=task_description,
             agents=[agent_def],
+            workflow_type=workflow_type,
             repo_url=repo_url,
             target_dir=target_dir,
             create_pr=create_pr,
@@ -97,59 +90,34 @@ class UnifiedOrchestrator:
         )
     
     @classmethod
-    def create_multi_agent_request(cls, task: MultiAgentTask, repo_url: Optional[str] = None,
-                                 target_dir: Optional[str] = None, create_pr: bool = True,
-                                 work_directory: Optional[str] = None, workflow: Optional[str] = None,
-                                 delete_existing: bool = False) -> UnifiedRequest:
+    def create_multi_agent_request(cls, task: MultiAgentTask, 
+                                 workflow_type: Optional[str] = None,
+                                 repo_url: Optional[str] = None,
+                                 target_dir: Optional[str] = None, 
+                                 create_pr: bool = True,
+                                 work_directory: Optional[str] = None, 
+                                 delete_existing: bool = False) -> TaskRequest:
         """
         Create a multi-agent request from a MultiAgentTask
-        
-        Args:
-            task: The multi-agent task definition
-            repo_url: Optional repository URL to clone (overrides task.repo_url if provided)
-            target_dir: Optional target directory for cloning
-            create_pr: Whether to create a pull request
-            work_directory: Optional work directory override
-            workflow: Optional workflow type (overrides task.workflow if provided)
-            
-        Returns:
-            UnifiedRequest: A unified request with multiple agents
         """
         # Use provided repo_url or fall back to task.repo_url
         effective_repo_url = repo_url or task.repo_url
         
-        # Use provided workflow or fall back to task.workflow
-        effective_workflow = workflow or (task.workflow.value if task.workflow else None)
+        # Use provided workflow_type or fall back to task.workflow
+        effective_workflow = workflow_type or (task.workflow.value if task.workflow else None)
         
-        # Validate workflow requirements with effective workflow
-        if effective_workflow == "general_coding" and not task.coding_task_prompt:
-            raise ValueError("'coding_task_prompt' field is required when using 'general_coding' workflow")
-        
-        # Generate task description based on effective workflow
-        if effective_workflow == "general_coding":
-            task_description = task.coding_task_prompt or "General coding task"
-        elif effective_workflow == "bug_hunting":
-            task_description = "Find and fix security vulnerabilities and bugs"
-        elif effective_workflow == "code_optimization":
-            task_description = "Optimize performance and improve code quality"
-        else:
-            task_description = task.get_task_description()
-        
-        return UnifiedRequest(
-            task_description=task_description,
+        return TaskRequest(
+            task_description=task.get_task_description(),
             agents=task.agents,
+            workflow_type=effective_workflow,
             repo_url=effective_repo_url,
             target_dir=target_dir,
             create_pr=create_pr,
             work_directory=work_directory,
-            workflow=effective_workflow,
-            coding_task_prompt=task.coding_task_prompt,
             delete_existing=delete_existing
         )
     
-
-    
-    def _setup_work_directory(self, request: UnifiedRequest) -> str:
+    def _setup_work_directory(self, request: TaskRequest) -> str:
         """Setup and return the work directory for the request"""
         if request.work_directory:
             return request.work_directory
@@ -179,11 +147,19 @@ class UnifiedOrchestrator:
             return os.getcwd()
     
     def _create_role_specific_prompt(self, role: AgentRole, context: AgentContext, 
-                                   agent_definition: AgentDefinition) -> str:
-        """Create a role-specific prompt based on the agent's role"""
+                                   agent_definition: AgentDefinition, 
+                                   workflow_type: Optional[str] = None) -> str:
+        """Create a role-specific prompt based on the agent's role and workflow type"""
         try:
             role_instance = RoleFactory.create_role(role)
-            return role_instance.create_prompt(context.task_description, context, agent_definition)
+            # Pass workflow_type to the role for workflow-specific prompt generation
+            if hasattr(role_instance, 'create_prompt_with_workflow'):
+                return role_instance.create_prompt_with_workflow(
+                    context.task_description, context, agent_definition, workflow_type
+                )
+            else:
+                # Fallback to standard prompt creation
+                return role_instance.create_prompt(context.task_description, context, agent_definition)
         except ValueError as e:
             print(f"Warning: {e}. Using default coder prompt.")
             # Fallback to coder role for unknown roles
@@ -323,106 +299,19 @@ class UnifiedOrchestrator:
         except Exception as e:
             print(f"WARNING: Failed to save agent response: {str(e)}")
             return None
-    
-    async def _execute_workflow(self, request: UnifiedRequest, work_directory: str) -> str:
-        """Execute a specific workflow if specified"""
-        if not request.workflow:
-            return None
-            
-        print(f"Executing workflow: {request.workflow}")
-        
-        # Get the primary agent (first one)
-        primary_agent = request.agents[0] if request.agents else None
-        if not primary_agent:
-            raise ValueError("No agents specified for workflow execution")
-            
-        try:
-            agent_type = CodingAgentIdeType(primary_agent.coding_ide.lower().strip())
-        except ValueError:
-            raise ValueError(f"Unsupported agent type: {primary_agent.coding_ide}. Valid agent types are: {', '.join([e.value for e in CodingAgentIdeType])}")
-        
-        if request.workflow == "bug_hunting":
-            from workflows.bug_hunting import BugHunter
-            workflow = BugHunter()
-            return await workflow.hunt_bugs(agent_type, request.repo_url, work_directory)
-            
-        elif request.workflow == "code_optimization":
-            from workflows.code_optimization import CodeOptimizer
-            workflow = CodeOptimizer()
-            return await workflow.optimize_performance(agent_type, request.repo_url, work_directory)
-            
-        elif request.workflow == "general_coding":
-            from workflows.general_coding import GeneralCodingWorkflow
-            workflow = GeneralCodingWorkflow()
-            if request.coding_task_prompt:
-                # Use the custom prompt provided
-                return await workflow.execute_simple_task(agent_type, request.repo_url, request.coding_task_prompt, work_directory)
-            else:
-                # This shouldn't happen due to validation, but fallback to task description
-                return await workflow.execute_coding_task(agent_type, request.repo_url, request.task_description, work_directory)
-                
-        else:
-            raise ValueError(f"Unknown workflow: {request.workflow}")
 
-    async def execute_unified_request(self, request: UnifiedRequest) -> MultiAgentResponse:
-        """Execute a unified request (single or multi-agent)"""
-        # Determine if this is single or multi-agent (define early to avoid variable scope issues)
-        is_single_agent = len(request.agents) == 1 and request.agents[0].role == AgentRole.CODER
-        workflow_type = "Single-Agent" if is_single_agent else "Multi-Agent"
-        
+    async def execute_task(self, request: TaskRequest) -> MultiAgentResponse:
+        """Execute a task with one or more agents"""
         try:
             # Setup work directory
             work_directory = self._setup_work_directory(request)
             
-            # Check if this is a workflow execution
-            if request.workflow:
-                print(f"Starting workflow execution: {request.workflow}")
-                print(f"Task: {request.task_description}")
-                print(f"Work Directory: {work_directory}")
-                
-                if request.repo_url:
-                    print(f"Repository: {request.repo_url}")
-                
-                # Execute the workflow
-                workflow_output = await self._execute_workflow(request, work_directory)
-                
-                # Create a simple response for workflow execution
-                response = MultiAgentResponse(
-                    success=True,
-                    final_output=workflow_output,
-                    execution_log=[{
-                        "workflow": request.workflow,
-                        "output": workflow_output,
-                        "success": True
-                    }]
-                )
-                
-                # Handle PR creation for workflow
-                if request.create_pr and request.repo_url:
-                    print("\nProcessing changes and creating pull request...")
-                    try:
-                        pr_url = self.github_integration.smart_workflow(
-                            repo_path=work_directory,
-                            original_repo_url=request.repo_url,
-                            agent_name=f"{request.workflow}-workflow",
-                            agent_execution_report_summary=workflow_output[:1000] + "..." if len(workflow_output) > 1000 else workflow_output
-                        )
-                        
-                        if pr_url:
-                            print(f"SUCCESS: Pull request created: {pr_url}")
-                            print("Opening pull request in your default browser...")
-                            webbrowser.open(pr_url)
-                            response.pr_url = pr_url
-                        else:
-                            print("WARNING: Pull request creation failed")
-                    except Exception as e:
-                        print(f"WARNING: Pull request creation failed: {e}")
-                
-                return response
+            # Determine execution type for logging
+            execution_type = f"{len(request.agents)}-Agent"
+            if request.workflow_type:
+                execution_type += f" ({request.workflow_type})"
             
-
-            
-            print(f"Starting {workflow_type} execution")
+            print(f"Starting {execution_type} execution")
             print(f"Task: {request.task_description}")
             print(f"Agents: {len(request.agents)}")
             print(f"Work Directory: {work_directory}")
@@ -450,8 +339,10 @@ class UnifiedOrchestrator:
                 print(f"Step {context.current_step}/{context.total_steps}: {agent_def.coding_ide} ({agent_def.role.value})")
                 print(f"{'='*60}")
                 
-                # Create role-specific prompt
-                prompt = self._create_role_specific_prompt(agent_def.role, context, agent_def)
+                # Create role-specific prompt with workflow context
+                prompt = self._create_role_specific_prompt(
+                    agent_def.role, context, agent_def, request.workflow_type
+                )
                 
                 # Execute agent with retry
                 result = await self._execute_agent_with_retry(
@@ -517,7 +408,7 @@ class UnifiedOrchestrator:
                     pr_url = self.github_integration.smart_workflow(
                         repo_path=work_directory,
                         original_repo_url=request.repo_url,
-                        agent_name=f"{workflow_type} ({len(request.agents)} agents)",
+                        agent_name=f"{execution_type}",
                         agent_execution_report_summary=final_output[:1000] + "..." if len(final_output) > 1000 else final_output
                     )
                     
@@ -531,7 +422,7 @@ class UnifiedOrchestrator:
                     print(f"WARNING: Pull request creation failed: {e}")
             
             print(f"\n{'='*60}")
-            print(f"{workflow_type.upper()} EXECUTION COMPLETE")
+            print(f"{execution_type.upper()} EXECUTION COMPLETE")
             print(f"Successful agents: {successful_executions}/{len(request.agents)}")
             print(f"Overall success: {overall_success}")
             if pr_url:
@@ -552,7 +443,7 @@ class UnifiedOrchestrator:
             return response
             
         except Exception as e:
-            error_msg = f"{workflow_type} execution failed: {str(e)}"
+            error_msg = f"Task execution failed: {str(e)}"
             print(f"{error_msg}")
             
             return MultiAgentResponse(

@@ -80,6 +80,60 @@ Remember: You are planning, not implementing. Create a roadmap that others can f
 """
         return prompt
     
+    def create_prompt_with_workflow(self, task: str, context: AgentContext, 
+                                  agent_definition: AgentDefinition, 
+                                  workflow_type: str = None) -> str:
+        """Create a workflow-aware planning prompt"""
+        base_prompt = self.create_prompt(task, context, agent_definition)
+        
+        if workflow_type:
+            workflow_specific = self._get_planner_workflow_context(workflow_type)
+            if workflow_specific:
+                # Insert workflow context after the role description
+                lines = base_prompt.split('\n')
+                insert_index = 8  # After "## YOUR ROLE AS PLANNER" section
+                lines.insert(insert_index, workflow_specific)
+                base_prompt = '\n'.join(lines)
+        
+        return base_prompt
+    
+    def _get_planner_workflow_context(self, workflow_type: str) -> str:
+        """Get planner-specific workflow context"""
+        workflow_contexts = {
+            "bug_hunting": """
+## WORKFLOW FOCUS: BUG HUNTING & SECURITY ANALYSIS
+As a planner in a bug hunting workflow, your plan should prioritize:
+- **Security audit strategy**: Systematic approach to finding vulnerabilities
+- **Code review methodology**: Focus areas for security-critical code sections
+- **Testing approach**: Security testing, penetration testing, static analysis tools
+- **Risk assessment**: Prioritize high-risk areas (authentication, data handling, APIs)
+- **Remediation planning**: How to fix identified vulnerabilities safely
+- **Compliance considerations**: Security standards and best practices to follow
+""",
+            "code_optimization": """
+## WORKFLOW FOCUS: PERFORMANCE OPTIMIZATION STRATEGY
+As a planner in a code optimization workflow, your plan should prioritize:
+- **Performance profiling strategy**: How to identify bottlenecks and performance issues
+- **Optimization targets**: Database queries, algorithms, memory usage, I/O operations
+- **Measurement approach**: Benchmarking, metrics collection, before/after comparisons
+- **Risk mitigation**: How to optimize without breaking existing functionality
+- **Testing strategy**: Performance testing, load testing, regression testing
+- **Monitoring plan**: How to track performance improvements over time
+""",
+            "general_coding": """
+## WORKFLOW FOCUS: CLEAN DEVELOPMENT STRATEGY
+As a planner in a general coding workflow, your plan should prioritize:
+- **Architecture design**: Clean, maintainable, and scalable code structure
+- **Development methodology**: Best practices, coding standards, design patterns
+- **Quality assurance**: Code review process, testing strategy, documentation
+- **Integration approach**: How new code integrates with existing systems
+- **Deployment strategy**: How to safely deploy and rollback changes
+- **Maintenance considerations**: Long-term maintainability and extensibility
+"""
+        }
+        
+        return workflow_contexts.get(workflow_type, "")
+    
     def get_role_description(self) -> str:
         """Get description of the Planner role"""
         return "Project Planner - Creates comprehensive implementation plans and strategies"

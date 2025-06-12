@@ -5,15 +5,13 @@ This package contains the core orchestration and integration components
 for the SimulateDev AI coding assistant.
 """
 
-from .unified_orchestrator import UnifiedOrchestrator, UnifiedRequest
+from .orchestrator import Orchestrator, TaskRequest
 from .agent_orchestrator import AgentOrchestrator
-from .multi_agent_orchestrator import MultiAgentOrchestrator
 from .github_integration import GitHubIntegration
 
 __all__ = [
-    'UnifiedOrchestrator',
-    'UnifiedRequest', 
+    'Orchestrator',
+    'TaskRequest', 
     'AgentOrchestrator',
-    'MultiAgentOrchestrator',
     'GitHubIntegration'
 ] 

@@ -181,6 +181,63 @@ Remember: Your goal is to ensure the implementation is reliable, usable, and mee
 """
         return prompt
     
+    def create_prompt_with_workflow(self, task: str, context: AgentContext, 
+                                  agent_definition: AgentDefinition, 
+                                  workflow_type: str = None) -> str:
+        """Create a workflow-aware testing prompt"""
+        base_prompt = self.create_prompt(task, context, agent_definition)
+        
+        if workflow_type:
+            workflow_specific = self._get_tester_workflow_context(workflow_type)
+            if workflow_specific:
+                # Insert workflow context after the role description
+                lines = base_prompt.split('\n')
+                insert_index = 8  # After "## YOUR ROLE AS TESTER" section
+                lines.insert(insert_index, workflow_specific)
+                base_prompt = '\n'.join(lines)
+        
+        return base_prompt
+    
+    def _get_tester_workflow_context(self, workflow_type: str) -> str:
+        """Get tester-specific workflow context"""
+        workflow_contexts = {
+            "bug_hunting": """
+## WORKFLOW FOCUS: SECURITY & VULNERABILITY TESTING
+As a tester in a bug hunting workflow, prioritize these testing areas:
+- **Security vulnerability testing**: SQL injection, XSS, CSRF, authentication bypasses
+- **Input validation testing**: Boundary testing, malformed inputs, injection attacks
+- **Access control testing**: Authorization, privilege escalation, data exposure
+- **Error handling security**: Information disclosure through error messages
+- **Dependency security**: Known vulnerabilities in third-party libraries
+- **Static security analysis**: Code patterns that indicate security issues
+- **Penetration testing**: Simulated attacks to find exploitable vulnerabilities
+""",
+            "code_optimization": """
+## WORKFLOW FOCUS: PERFORMANCE & EFFICIENCY TESTING
+As a tester in a code optimization workflow, prioritize these testing areas:
+- **Performance benchmarking**: Before/after performance comparisons
+- **Load testing**: System behavior under high load conditions
+- **Memory profiling**: Memory usage, leaks, and optimization effectiveness
+- **Algorithm efficiency**: Big O complexity verification and timing tests
+- **Database performance**: Query optimization, indexing effectiveness
+- **Resource utilization**: CPU, memory, I/O, and network usage
+- **Scalability testing**: Performance under increasing data/user loads
+""",
+            "general_coding": """
+## WORKFLOW FOCUS: COMPREHENSIVE QUALITY TESTING
+As a tester in a general coding workflow, prioritize these testing areas:
+- **Functional testing**: Core features work as specified
+- **Unit testing**: Individual components function correctly
+- **Integration testing**: Components work together properly
+- **User acceptance testing**: Meets original requirements
+- **Code quality assessment**: Maintainability, readability, best practices
+- **Documentation testing**: Accuracy and completeness of documentation
+- **Regression testing**: New changes don't break existing functionality
+"""
+        }
+        
+        return workflow_contexts.get(workflow_type, "")
+    
     def get_role_description(self) -> str:
         """Get description of the Tester role"""
         return "Quality Assurance Tester - Validates implementations and ensures quality"

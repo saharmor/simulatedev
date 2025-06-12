@@ -122,6 +122,60 @@ Create production-ready code that feels like a natural extension of the existing
 """
         return prompt
     
+    def create_prompt_with_workflow(self, task: str, context: AgentContext, 
+                                  agent_definition: AgentDefinition, 
+                                  workflow_type: str = None) -> str:
+        """Create a workflow-aware coding prompt"""
+        base_prompt = self.create_prompt(task, context, agent_definition)
+        
+        if workflow_type:
+            workflow_specific = self._get_coder_workflow_context(workflow_type)
+            if workflow_specific:
+                # Insert workflow context after the role description but before task details
+                lines = base_prompt.split('\n')
+                insert_index = 3  # After "## YOUR ROLE AS CODER" section
+                lines.insert(insert_index, workflow_specific)
+                base_prompt = '\n'.join(lines)
+        
+        return base_prompt
+    
+    def _get_coder_workflow_context(self, workflow_type: str) -> str:
+        """Get coder-specific workflow context"""
+        workflow_contexts = {
+            "bug_hunting": """
+## WORKFLOW FOCUS: BUG HUNTING & SECURITY
+As a coder in a bug hunting workflow, prioritize:
+- **Security vulnerabilities**: SQL injection, XSS, CSRF, authentication bypasses
+- **Memory safety**: Buffer overflows, null pointer dereferences, memory leaks
+- **Input validation**: Sanitize all user inputs, validate data types and ranges
+- **Error handling**: Proper exception handling, avoid information disclosure
+- **Access controls**: Verify permissions, implement proper authorization
+- **Dependency security**: Check for vulnerable dependencies and update them
+""",
+            "code_optimization": """
+## WORKFLOW FOCUS: PERFORMANCE OPTIMIZATION
+As a coder in an optimization workflow, prioritize:
+- **Algorithm efficiency**: Use optimal data structures and algorithms (O(n) vs O(n²))
+- **Memory optimization**: Reduce memory footprint, avoid memory leaks
+- **Database optimization**: Efficient queries, proper indexing, connection pooling
+- **Caching strategies**: Implement appropriate caching layers
+- **Code complexity**: Reduce cyclomatic complexity, eliminate dead code
+- **Resource management**: Optimize I/O operations, minimize network calls
+""",
+            "general_coding": """
+## WORKFLOW FOCUS: CLEAN IMPLEMENTATION
+As a coder in a general coding workflow, prioritize:
+- **Code quality**: Clean, readable, and maintainable code
+- **Best practices**: Follow language-specific conventions and patterns
+- **Documentation**: Clear comments and documentation
+- **Testing**: Write testable code with proper error handling
+- **Modularity**: Create reusable, well-structured components
+- **Standards compliance**: Follow project coding standards and style guides
+"""
+        }
+        
+        return workflow_contexts.get(workflow_type, "")
+    
     def get_role_description(self) -> str:
         """Get description of the Coder role"""
         return "Software Developer - Implements solutions and creates working code"

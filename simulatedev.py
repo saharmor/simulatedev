@@ -49,7 +49,7 @@ import sys
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
-from src.unified_orchestrator import UnifiedOrchestrator, UnifiedRequest
+from src.orchestrator import Orchestrator, TaskRequest
 from agents import MultiAgentTask, AgentDefinition, AgentRole, CodingAgentIdeType
 
 
@@ -197,10 +197,10 @@ def interactive_multi_agent_mode() -> MultiAgentTask:
     return MultiAgentTask(agents=agents, repo_url=repo_url, workflow=workflow, coding_task_prompt=coding_task_prompt)
 
 
-def print_task_summary(request: UnifiedRequest):
-    """Print a summary of the unified request"""
-    if request.workflow:
-        workflow_type = f"Workflow ({request.workflow})"
+def print_task_summary(request: TaskRequest):
+    """Print a summary of the task request"""
+    if request.workflow_type:
+        workflow_type = f"Workflow ({request.workflow_type})"
     else:
         workflow_type = "Single-Agent" if len(request.agents) == 1 and request.agents[0].role == AgentRole.CODER else "Multi-Agent"
     
@@ -208,10 +208,8 @@ def print_task_summary(request: UnifiedRequest):
     print(f"=" * 50)
     print(f"Task: {request.task_description}")
     
-    if request.workflow:
-        print(f"Workflow: {request.workflow}")
-        if request.coding_task_prompt:
-            print(f"Custom Prompt: {request.coding_task_prompt[:100]}{'...' if len(request.coding_task_prompt) > 100 else ''}")
+    if request.workflow_type:
+        print(f"Workflow: {request.workflow_type}")
     
     print(f"Agents: {len(request.agents)}")
     
@@ -297,10 +295,11 @@ async def execute_single_agent(args) -> bool:
             print(f"Supported agents: {[agent.value for agent in CodingAgentIdeType]}")
             return False
         
-        # Create unified request
-        unified_request = UnifiedOrchestrator.create_single_agent_request(
+        # Create task request
+        task_request = Orchestrator.create_single_agent_request(
             task_description=task_description,
-            agent_type=agent_type,
+            agent_type=agent_type.value,
+            workflow_type=args.workflow,
             repo_url=repo_url,
             target_dir=args.target_dir,
             create_pr=not args.no_pr,
@@ -309,7 +308,7 @@ async def execute_single_agent(args) -> bool:
         )
         
         # Print summary
-        print_task_summary(unified_request)
+        print_task_summary(task_request)
         
         # Confirm execution
         confirm = input("\nExecute this task? (y/N): ").strip().lower()
@@ -318,8 +317,8 @@ async def execute_single_agent(args) -> bool:
             return False
         
         # Execute
-        orchestrator = UnifiedOrchestrator()
-        response = await orchestrator.execute_unified_request(unified_request)
+        orchestrator = Orchestrator()
+        response = await orchestrator.execute_task(task_request)
         
         # Save report if requested
         if not args.no_report:
@@ -355,19 +354,19 @@ async def execute_multi_agent(args) -> bool:
             print("Use: --json 'json_string', json_file, or --interactive")
             return False
         
-        # Create unified request
-        unified_request = UnifiedOrchestrator.create_multi_agent_request(
+        # Create task request
+        task_request = Orchestrator.create_multi_agent_request(
             task=task,
+            workflow_type=args.workflow,
             repo_url=args.repo,
             target_dir=args.target_dir,
             create_pr=not args.no_pr,
             work_directory=args.work_dir,
-            workflow=args.workflow,
             delete_existing=args.delete_existing
         )
         
         # Print summary
-        print_task_summary(unified_request)
+        print_task_summary(task_request)
         
         # Confirm execution
         confirm = input("\nExecute this multi-agent task? (y/N): ").strip().lower()
@@ -376,8 +375,8 @@ async def execute_multi_agent(args) -> bool:
             return False
         
         # Execute
-        orchestrator = UnifiedOrchestrator()
-        response = await orchestrator.execute_unified_request(unified_request)
+        orchestrator = Orchestrator()
+        response = await orchestrator.execute_task(task_request)
         
         # Save report if requested
         if not args.no_report:
