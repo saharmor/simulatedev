@@ -1,7 +1,7 @@
 # SimulateDev
-Run cutting-edge AI coding IDEs such as Cursor, Devin, and Claude Code via code
+Run cutting-edge AI coding IDEs such as Cursor, Devin, and Claude Code via code.
 
-SimulateDev is an automation tool that allows you to run AI coding agents (Cursor, Devin, Claude Code) on any GitHub repository with custom prompts, and automatically create pull requests with the changes. It supports both **single-agent** and **multi-agent collaborative workflows**.
+SimulateDev is an automation tool that runs AI coding agents (Cursor, Devin, Claude Code) on any GitHub repository with custom prompts and automatically creates pull requests with the changes. It supports both **single-agent** and **multi-agent collaborative workflows**.
 
 ## Features
 
@@ -85,7 +85,6 @@ graph LR
 For the easiest way to get started, use the **interactive web interface** to generate CLI commands:
 
 ```bash
-# Open the web interface in your browser
 open simulatedev_ui.html
 ```
 
@@ -94,16 +93,11 @@ The web interface provides:
 - **Step-by-Step Guide**: Clear instructions for each step
 - **Command Generation**: Automatically generates the correct CLI command
 - **Multi-Agent Setup**: Simple interface for complex multi-agent workflows
-- **Built-in Help**: Tooltips and explanations for all options
 
-**Perfect for:**
-- First-time users getting familiar with SimulateDev
-- Complex multi-agent configurations
-- Quick command generation without memorizing syntax
 
 ### Basic Usage
 
-SimulateDev provides a **unified CLI** that handles both single-agent and multi-agent workflows:
+SimulateDev provides a CLI that handles both single-agent and multi-agent workflows:
 
 ```bash
 python simulatedev.py <task> <agent> --repo <repo_url>
@@ -170,10 +164,6 @@ SimulateDev supports predefined workflows that can be specified in JSON:
 | `optimize` | Performance optimizations and improvements | `python simulatedev.py --workflow optimize --repo https://github.com/user/repo --agent windsurf` |
 | `refactor` | Code quality improvements and refactoring | `python simulatedev.py --workflow refactor --repo https://github.com/user/repo --agent cursor` |
 | `low-hanging` | Quick wins and easy improvements | `python simulatedev.py --workflow low-hanging --repo https://github.com/user/repo --agent windsurf` |
-
-
-See [WORKFLOW_EXAMPLES.md](WORKFLOW_EXAMPLES.md) for comprehensive examples.
-
 
 
 **Examples:**
