@@ -2,40 +2,52 @@
 """
 SimulateDev - AI Coding Assistant
 
-This is the main CLI for SimulateDev that executes coding tasks using AI agents.
-By default, it uses a single coder agent, but you can specify multiple agents via JSON.
+This is the unified CLI for SimulateDev that executes both predefined workflows and custom coding tasks using AI agents.
 
 Usage:
-    python simulatedev.py --task "Fix responsive table design" --repo https://github.com/saharmor/gemini-multimodal-playground --workflow general_coding
-    python simulatedev.py --task "Add error handling" --repo https://github.com/saharmor/gemini-multimodal-playground --workflow general_coding --coding-agents '[{"coding_ide":"cursor","model":"Claude Sonnet 3.5","role":"Coder"}]'
+    # Single coding agent + predefined workflows
+    python simulatedev.py --workflow bugs --repo https://github.com/user/repo --agent cursor
+    python simulatedev.py --workflow optimize --repo https://github.com/user/repo --agent windsurf
+    python simulatedev.py --workflow refactor --repo https://github.com/user/repo --agent cursor
+    python simulatedev.py --workflow low-hanging --repo https://github.com/user/repo --agent cursor
     
-    # Multi-agent example
-    python simulatedev.py --task "Build REST API with tests" --repo https://github.com/saharmor/gemini-multimodal-playground --workflow general_coding --coding-agents '[
-        {"coding_ide":"claude_code","model":"Claude Opus 3","role":"Planner"},
-        {"coding_ide":"cursor","model":"Claude Sonnet 3.5","role":"Coder"},
-        {"coding_ide":"windsurf","model":"Claude Sonnet 3.5","role":"Tester"}
+    # Single coding agent + general coding workflow (requires task description)
+    python simulatedev.py --workflow general --task "Fix responsive table design" --repo https://github.com/user/repo --agent cursor
+    
+    # Multi-agent + general coding workflow
+    python simulatedev.py --workflow general --task "Add support for Firefox browser automation" --repo  https://github.com/browserbase/stagehand --coding-agents '[
+        {"coding_ide":"cursor","model":"Claude Sonnet 3.5","role":"Planner"},
+        {"coding_ide":"windsurf","model":"Claude Sonnet 3.5","role":"Coder"}
     ]'
 
 Available workflows:
-- general_coding: Custom coding tasks with your own prompt
-- bug_hunting: Find and fix security vulnerabilities and bugs  
-- code_optimization: Performance optimizations and improvements
+- bugs: Find and fix one high-impact bug
+- optimize: Find and implement one high-value performance optimization  
+- refactor: Code quality improvements and refactoring
+- low-hanging: Find and implement one impressive low-hanging fruit improvement
+- general: Custom coding tasks with your own prompt (requires --task)
 
 Note: 
 - Repository must be a valid GitHub URL (https://github.com/user/repo)
-- When specifying coding agents, the 'model' field is mandatory and cannot be empty or 'N/A'.
+- For general workflow, --task is required
+- When specifying coding agents, the 'model' field is mandatory and cannot be empty or 'N/A'
 """
 
 import argparse
 import asyncio
 import json
 import os
+import shutil
 import sys
+import webbrowser
 from typing import Dict, Any, List, Optional
 from pathlib import Path
+from urllib.parse import urlparse
 
 from src.orchestrator import Orchestrator, TaskRequest
 from agents import MultiAgentTask, AgentDefinition, AgentRole, CodingAgentIdeType
+from common.config import config
+from common.exceptions import AgentTimeoutException, WorkflowTimeoutException
 
 
 def validate_github_url(repo_url: str) -> bool:
@@ -102,21 +114,24 @@ def validate_coding_agents_json(json_string: str) -> List[AgentDefinition]:
     return agents
 
 
-def create_default_coder_agent() -> List[AgentDefinition]:
+def create_default_coder_agent(agent_type: str = "cursor") -> List[AgentDefinition]:
     """Create default single coder agent"""
     return [AgentDefinition(
-        coding_ide="cursor",  # Default to cursor
+        coding_ide=agent_type,
         model="claude-4-sonnet",  # Default model
         role=AgentRole.CODER
     )]
 
 
-def print_task_summary(request: TaskRequest):
+def print_task_summary(request: TaskRequest, workflow_type: str):
     """Print a summary of the task to be executed"""
     print(f"\nTask Summary:")
-    print(f"  Task: {request.task_description}")
+    if workflow_type == "general":
+        print(f"  Task: {request.task_description}")
+    else:
+        print(f"  Workflow: {workflow_type.title()} - Systematic approach (map → rank → choose → implement one)")
     print(f"  Repository: {request.repo_url or request.work_directory or 'Current directory'}")
-    print(f"  Workflow: {request.workflow_type}")
+    print(f"  Workflow Type: {workflow_type}")
     print(f"  Agents: {len(request.agents)} agent(s)")
     
     for i, agent in enumerate(request.agents, 1):
@@ -127,6 +142,8 @@ def print_task_summary(request: TaskRequest):
     if request.work_directory:
         print(f"  Work Directory: {request.work_directory}")
     print(f"  Create PR: {'Yes' if request.create_pr else 'No'}")
+    if hasattr(config, 'agent_timeout_seconds'):
+        print(f"  Timeout: {config.agent_timeout_seconds} seconds ({config.agent_timeout_seconds/60:.1f} minutes)")
 
 
 def parse_arguments():
@@ -135,34 +152,65 @@ def parse_arguments():
         description="SimulateDev - AI Coding Assistant",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+Available Workflows:
+  bugs        - Find and fix one high-impact bug
+  optimize    - Find and implement one high-value performance optimization  
+  refactor    - Code quality improvements and refactoring
+  low-hanging - Find and implement one impressive low-hanging fruit improvement
+  general     - Custom coding tasks with your own prompt (requires --task)
+
 Examples:
-  # Single agent (default)
-  python simulatedev.py --task "Fix responsive design" --repo https://github.com/saharmor/gemini-multimodal-playground --workflow general_coding
+  # Predefined workflows
+  python simulatedev.py --workflow bugs --repo https://github.com/user/repo --agent cursor
+  python simulatedev.py --workflow optimize --repo https://github.com/user/repo --agent windsurf
   
-  # Multiple agents
-  python simulatedev.py --task "Build REST API" --repo https://github.com/saharmor/gemini-multimodal-playground --workflow general_coding \\
+  # General coding (single agent)
+  python simulatedev.py --workflow general --task "Fix responsive design" --repo https://github.com/user/repo --agent cursor
+  
+  # General coding (multiple agents)
+  python simulatedev.py --workflow general --task "Build REST API" --repo https://github.com/user/repo \\
     --coding-agents '[{"coding_ide":"cursor","model":"Claude Sonnet 3.5","role":"Planner"},{"coding_ide":"windsurf","model":"Claude Sonnet 3.5","role":"Coder"}]'
 
-Available workflows: general_coding, bug_hunting, code_optimization
+  # Skip pull request creation
+  python simulatedev.py --workflow bugs --repo https://github.com/user/repo --agent cursor --no-pr
+  
+  # Delete existing repository folder if it exists
+  python simulatedev.py --workflow optimize --repo https://github.com/user/repo --agent cursor --delete-existing
+
 Note: 
 - Repository must be a valid GitHub URL (https://github.com/user/repo)
-- Model field is mandatory and cannot be empty or 'N/A' when specifying coding agents.
+- For general workflow, --task is required
+- Model field is mandatory and cannot be empty or 'N/A' when specifying coding agents
         """
     )
     
     # Required arguments
-    parser.add_argument("--task", required=True, help="The coding task description")
-    parser.add_argument("--repo", required=True, help="GitHub repository URL (e.g., https://github.com/saharmor/gemini-multimodal-playground)")
-    parser.add_argument("--workflow", required=True, choices=["general_coding", "bug_hunting", "code_optimization"], help="Workflow type")
+    parser.add_argument("--workflow", required=True, 
+                       choices=["bugs", "optimize", "refactor", "low-hanging", "general"], 
+                       help="The type of workflow to run")
+    parser.add_argument("--repo", required=True, 
+                       help="GitHub repository URL (e.g., https://github.com/user/repo)")
+    
+    # Agent specification (either single agent or multi-agent JSON)
+    agent_group = parser.add_mutually_exclusive_group()
+    agent_group.add_argument("--agent", 
+                           choices=[agent.value for agent in CodingAgentIdeType],
+                           help="Single AI coding agent to use (for simple workflows)")
+    agent_group.add_argument("--coding-agents", 
+                           help="JSON array of coding agents (for complex multi-agent workflows)")
+    
+    # Task description (required for general workflow)
+    parser.add_argument("--task", 
+                       help="The coding task description (required for general workflow)")
     
     # Optional arguments
-    parser.add_argument("--coding-agents", help="JSON array of coding agents (defaults to single coder agent)")
     parser.add_argument("--target-dir", help="Target directory for cloning")
     parser.add_argument("--work-dir", help="Working directory for the task")
     parser.add_argument("--no-pr", action="store_true", help="Skip creating pull request")
     parser.add_argument("--output", help="Output file for execution report")
     parser.add_argument("--no-report", action="store_true", help="Skip saving execution report")
-    parser.add_argument("--delete-existing", action="store_true", help="Delete existing repository directory before cloning")
+    parser.add_argument("--delete-existing", action="store_true", 
+                       help="Delete existing repository directory before cloning")
     
     return parser.parse_args()
 
@@ -184,6 +232,27 @@ async def execute_task(args) -> bool:
             print("  - github.com/user/repo")
             return False
         
+        # Validate task requirement for general workflow
+        if args.workflow == "general" and not args.task:
+            print("Error: --task is required for general workflow")
+            return False
+        
+        # Validate agent specification
+        if not args.agent and not args.coding_agents:
+            print("Error: Either --agent or --coding-agents must be specified")
+            return False
+        
+        # Handle repository deletion if requested
+        if args.delete_existing:
+            parsed_path = urlparse(args.repo).path.rstrip('/')
+            repo_name = os.path.splitext(os.path.basename(parsed_path))[0]
+            if repo_name.endswith('.git'):
+                repo_name = repo_name[:-4]
+            repo_path = os.path.join(config.scanned_repos_path, repo_name)
+            if os.path.exists(repo_path):
+                shutil.rmtree(repo_path)
+                print(f"Deleted existing repository folder: {repo_path}")
+        
         # Parse coding agents or use default
         if args.coding_agents:
             try:
@@ -193,51 +262,64 @@ async def execute_task(args) -> bool:
                 print(f"Error parsing coding agents: {e}")
                 return False
         else:
-            agents = create_default_coder_agent()
-            print("Using default single coder agent")
+            # Use single agent
+            agent_type = args.agent or "cursor"
+            agents = create_default_coder_agent(agent_type)
+            print(f"Using default single {agent_type} agent")
         
-        # Use the GitHub URL directly
-        repo_url = args.repo
-        work_directory = args.work_dir
-        
-        # Create task request using unified method
-        if len(agents) == 1:
-            # Single agent
-            agent = agents[0]
+        # Create task request based on workflow type
+        if args.workflow == "general":
+            # General coding workflow
+            if len(agents) == 1:
+                # Single agent
+                agent = agents[0]
+                task_request = Orchestrator.create_request(
+                    task_description=args.task,
+                    agent_type=agent.coding_ide,
+                    agent_model=agent.model,
+                    agent_role=agent.role,
+                    workflow_type="general_coding",  # Map to internal workflow type
+                    repo_url=args.repo,
+                    target_dir=args.target_dir,
+                    create_pr=not args.no_pr,
+                    work_directory=args.work_dir,
+                    delete_existing=args.delete_existing
+                )
+            else:
+                # Multi-agent
+                from agents.base import WorkflowType
+                workflow_enum = WorkflowType("general_coding")
+                multi_agent_task = MultiAgentTask(
+                    agents=agents,
+                    repo_url=args.repo,
+                    workflow=workflow_enum,
+                    coding_task_prompt=args.task
+                )
+                task_request = Orchestrator.create_request(
+                    multi_agent_task=multi_agent_task,
+                    workflow_type="general_coding",
+                    repo_url=args.repo,
+                    target_dir=args.target_dir,
+                    create_pr=not args.no_pr,
+                    work_directory=args.work_dir,
+                    delete_existing=args.delete_existing
+                )
+        else:
+            # Predefined workflow (bugs, optimize, refactor, low-hanging)
+            agent = agents[0]  # Use first agent for predefined workflows
             task_request = Orchestrator.create_request(
-                task_description=args.task,
+                workflow_type=args.workflow,
+                repo_url=args.repo,
                 agent_type=agent.coding_ide,
                 agent_model=agent.model,
                 agent_role=agent.role,
-                workflow_type=args.workflow,
-                repo_url=repo_url,
                 target_dir=args.target_dir,
                 create_pr=not args.no_pr,
-                work_directory=work_directory,
-                delete_existing=args.delete_existing
-            )
-        else:
-            # Multi-agent
-            from agents.base import WorkflowType
-            workflow_enum = WorkflowType(args.workflow) if args.workflow else None
-            multi_agent_task = MultiAgentTask(
-                agents=agents,
-                repo_url=repo_url,
-                workflow=workflow_enum,
-                coding_task_prompt=args.task
-            )
-            task_request = Orchestrator.create_request(
-                multi_agent_task=multi_agent_task,
-                workflow_type=args.workflow,
-                repo_url=repo_url,
-                target_dir=args.target_dir,
-                create_pr=not args.no_pr,
-                work_directory=work_directory,
                 delete_existing=args.delete_existing
             )
         
         # Print summary
-        print_task_summary(task_request)
+        print_task_summary(task_request, args.workflow)
         
         # Confirm execution
         confirm = input("\nExecute this task? (y/N): ").strip().lower()
@@ -246,8 +328,25 @@ async def execute_task(args) -> bool:
             return False
         
         # Execute
+        print(f"\nSTARTING: {args.workflow} workflow...")
         orchestrator = Orchestrator()
         response = await orchestrator.execute_task(task_request)
+        
+        if response.success:
+            print(f"\nCOMPLETED: {args.workflow.title()} workflow completed successfully!")
+            
+            # Open PR in browser if created
+            if hasattr(response, 'pr_url') and response.pr_url:
+                print("Opening pull request in your default browser...")
+                webbrowser.open(response.pr_url)
+                print(f"\nREVIEW: You can review the changes at: {response.pr_url}")
+            
+            print(f"\nRESULTS: Summary:\n{response.final_output}")
+        else:
+            print(f"\nFAILED: {args.workflow.title()} workflow did not complete successfully.")
+            if response.error_message:
+                print(f"Error: {response.error_message}")
+            print("Check the output above for specific details about what went wrong.")
         
         # Save report if requested
         if not args.no_report:
@@ -258,7 +357,11 @@ async def execute_task(args) -> bool:
         return response.success
         
     except Exception as e:
-        print(f"Task execution failed: {str(e)}")
+        if isinstance(e, (AgentTimeoutException, WorkflowTimeoutException)):
+            # Handle timeout scenarios gracefully
+            print(f"\n{e.get_user_friendly_message()}")
+        else:
+            print(f"Task execution failed: {str(e)}")
         return False
 
 
