@@ -171,7 +171,7 @@ Examples:
   python simulatedev.py --workflow custom --task "Build REST API" --repo https://github.com/user/repo \\
     --coding-agents '[{"coding_ide":"cursor","model":"Claude Sonnet 3.5","role":"Planner"},{"coding_ide":"windsurf","model":"Claude Sonnet 3.5","role":"Coder"}]'
 
-  # Skip pull request creation
+  # Skip pull request creation (only recommended for testing purposes)
   python simulatedev.py --workflow bugs --repo https://github.com/user/repo --agent cursor --no-pr
   
   # Delete existing repository folder if it exists
@@ -206,7 +206,7 @@ Note:
     # Optional arguments
     parser.add_argument("--target-dir", help="Target directory for cloning")
     parser.add_argument("--work-dir", help="Working directory for the task")
-    parser.add_argument("--no-pr", action="store_true", help="Skip creating pull request")
+    parser.add_argument("--no-pr", action="store_true", help="Skip creating pull request (only recommended for testing purposes)")
     parser.add_argument("--output", help="Output file for execution report")
     parser.add_argument("--no-report", action="store_true", help="Skip saving execution report")
     parser.add_argument("--delete-existing", action="store_true", 

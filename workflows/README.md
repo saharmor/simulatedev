@@ -84,13 +84,13 @@ request = Orchestrator.create_request(multi_agent_task=task)
 ### CLI Usage (Recommended)
 ```bash
 # Bug hunting workflow
-python workflows_cli.py bugs https://github.com/user/repo cursor
+python simulatedev.py --workflow bugs --repo https://github.com/user/repo --agent cursor
 
 # Performance optimization
-python workflows_cli.py optimize https://github.com/user/repo windsurf
+python simulatedev.py --workflow optimize --repo https://github.com/user/repo --agent windsurf
 
 # Code refactoring
-python workflows_cli.py refactor https://github.com/user/repo cursor
+python simulatedev.py --workflow refactor --repo https://github.com/user/repo --agent cursor
 ```
 
 ## Creating Custom Workflows
@@ -128,7 +128,7 @@ elif workflow_type == 'custom':
 
 3. **Add to CLI choices** (optional):
 ```python
-# In workflows_cli.py, add to choices:
+# In simulatedev.py, add to workflow choices:
 choices=["bugs", "optimize", "refactor", "low-hanging", "test", "custom"]
 ```
 

@@ -46,11 +46,13 @@ graph LR
 
 ### Prerequisites
 
+- **macOS** (SimulateDev currently only works on Mac)
 - Python 3.8+
 - Git installed and configured
 - One of the supported AI IDEs installed:
   - [Cursor](https://cursor.com/)
   - [Windsurf](https://windsurf.ai/)
+  - Claude Code
 - API keys (see Setup section)
 
 ### Installation
@@ -164,10 +166,10 @@ SimulateDev supports predefined workflows that can be specified in JSON:
 
 | Workflow | Description | Example |
 |----------|-------------|---------|
-| `bugs` | Find and fix bugs and security issues | `python workflows_cli.py bugs https://github.com/user/repo cursor` |
-| `optimize` | Performance optimizations and improvements | `python workflows_cli.py optimize https://github.com/user/repo windsurf` |
-| `refactor` | Code quality improvements and refactoring | `python workflows_cli.py refactor https://github.com/user/repo cursor` |
-| `low-hanging` | Quick wins and easy improvements | `python workflows_cli.py low-hanging https://github.com/user/repo windsurf` |
+| `bugs` | Find and fix bugs and security issues | `python simulatedev.py --workflow bugs --repo https://github.com/user/repo --agent cursor` |
+| `optimize` | Performance optimizations and improvements | `python simulatedev.py --workflow optimize --repo https://github.com/user/repo --agent windsurf` |
+| `refactor` | Code quality improvements and refactoring | `python simulatedev.py --workflow refactor --repo https://github.com/user/repo --agent cursor` |
+| `low-hanging` | Quick wins and easy improvements | `python simulatedev.py --workflow low-hanging --repo https://github.com/user/repo --agent windsurf` |
 
 
 See [WORKFLOW_EXAMPLES.md](WORKFLOW_EXAMPLES.md) for comprehensive examples.
@@ -178,19 +180,19 @@ See [WORKFLOW_EXAMPLES.md](WORKFLOW_EXAMPLES.md) for comprehensive examples.
 
 ```bash
 # Hunt for bugs and security issues
-python workflows_cli.py bugs https://github.com/user/repo cursor
+python simulatedev.py --workflow bugs --repo https://github.com/user/repo --agent cursor
 
 # Find performance optimization opportunities  
-python workflows_cli.py optimize https://github.com/user/repo windsurf
+python simulatedev.py --workflow optimize --repo https://github.com/user/repo --agent windsurf
 
 # Improve code quality and maintainability
-python workflows_cli.py refactor https://github.com/user/repo cursor
+python simulatedev.py --workflow refactor --repo https://github.com/user/repo --agent cursor
 
 # Find easy wins and quick improvements
-python workflows_cli.py low-hanging https://github.com/user/repo windsurf
+python simulatedev.py --workflow low-hanging --repo https://github.com/user/repo --agent windsurf
 
-# Skip pull request creation
-python workflows_cli.py bugs https://github.com/user/repo cursor --no-pr
+# Skip pull request creation (only recommended for testing purposes)
+python simulatedev.py --workflow bugs --repo https://github.com/user/repo --agent cursor --no-pr
 ```
 
 ## Configuration
