@@ -40,11 +40,6 @@ class ClaudeCodeAgent(CodingAgent):
     def input_field_prompt(self) -> str:
         # Not used in headless mode
         return ""
-    
-    @property
-    def copy_button_prompt(self) -> str:
-        # Not used in headless mode
-        return ""
 
     def _display_claude_progress(self, json_obj: dict) -> None:
         """Display Claude's progress based on JSON streaming output"""

@@ -188,7 +188,7 @@ class ClaudeComputerUse:
                 base64_image_data = take_screenshot(self.target_width, self.target_height, encode_base64=True)
             
             # Create the message with the screenshot and prompt
-            system_prompt = """You are a UI Element Detection AI. Analyze screenshots to locate UI elements and output in JSON format with these exact keys:
+            system_prompt = """You are a UI Element Detection AI. Analyze the attached screenshot to locate UI elements and output in JSON format with these exact keys:
 {
     "action": {
         "type": "click" or "type" (use "click" for buttons/links, "type" for text inputs),
@@ -197,6 +197,8 @@ class ClaudeComputerUse:
             "y": number (vertical position)
         },
     }
+
+    IMPORTANT: If there is more than one element that matches the prompt, choose the one that is more prominent, for example, the one that is more visible, or the one in the focused and front window.
 }"""
 
             if support_non_existing_elements:
@@ -205,7 +207,7 @@ class ClaudeComputerUse:
                 system_prompt = system_prompt + """ Respond ONLY with the JSON format above and nothing else."""
             
             message = client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+                model="claude-claude-sonnet-4-20250514",
                 max_tokens=1024,
                 system=system_prompt,
                 messages=[

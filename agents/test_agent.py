@@ -51,10 +51,6 @@ Provide nothing but valid JSON in your response."""
     def input_field_prompt(self) -> str:
         return "Command prompt or input field in the terminal or text editor where commands can be entered for the test agent."
     
-    @property
-    def copy_button_prompt(self) -> str:
-        return "Copy button, copy icon, or text selection area where analysis results can be copied from the test agent interface."
-    
     async def execute_prompt(self, prompt: str) -> AgentResponse:
         """Execute the test agent analysis and save results to file"""
         print(f"Test Agent: Running codebase analysis...")

@@ -231,12 +231,6 @@ class CodingAgent(ABC):
         pass
     
     @property
-    @abstractmethod
-    def copy_button_prompt(self) -> str:
-        """Prompt for finding the copy button coordinates"""
-        pass
-    
-    @property
     def keyboard_shortcut(self) -> Optional[str]:
         """Optional keyboard shortcut to open the agent interface"""
         return None
@@ -319,15 +313,6 @@ class CodingAgent(ABC):
         result = await self.claude.get_coordinates_from_claude(
             self.input_field_prompt, 
             ide_name=self.window_name, 
-            project_name=self._current_project_name
-        )
-        return result
-    
-    async def get_copy_button_coordinates(self):
-        """Get the coordinates of the copy button"""
-        result = await self.claude.get_coordinates_from_claude(
-            self.copy_button_prompt,
-            ide_name=self.window_name,
             project_name=self._current_project_name
         )
         return result

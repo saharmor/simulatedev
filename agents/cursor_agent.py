@@ -54,10 +54,6 @@ Only analyze the right panel and provide nothing but valid JSON in your response
     def input_field_prompt(self) -> str:
         return 'Input box for the Cursor Agent which starts with \'Plan, search, build anything\'. Usually, it\'s in the right pane of the screen'
     
-    @property
-    def copy_button_prompt(self) -> str:
-        return "A grey small thumbs-down button. Always in the right pane of the screen."
-    
     async def is_coding_agent_open(self) -> bool:
         """Check if Cursor chat interface is currently open and ready"""
         try:

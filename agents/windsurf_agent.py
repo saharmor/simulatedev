@@ -53,10 +53,6 @@ Only analyze the right panel and provide nothing but valid JSON in your response
     def input_field_prompt(self) -> str:
         return 'Input box for the Cascade agent which starts with "Ask anything". Usually, it\'s in the right pane of the screen.'
 
-    @property
-    def copy_button_prompt(self) -> str:
-        return "The Copy text of the last message in the Cascade terminal. Usually, it's in the right pane of the screen next to the Insert text button."
-    
     async def is_coding_agent_open(self) -> bool:
         """Check if Windsurf Cascade interface is currently open and ready"""
         try:
