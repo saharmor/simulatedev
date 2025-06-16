@@ -207,7 +207,7 @@ class ClaudeComputerUse:
                 system_prompt = system_prompt + """ Respond ONLY with the JSON format above and nothing else."""
             
             message = client.messages.create(
-                model="claude-claude-sonnet-4-20250514",
+                model="claude-sonnet-4-20250514",
                 max_tokens=1024,
                 system=system_prompt,
                 messages=[
