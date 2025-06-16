@@ -11,11 +11,11 @@ Usage:
     python simulatedev.py --workflow refactor --repo https://github.com/user/repo --agent cursor
     python simulatedev.py --workflow low-hanging --repo https://github.com/user/repo --agent cursor
     
-    # Single coding agent + general coding workflow (requires task description)
-    python simulatedev.py --workflow general --task "Fix responsive table design" --repo https://github.com/user/repo --agent cursor
-    
-    # Multi-agent + general coding workflow
-    python simulatedev.py --workflow general --task "Add support for Firefox browser automation" --repo  https://github.com/browserbase/stagehand --coding-agents '[
+         # Single coding agent + custom coding workflow (requires task description)
+     python simulatedev.py --workflow custom --task "Fix responsive table design" --repo https://github.com/user/repo --agent cursor
+     
+     # Multi-agent + custom coding workflow
+     python simulatedev.py --workflow custom --task "Add support for Firefox browser automation" --repo  https://github.com/browserbase/stagehand --coding-agents '[
         {"coding_ide":"cursor","model":"Claude Sonnet 3.5","role":"Planner"},
         {"coding_ide":"windsurf","model":"Claude Sonnet 3.5","role":"Coder"}
     ]'
@@ -25,11 +25,11 @@ Available workflows:
 - optimize: Find and implement one high-value performance optimization  
 - refactor: Code quality improvements and refactoring
 - low-hanging: Find and implement one impressive low-hanging fruit improvement
-- general: Custom coding tasks with your own prompt (requires --task)
+- custom: Custom coding tasks with your own prompt (requires --task)
 
 Note: 
 - Repository must be a valid GitHub URL (https://github.com/user/repo)
-- For general workflow, --task is required
+- For custom workflow, --task is required
 - When specifying coding agents, the 'model' field is mandatory and cannot be empty or 'N/A'
 """
 
@@ -126,7 +126,7 @@ def create_default_coder_agent(agent_type: str = "cursor") -> List[AgentDefiniti
 def print_task_summary(request: TaskRequest, workflow_type: str):
     """Print a summary of the task to be executed"""
     print(f"\nTask Summary:")
-    if workflow_type == "general":
+    if workflow_type == "custom":
         print(f"  Task: {request.task_description}")
     else:
         print(f"  Workflow: {workflow_type.title()} - Systematic approach (map → rank → choose → implement one)")
@@ -157,18 +157,18 @@ Available Workflows:
   optimize    - Find and implement one high-value performance optimization  
   refactor    - Code quality improvements and refactoring
   low-hanging - Find and implement one impressive low-hanging fruit improvement
-  general     - Custom coding tasks with your own prompt (requires --task)
+  custom      - Custom coding tasks with your own prompt (requires --task)
 
 Examples:
   # Predefined workflows
   python simulatedev.py --workflow bugs --repo https://github.com/user/repo --agent cursor
   python simulatedev.py --workflow optimize --repo https://github.com/user/repo --agent windsurf
   
-  # General coding (single agent)
-  python simulatedev.py --workflow general --task "Fix responsive design" --repo https://github.com/user/repo --agent cursor
+  # Custom coding (single agent)
+  python simulatedev.py --workflow custom --task "Fix responsive design" --repo https://github.com/user/repo --agent cursor
   
-  # General coding (multiple agents)
-  python simulatedev.py --workflow general --task "Build REST API" --repo https://github.com/user/repo \\
+  # Custom coding (multiple agents)
+  python simulatedev.py --workflow custom --task "Build REST API" --repo https://github.com/user/repo \\
     --coding-agents '[{"coding_ide":"cursor","model":"Claude Sonnet 3.5","role":"Planner"},{"coding_ide":"windsurf","model":"Claude Sonnet 3.5","role":"Coder"}]'
 
   # Skip pull request creation
@@ -179,14 +179,14 @@ Examples:
 
 Note: 
 - Repository must be a valid GitHub URL (https://github.com/user/repo)
-- For general workflow, --task is required
+- For custom workflow, --task is required
 - Model field is mandatory and cannot be empty or 'N/A' when specifying coding agents
         """
     )
     
     # Required arguments
     parser.add_argument("--workflow", required=True, 
-                       choices=["bugs", "optimize", "refactor", "low-hanging", "general"], 
+                       choices=["bugs", "optimize", "refactor", "low-hanging", "custom"], 
                        help="The type of workflow to run")
     parser.add_argument("--repo", required=True, 
                        help="GitHub repository URL (e.g., https://github.com/user/repo)")
@@ -199,9 +199,9 @@ Note:
     agent_group.add_argument("--coding-agents", 
                            help="JSON array of coding agents (for complex multi-agent workflows)")
     
-    # Task description (required for general workflow)
+    # Task description (required for custom workflow)
     parser.add_argument("--task", 
-                       help="The coding task description (required for general workflow)")
+                       help="The coding task description (required for custom workflow)")
     
     # Optional arguments
     parser.add_argument("--target-dir", help="Target directory for cloning")
@@ -232,9 +232,9 @@ async def execute_task(args) -> bool:
             print("  - github.com/user/repo")
             return False
         
-        # Validate task requirement for general workflow
-        if args.workflow == "general" and not args.task:
-            print("Error: --task is required for general workflow")
+        # Validate task requirement for custom workflow
+        if args.workflow == "custom" and not args.task:
+            print("Error: --task is required for custom workflow")
             return False
         
         # Validate agent specification
@@ -268,8 +268,8 @@ async def execute_task(args) -> bool:
             print(f"Using default single {agent_type} agent")
         
         # Create task request based on workflow type
-        if args.workflow == "general":
-            # General coding workflow
+        if args.workflow == "custom":
+            # Custom coding workflow
             if len(agents) == 1:
                 # Single agent
                 agent = agents[0]
@@ -278,7 +278,7 @@ async def execute_task(args) -> bool:
                     agent_type=agent.coding_ide,
                     agent_model=agent.model,
                     agent_role=agent.role,
-                    workflow_type="general_coding",  # Map to internal workflow type
+                    workflow_type="custom_coding",  # Map to internal workflow type
                     repo_url=args.repo,
                     target_dir=args.target_dir,
                     create_pr=not args.no_pr,
@@ -288,7 +288,7 @@ async def execute_task(args) -> bool:
             else:
                 # Multi-agent
                 from agents.base import WorkflowType
-                workflow_enum = WorkflowType("general_coding")
+                workflow_enum = WorkflowType("custom_coding")
                 multi_agent_task = MultiAgentTask(
                     agents=agents,
                     repo_url=args.repo,
@@ -297,7 +297,7 @@ async def execute_task(args) -> bool:
                 )
                 task_request = Orchestrator.create_request(
                     multi_agent_task=multi_agent_task,
-                    workflow_type="general_coding",
+                    workflow_type="custom_coding",
                     repo_url=args.repo,
                     target_dir=args.target_dir,
                     create_pr=not args.no_pr,

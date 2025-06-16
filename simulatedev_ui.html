@@ -493,7 +493,7 @@
                             <label for="workflow">Workflow Type <span class="required">*</span></label>
                             <select id="workflow" required>
                                 <option value="">Select a workflow...</option>
-                                <option value="general_coding">Custom coding task</option>
+                                <option value="custom_coding">Custom coding task</option>
                                 <option value="bug_hunting">Bug Hunting</option>
                                 <option value="code_optimization">Code Optimization</option>
                             </select>
@@ -609,7 +609,7 @@
 
         // Workflow descriptions
         const workflowDescriptions = {
-            'general_coding': 'Custom coding tasks with your own prompt. Perfect for feature development, bug fixes, and general programming tasks.',
+                            'custom_coding': 'Custom coding tasks with your own prompt. Perfect for feature development, bug fixes, and custom programming tasks.',
             'bug_hunting': 'Automatically find and fix security vulnerabilities and bugs in your codebase.',
             'code_optimization': 'Analyze and optimize your code for better performance, readability, and maintainability.'
         };
@@ -635,7 +635,7 @@
                 }
 
                 // Show/hide task description based on workflow
-                if (selectedWorkflow === 'general_coding') {
+                if (selectedWorkflow === 'custom_coding') {
                     taskDescriptionGroup.style.display = 'block';
                     taskDescriptionField.required = true;
                 } else {
@@ -728,10 +728,10 @@
                 return;
             }
 
-            // Validate task description for general_coding workflow
+                            // Validate task description for custom_coding workflow
             const workflow = document.getElementById('workflow').value;
             const taskDescription = document.getElementById('taskDescription').value;
-            if (workflow === 'general_coding' && !taskDescription.trim()) {
+                            if (workflow === 'custom_coding' && !taskDescription.trim()) {
                 alert('Task description is required for custom coding tasks.');
                 return;
             }
@@ -862,9 +862,9 @@ AGENT_TIMEOUT_SECONDS=1200`;
 
             const agents = getAgentsConfig();
 
-            // For general_coding workflow, use the task description; for others, use workflow-specific descriptions
+                            // For custom_coding workflow, use the task description; for others, use workflow-specific descriptions
             let taskParamRaw = '';
-            if (workflow === 'general_coding') {
+                            if (workflow === 'custom_coding') {
                 taskParamRaw = taskDescription;
             } else if (workflow === 'bug_hunting') {
                 taskParamRaw = 'Find and fix security vulnerabilities and bugs';
@@ -917,7 +917,7 @@ Prerequisites:
             instructions += `
 
 Workflow Types:
-- general_coding: Custom tasks with your own prompt
+- custom_coding: Custom tasks with your own prompt
 - bug_hunting: Automated vulnerability and bug detection
 - code_optimization: Performance and code quality improvements
 

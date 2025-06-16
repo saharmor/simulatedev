@@ -30,7 +30,7 @@ class AgentRole(Enum):
 
 class WorkflowType(Enum):
     """Enum for available workflow types"""
-    GENERAL_CODING = "general_coding"
+    CUSTOM_CODING = "custom_coding"
     BUG_HUNTING = "bug_hunting"
     CODE_OPTIMIZATION = "code_optimization"
 
@@ -41,7 +41,7 @@ class MultiAgentTask:
     agents: List['AgentDefinition']
     repo_url: Optional[str] = None
     workflow: Optional[WorkflowType] = None
-    coding_task_prompt: Optional[str] = None  # Required only for general_coding workflow
+    coding_task_prompt: Optional[str] = None  # Required only for custom_coding workflow
     
     def __post_init__(self):
         """Validate the task after initialization"""
@@ -59,16 +59,16 @@ class MultiAgentTask:
     def _validate_workflow_requirements(self):
         """Validate workflow-specific requirements"""
         # Only validate if workflow is set - it might be overridden by command-line args later
-        if self.workflow == WorkflowType.GENERAL_CODING and not self.coding_task_prompt:
-            raise ValueError("'coding_task_prompt' field is required when using 'general_coding' workflow")
-        if self.workflow and self.workflow != WorkflowType.GENERAL_CODING and self.coding_task_prompt:
+        if self.workflow == WorkflowType.CUSTOM_CODING and not self.coding_task_prompt:
+            raise ValueError("'coding_task_prompt' field is required when using 'custom_coding' workflow")
+        if self.workflow and self.workflow != WorkflowType.CUSTOM_CODING and self.coding_task_prompt:
             # This is just a warning case - allow it but note it's unusual
             pass
     
     def get_task_description(self) -> str:
         """Get the task description based on workflow type"""
-        if self.workflow == WorkflowType.GENERAL_CODING:
-            return self.coding_task_prompt or "General coding task"
+        if self.workflow == WorkflowType.CUSTOM_CODING:
+            return self.coding_task_prompt or "Custom coding task"
         elif self.workflow == WorkflowType.BUG_HUNTING:
             return "Find and fix security vulnerabilities and bugs"
         elif self.workflow == WorkflowType.CODE_OPTIMIZATION:

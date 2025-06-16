@@ -88,7 +88,7 @@ class IntegrationTestRunner:
             request = TaskRequest(
                 task_description=self.simple_task,
                 agents=agents,
-                workflow_type="general_coding",
+                workflow_type="custom_coding",
                 repo_url=self.repo_url,
                 create_pr=True,
                 delete_existing=True  # Clean slate for testing
@@ -156,7 +156,7 @@ class IntegrationTestRunner:
             request = TaskRequest(
                 task_description=self.simple_task,
                 agents=agents,
-                workflow_type="general_coding",
+                workflow_type="custom_coding",
                 repo_url=self.repo_url,
                 create_pr=True,
                 delete_existing=True  # Clean slate for testing

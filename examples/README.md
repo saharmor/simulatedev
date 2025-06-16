@@ -8,7 +8,7 @@ This directory contains example configuration files for different types of tasks
 Example configuration for bug hunting workflow with a single Coder agent using Cursor IDE.
 
 ### `sample_multi_agent_task.json`
-Example configuration for a general coding task with multiple agents:
+Example configuration for a custom coding task with multiple agents:
 - Coder agent using Windsurf IDE
 - Tester agent using Cursor IDE
 

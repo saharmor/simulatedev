@@ -223,9 +223,9 @@ As a tester in a code optimization workflow, prioritize these testing areas:
 - **Resource utilization**: CPU, memory, I/O, and network usage
 - **Scalability testing**: Performance under increasing data/user loads
 """,
-            "general_coding": """
+            "custom_coding": """
 ## WORKFLOW FOCUS: COMPREHENSIVE QUALITY TESTING
-As a tester in a general coding workflow, prioritize these testing areas:
+As a tester in a custom coding workflow, prioritize these testing areas:
 - **Functional testing**: Core features work as specified
 - **Unit testing**: Individual components function correctly
 - **Integration testing**: Components work together properly

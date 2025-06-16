@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-General Coding Workflow Module
+Custom Coding Workflow Module
 
 This module provides the default workflow for handling user-provided coding prompts,
-extending the unified orchestrator with general-purpose coding functionality.
+extending the unified orchestrator with custom coding functionality.
 """
 
 
-class GeneralCodingWorkflow:
-    """General-purpose prompt generator for user-defined coding tasks"""
+class CustomCodingWorkflow:
+    """Custom coding prompt generator for user-defined coding tasks"""
     
     def __init__(self):
         pass
@@ -37,4 +37,4 @@ Please proceed with implementing this task."""
     
     def create_simple_prompt(self, user_request: str) -> str:
         """Create a simple, direct prompt without additional enhancement"""
-        return user_request
+        return user_request 

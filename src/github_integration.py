@@ -471,7 +471,7 @@ class GitHubIntegration:
         
         Args:
             agent_execution_report_summary: The summary/output from the coding agent
-            workflow_name: Name of the workflow used (preset workflow name or task description for general coding)
+            workflow_name: Name of the workflow used (preset workflow name or task description for custom coding)
             coding_ides_info: Optional information about coding IDEs used (roles, models, etc.)
             
         Returns:
@@ -508,7 +508,7 @@ class GitHubIntegration:
         Generate formatted PR title and description
         
         Args:
-            workflow_name: Name of the workflow used (preset workflow name or task description for general coding)
+            workflow_name: Name of the workflow used (preset workflow name or task description for custom coding)
             pr_title: PR title from Claude or default
             pr_description: PR description from Claude or default
             pr_changes_summary: Changes summary from Claude or default

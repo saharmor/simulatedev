@@ -107,7 +107,7 @@ For complex tasks requiring multiple specialized agents working together:
 
 ```bash
 # Multi-agent mode
-python simulatedev.py --multi task.json --repo https://github.com/user/repo --workflow general_coding
+python simulatedev.py --multi task.json --repo https://github.com/user/repo --workflow custom_coding
 
 # Interactive mode
 python simulatedev.py --multi --interactive
@@ -120,17 +120,17 @@ python simulatedev.py --multi --json '{
     {"coding_ide": "cursor", "model": "claude-sonnet-4", "role": "Coder"},
     {"coding_ide": "windsurf", "model": "claude-sonnet-4", "role": "Tester"}
   ]
-}' --repo https://github.com/browserbase/stagehand --workflow general_coding
+}' --repo https://github.com/browserbase/stagehand --workflow custom_coding
 ```
 
 **Multi-Agent JSON Format:**
 
 **Key Fields:**
-- `coding_task_prompt`: Custom task description (required only for `general_coding` workflow)
+- `coding_task_prompt`: Custom task description (required only for `custom_coding` workflow)
 
 **Command-Line Parameters:**
 - `--repo`: Repository URL to work on
-- `--workflow`: Optional predefined workflow (`bug_hunting`, `code_optimization`, `general_coding`)
+- `--workflow`: Optional predefined workflow (`bug_hunting`, `code_optimization`, `custom_coding`)
 
 **Supported Roles:**
 - **Planner**: Creates implementation plans and breaks down complex tasks

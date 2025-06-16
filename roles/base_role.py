@@ -75,9 +75,9 @@ You are working on a code optimization and performance improvement workflow.
 Focus on improving performance, reducing complexity, and enhancing code quality.
 Look for opportunities to optimize algorithms, reduce memory usage, and improve efficiency.
 """,
-            "general_coding": f"""
-## WORKFLOW CONTEXT: GENERAL CODING
-You are working on a general coding task.
+            "custom_coding": f"""
+## WORKFLOW CONTEXT: CUSTOM CODING
+You are working on a custom coding task.
 Focus on implementing clean, maintainable, and well-documented code.
 Follow best practices and ensure the solution meets the specified requirements.
 """

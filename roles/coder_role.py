@@ -162,9 +162,9 @@ As a coder in an optimization workflow, prioritize:
 - **Code complexity**: Reduce cyclomatic complexity, eliminate dead code
 - **Resource management**: Optimize I/O operations, minimize network calls
 """,
-            "general_coding": """
+            "custom_coding": """
 ## WORKFLOW FOCUS: CLEAN IMPLEMENTATION
-As a coder in a general coding workflow, prioritize:
+As a coder in a custom coding workflow, prioritize:
 - **Code quality**: Clean, readable, and maintainable code
 - **Best practices**: Follow language-specific conventions and patterns
 - **Documentation**: Clear comments and documentation

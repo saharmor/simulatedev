@@ -7,7 +7,7 @@ This document provides comprehensive examples of how to use SimulateDev's new wo
 SimulateDev now supports three ways to specify tasks:
 
 1. **Predefined Workflows** - Use specialized workflows like `bug_hunting` or `code_optimization`
-2. **General Coding** - Use the `general_coding` workflow with custom prompts
+2. **Custom Coding** - Use the `custom_coding` workflow with custom prompts
 3. **Multi-Agent Roles** - Use the traditional role-based system without predefined workflows
 
 ## JSON Structure
@@ -16,7 +16,7 @@ All JSON task files now support these fields:
 
 ```json
 {
-  "coding_task_prompt": "Custom prompt for general_coding workflow only",
+      "coding_task_prompt": "Custom prompt for custom_coding workflow only",
   "agents": [
     {
       "role": "Coder|Planner|Tester",
@@ -31,11 +31,11 @@ All JSON task files now support these fields:
 - `agents`: Array of agent definitions
 
 ### Optional Fields
-- `coding_task_prompt`: Custom prompt (required only for `general_coding` workflow)
+- `coding_task_prompt`: Custom prompt (required only for `custom_coding` workflow)
 
 ### Command-Line Parameters
 - `--repo`: GitHub repository URL to work on
-- `--workflow`: Predefined workflow to use (`bug_hunting`, `code_optimization`, `general_coding`)
+- `--workflow`: Predefined workflow to use (`bug_hunting`, `code_optimization`, `custom_coding`)
 
 **Note**: Repository URL and workflow type are now passed as command-line arguments instead of being embedded in the JSON. This provides better separation of concerns and matches the pattern used in single-agent workflows.
 
@@ -93,7 +93,7 @@ Optimize performance and improve code quality. No `coding_task_prompt` needed - 
 python simulatedev.py --multi sample_optimization_task.json --repo https://github.com/user/performance-critical-app --workflow code_optimization
 ```
 
-### 3. General Coding Workflow
+### 3. Custom Coding Workflow
 
 Use custom prompts for specific coding tasks. The `coding_task_prompt` field is required for this workflow.
 
@@ -117,7 +117,7 @@ Use custom prompts for specific coding tasks. The `coding_task_prompt` field is 
 
 **Usage:**
 ```bash
-python simulatedev.py --multi sample_multi_agent_task.json --repo https://github.com/user/example-repo --workflow general_coding
+python simulatedev.py --multi sample_multi_agent_task.json --repo https://github.com/user/example-repo --workflow custom_coding
 ```
 
 ### 4. Multi-Agent Role System (No Workflow)
@@ -155,7 +155,7 @@ python simulatedev.py --multi complex_api_task.json --repo https://github.com/us
 
 ### Multi-Agent with JSON File
 ```bash
-python simulatedev.py --multi task.json --repo https://github.com/user/repo --workflow general_coding
+python simulatedev.py --multi task.json --repo https://github.com/user/repo --workflow custom_coding
 ```
 
 ### Multi-Agent with JSON String
@@ -163,7 +163,7 @@ python simulatedev.py --multi task.json --repo https://github.com/user/repo --wo
 python simulatedev.py --multi --json '{
   "coding_task_prompt": "Fix all responsive design issues in the CSS, ensure mobile compatibility",
   "agents": [{"role": "Coder", "coding_ide": "cursor", "model": "claude-sonnet-4"}]
-}' --repo https://github.com/user/webapp --workflow general_coding
+}' --repo https://github.com/user/webapp --workflow custom_coding
 ```
 
 ### Interactive Mode
@@ -187,15 +187,15 @@ python simulatedev.py --multi task.json --repo https://github.com/user/repo --wo
 |----------|----------|-------------------|---------|
 | `bug_hunting` | Security audits, bug fixes | Single Coder | Detailed bug analysis + fix |
 | `code_optimization` | Performance improvements | Single Coder or Multi-agent | Optimization report + implementation |
-| `general_coding` | Custom development tasks | Any configuration | Task-specific implementation |
+| `custom_coding` | Custom development tasks | Any configuration | Task-specific implementation |
 | No workflow | Complex collaborative projects | Multi-agent recommended | Role-based collaborative output |
 
 ## Tips
 
 1. **Repository URLs**: Always include `repo_url` in your JSON for best results
-2. **Workflow Selection**: Use predefined workflows for specialized tasks, `general_coding` for custom prompts
+2. **Workflow Selection**: Use predefined workflows for specialized tasks, `custom_coding` for custom prompts
 3. **Agent Roles**: For multi-agent tasks without workflows, include Planner → Coder → Tester sequence
-4. **Custom Prompts**: Be specific and detailed in your `coding_task_prompt` field for `general_coding` workflow
+4. **Custom Prompts**: Be specific and detailed in your `coding_task_prompt` field for `custom_coding` workflow
 5. **Model Selection**: Choose appropriate models for each agent based on their capabilities
 6. **Predefined Workflows**: For `bug_hunting` and `code_optimization`, don't include `coding_task_prompt` - the task is already defined
 
@@ -213,7 +213,7 @@ New format with workflows:
 ```json
 {
   "repo_url": "https://github.com/user/repo",
-  "workflow": "general_coding",
+      "workflow": "custom_coding",
   "coding_task_prompt": "Build a complete web application with...",
   "agents": [...]
 }

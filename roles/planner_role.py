@@ -120,9 +120,9 @@ As a planner in a code optimization workflow, your plan should prioritize:
 - **Testing strategy**: Performance testing, load testing, regression testing
 - **Monitoring plan**: How to track performance improvements over time
 """,
-            "general_coding": """
+            "custom_coding": """
 ## WORKFLOW FOCUS: CLEAN DEVELOPMENT STRATEGY
-As a planner in a general coding workflow, your plan should prioritize:
+As a planner in a custom coding workflow, your plan should prioritize:
 - **Architecture design**: Clean, maintainable, and scalable code structure
 - **Development methodology**: Best practices, coding standards, design patterns
 - **Quality assurance**: Code review process, testing strategy, documentation

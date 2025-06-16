@@ -4,7 +4,7 @@ This package contains specialized workflow modules for different coding use case
 
 ## Available Workflows
 
-### 1. General Coding (`general_coding.py`)
+### 1. Custom Coding (`custom_coding.py`)
 - **Purpose**: Handle user-provided coding prompts with enhanced context
 - **Features**: 
   - Prompt enhancement with coding best practices
@@ -140,7 +140,7 @@ Unified Orchestrator (handles all execution)
 ├── Agent Execution & Management
 ├── Repository Cloning & PR Creation
 └── Uses Workflow Classes for Prompt Generation:
-    ├── GeneralCodingWorkflow (prompt generation only)
+    ├── CustomCodingWorkflow (prompt generation only)
     ├── BugHunter (prompt generation only)  
     ├── CodeOptimizer (prompt generation only)
     └── TestWorkflow (prompt generation only)

@@ -297,7 +297,7 @@ def generate_commit_and_pr_content_with_claude(
     
     Args:
         agent_execution_report_summary: The summary/output from the coding agent
-        workflow_name: Name of the workflow used (preset workflow name or task description for general coding)
+        workflow_name: Name of the workflow used (preset workflow name or task description for custom coding)
         coding_ides_info: Optional information about coding IDEs used (roles, models, etc.)
         
     Returns:

@@ -31,7 +31,7 @@ class TaskRequest:
     """Unified request structure for all agent execution scenarios"""
     task_description: str
     agents: List[AgentDefinition]
-    workflow_type: Optional[str] = None  # bug_hunting, code_optimization, general_coding, etc.
+    workflow_type: Optional[str] = None  # bug_hunting, code_optimization, custom_coding, etc.
     repo_url: Optional[str] = None
     target_dir: Optional[str] = None
     create_pr: bool = True
@@ -165,7 +165,7 @@ class Orchestrator:
         # Import workflow classes here to avoid circular imports
         from workflows.bug_hunting import BugHunter
         from workflows.code_optimization import CodeOptimizer
-        from workflows.general_coding import GeneralCodingWorkflow
+        from workflows.custom_coding import CustomCodingWorkflow
         from workflows.test_workflow import TestWorkflow
         
         workflow_instances = {
@@ -173,7 +173,7 @@ class Orchestrator:
             'optimize': CodeOptimizer(),
             'refactor': CodeOptimizer(),
             'low-hanging': CodeOptimizer(),
-            'general': GeneralCodingWorkflow(),
+            'custom': CustomCodingWorkflow(),
             'test': TestWorkflow()
         }
         

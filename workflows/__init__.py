@@ -7,13 +7,13 @@ each using the unified Orchestrator with specific functionality and prompts tail
 """
 
 from .bug_hunting import BugHunter
-from .general_coding import GeneralCodingWorkflow
+from .custom_coding import CustomCodingWorkflow
 from .code_optimization import CodeOptimizer
 from .test_workflow import TestWorkflow
 
 __all__ = [
     'BugHunter',
-    'GeneralCodingWorkflow', 
+    'CustomCodingWorkflow', 
     'CodeOptimizer',
     'TestWorkflow'
 ] 

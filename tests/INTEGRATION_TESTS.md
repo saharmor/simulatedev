@@ -153,7 +153,7 @@ The integration tests use these default configurations:
 
 - **Repository**: `https://github.com/saharmor/gemini-multimodal-playground`
 - **Models**: Claude 4 Sonnet for all agents
-- **Workflow**: General coding
+- **Workflow**: Custom coding
 - **PR Creation**: Enabled
 - **Clean Slate**: Repository is re-cloned for each test
 
