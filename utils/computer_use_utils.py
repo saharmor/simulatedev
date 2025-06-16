@@ -331,7 +331,7 @@ def bring_to_front_window(app_name: str, project_name: str):
         display_name = _get_ide_display_name(app_name)
         
         # First check if the IDE is running with the project
-        if not is_ide_open_with_project(app_name, project_name):
+        if not is_ide_open_with_project(app_name, project_name, verbose=False):
             print(f"{display_name} is not open with project '{project_name}'")
             return False
         
@@ -346,8 +346,6 @@ def bring_to_front_window(app_name: str, project_name: str):
         if not matching_window:
             print(f"No window found containing project '{project_name}'")
             return False
-        
-        print(f"Bringing {display_name} window to focus: {matching_window}")
         
         if platform.system() == "Darwin":
             # Use AppleScript to bring the specific window to front
@@ -369,13 +367,11 @@ def bring_to_front_window(app_name: str, project_name: str):
             '''
 
             success, _ = _run_applescript(script)
-            if success:
-                print(f"Successfully brought {display_name} window for project '{project_name}' to focus")
-                return True
-            else:
+            if not success:
                 print(f"Failed to bring {display_name} window for project '{project_name}' to focus")
                 return False
 
+            return True
         elif platform.system() == "Windows":
             # Windows-specific focusing script would be implemented here
             print("Window focusing not implemented for Windows")
@@ -450,20 +446,22 @@ def get_current_window_name():
         return "Unknown Window"
 
 
-def is_ide_open_with_project(app_name: str, project_name: str) -> bool:
+def is_ide_open_with_project(app_name: str, project_name: str, verbose: bool = True) -> bool:
     """
     Check if a specific IDE is running and has the specified project open.
     
     Args:
         app_name (str): Name of the IDE application (e.g., "Cursor", "Windsurf")
         project_name (str): Name of the project to check for in window titles
+        verbose (bool): Whether to print status messages
         
     Returns:
         bool: True if the IDE is running with the specified project, False otherwise
     """
     try:
         if platform.system() != "Darwin":
-            print(f"IDE project checking not implemented for {platform.system()}")
+            if verbose:
+                print(f"IDE project checking not implemented for {platform.system()}")
             return False
             
         app_name = app_name.lower()
@@ -474,22 +472,26 @@ def is_ide_open_with_project(app_name: str, project_name: str) -> bool:
         success, window_titles = _get_process_window_titles(process_name)
         
         if not success:
-            print(f"{display_name} ({process_name}) is not running")
+            if verbose:
+                print(f"{display_name} ({process_name}) is not running")
             return False
         
         # Check if any window title contains the project name
         matching_window = _find_window_with_project(window_titles, project_name)
         
         if matching_window:
-            print(f"Found {display_name} window with project '{project_name}': {matching_window}")
+            if verbose:
+                print(f"Found {display_name} window with project '{project_name}': {matching_window}")
             return True
         else:
-            print(f"{display_name} is running but no window found with project '{project_name}'")
-            print(f"Available windows: {window_titles}")
+            if verbose:
+                print(f"{display_name} is running but no window found with project '{project_name}'")
+                print(f"Available windows: {window_titles}")
             return False
             
     except Exception as e:
-        print(f"Error checking if {app_name} is open with project '{project_name}': {e}")
+        if verbose:
+            print(f"Error checking if {app_name} is open with project '{project_name}': {e}")
         return False
 
 
@@ -590,7 +592,7 @@ def play_beep_sound():
         print(f"Warning: Could not play beep sound: {e}")
 
 
-def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: int = 1280, target_height: int = 720, encode_base64: bool = False):
+def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: int = 1280, target_height: int = 720, encode_base64: bool = False, verbose: bool = False):
     """
     Capture a screenshot of the specific IDE window that contains the project name.
     Automatically brings the window to focus before taking the screenshot.
@@ -601,6 +603,7 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
         target_width (int): Target width for the screenshot
         target_height (int): Target height for the screenshot
         encode_base64 (bool): Whether to return base64 encoded image
+        verbose (bool): Whether to print detailed status messages
         
     Returns:
         str or BytesIO: Screenshot data (base64 string if encode_base64=True, BytesIO buffer otherwise)
@@ -616,7 +619,7 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
         display_name = _get_ide_display_name(ide_name)
         
         # First check if the IDE is running with the project
-        if not is_ide_open_with_project(ide_name, project_name):
+        if not is_ide_open_with_project(ide_name, project_name, verbose=False):
             print(f"{display_name} is not open with project '{project_name}'")
             return None
         
@@ -632,10 +635,7 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
             print(f"No window found containing project '{project_name}'")
             return None
         
-        print(f"Taking screenshot of {display_name} window: {matching_window}")
-        
         # IMPORTANT: Bring the window to focus before taking screenshot
-        print(f"Bringing {display_name} window to focus...")
         focus_success = bring_to_front_window(ide_name, project_name)
         if not focus_success:
             print(f"Warning: Could not bring {display_name} window to focus, but continuing...")
@@ -669,8 +669,14 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
         list_result = subprocess.run(list_cmd, capture_output=True, text=True)
         window_id = None
         
+        # Try multiple matching strategies to find the window ID
         for line in list_result.stdout.splitlines():
+            # Strategy 1: Exact match with the full window title
             if matching_window in line:
+                window_id = line.split(':')[0].strip()
+                break
+            # Strategy 2: Match with project name only (more flexible)
+            elif project_name in line:
                 window_id = line.split(':')[0].strip()
                 break
         
@@ -679,7 +685,9 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
             subprocess.run(["screencapture", "-l", window_id, path], check=True)
         else:
             # Fallback to full screen if window ID not found
-            print(f"Warning: Could not find window ID for '{matching_window}', falling back to full screen")
+            # Only print warning in verbose mode to reduce noise
+            if verbose:
+                print(f"Warning: Could not find window ID for '{matching_window}', falling back to full screen")
             subprocess.run(["screencapture", "-x", path], check=True)
         
         # Open and process the image
@@ -730,7 +738,7 @@ def is_project_window_visible(agent_name: str, project_name: str, auto_focus: bo
         agent_name = agent_name.lower()
         
         # First check if the IDE is running with the project
-        if not is_ide_open_with_project(agent_name, project_name):
+        if not is_ide_open_with_project(agent_name, project_name, verbose=False):
             return False
         
         # Then check if the current focused window belongs to this IDE and project
@@ -748,14 +756,10 @@ def is_project_window_visible(agent_name: str, project_name: str, auto_focus: bo
         
         # Check if the expected IDE is frontmost and current window contains project
         if frontmost_process == expected_process and project_name.lower() in current_window.lower():
-            print(f"SUCCESS: {display_name} window for project '{project_name}' is visible and focused")
             return True
         else:
-            print(f"INFO: {display_name} window for project '{project_name}' is not focused. Current frontmost: {frontmost_process}, window: {current_window}")
-            
             # If auto_focus is enabled, try to bring the window to focus
             if auto_focus:
-                print(f"Attempting to bring {display_name} window for project '{project_name}' to focus...")
                 focus_success = bring_to_front_window(agent_name, project_name)
                 if focus_success:
                     # Wait a moment for the window to come to focus
@@ -767,7 +771,6 @@ def is_project_window_visible(agent_name: str, project_name: str, auto_focus: bo
                     success, frontmost_process = _get_frontmost_process()
                     
                     if success and frontmost_process == expected_process and project_name.lower() in current_window.lower():
-                        print(f"SUCCESS: {display_name} window for project '{project_name}' is now focused")
                         return True
                     else:
                         print(f"WARNING: Could not bring {display_name} window for project '{project_name}' to focus")

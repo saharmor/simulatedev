@@ -306,7 +306,41 @@ async def click_ide_resume_button(resume_button_prompt, ide_name=None, project_n
         print(f"Error clicking resume button: {e}")
         return False
 
-async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, timeout_in_seconds, resume_button_prompt=None, require_two_subsequent_done_states=False, project_name=None):
+def save_image_to_file(image, ide_name, project_name, screenshot_count):
+    """
+    Save an image to a file.
+    
+    Args:
+        image: The image to save (can be PIL Image or BytesIO object).
+        ide_name (str): Name of the IDE.
+        project_name (str): Name of the project.
+        screenshot_count (int): The number of the screenshot.
+    """
+    try:
+        # Create a temporary directory for screenshots
+        import tempfile
+        import io
+        temp_dir = tempfile.mkdtemp()
+        
+        # Save the image to the temporary directory
+        image_path = os.path.join(temp_dir, f"{ide_name}_{project_name}_{screenshot_count}.png")
+        
+        # Handle both PIL Image and BytesIO objects
+        if isinstance(image, io.BytesIO):
+            # If it's a BytesIO object, convert to PIL Image first
+            image.seek(0)  # Reset position to beginning
+            pil_image = Image.open(image)
+            pil_image.save(image_path)
+        else:
+            # Assume it's already a PIL Image
+            image.save(image_path)
+            
+        print(f"Debug screenshot saved to: {image_path}")
+    except Exception as e:
+        print(f"Error saving image to file: {e}")
+
+
+async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, timeout_in_seconds, resume_button_prompt=None, require_two_subsequent_done_states=False, project_name=None, save_screenshots_for_debug=False):
     """
     Wait until the specified IDE finishes processing.
     
@@ -374,7 +408,10 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
                     image = take_screenshot(1280, 720)
             else:
                 image = take_screenshot(1280, 720)
-            
+
+            if save_screenshots_for_debug:
+                save_image_to_file(image, ide_name, project_name, screenshot_count)
+
             # Analyze screenshot
             is_done, state, reasoning = analyze_ide_state(image, interface_state_analysis_prompt)
             
@@ -473,6 +510,7 @@ if __name__ == "__main__":
         args.timeout, 
         args.resume_button_prompt,
         require_two_subsequent_done_states=False,
-        project_name=args.project_name
+        project_name=args.project_name,
+        save_screenshots_for_debug=True
     ))
     sys.exit(0 if result else 1)
