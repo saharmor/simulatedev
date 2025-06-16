@@ -344,8 +344,6 @@
             font-size: 1.1rem;
         }
 
-
-
         .local-badge {
             background: #6c757d;
             color: white;
@@ -445,8 +443,6 @@
             font-size: 0.8rem;
             font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
         }
-
-
     </style>
 </head>
 <body>
@@ -493,9 +489,11 @@
                             <label for="workflow">Workflow Type <span class="required">*</span></label>
                             <select id="workflow" required>
                                 <option value="">Select a workflow...</option>
-                                <option value="custom_coding">Custom coding task</option>
-                                <option value="bug_hunting">Bug Hunting</option>
-                                <option value="code_optimization">Code Optimization</option>
+                                <option value="bugs">Bug Hunting - Find and fix bugs and security issues</option>
+                                <option value="optimize">Performance Optimization - Find and implement performance improvements</option>
+                                <option value="refactor">Code Refactoring - Improve code quality and maintainability</option>
+                                <option value="low-hanging">Low-Hanging Fruit - Find and implement easy improvements</option>
+                                <option value="custom">Custom Coding - Custom tasks with your own prompt</option>
                             </select>
                             <div id="workflowDescription" class="workflow-description" style="display: none;"></div>
                         </div>
@@ -524,15 +522,13 @@
                         <div class="help-text">Configure one or more AI agents to work on your task. Each role can only be assigned once.</div>
                     </div>
 
-
-
                     <!-- Optional Parameters -->
                     <div class="config-card">
                         <h3 class="card-title">Options</h3>
                         
                         <div class="checkbox-group">
                             <input type="checkbox" id="noPr">
-                            <label for="noPr">Skip creating pull request</label>
+                            <label for="noPr">Skip creating pull request (testing only)</label>
                         </div>
 
                         <div class="checkbox-group">
@@ -560,9 +556,12 @@
                 <div class="env-section">
                     <h3 style="margin-bottom: 15px; color: #2c3e50;">Environment File (.env)</h3>
                     <div id="envOutput" class="output-box">Generate commands to see the .env file content...</div>
-                    <button type="button" class="btn btn-success copy-btn" onclick="copyToClipboard('envOutput', this)">
+                    <button type="button" class="btn btn-success copy-btn" onclick="copyToClipboard('envOutput', this, 'env')">
                         Copy .env Content
                     </button>
+                    <div id="envCopyMessage" class="copy-message" style="display: none; margin-top: 10px; padding: 8px 12px; background: #d4edda; border: 1px solid #c3e6cb; border-radius: 4px; color: #155724; font-size: 0.9rem;">
+                        📋 Now paste this into a local .env file in your SimulateDev project root
+                    </div>
                 </div>
 
                 <div style="margin-top: 30px;">
@@ -575,18 +574,13 @@
                             <span class="local-badge">LOCAL</span>
                         </h4>
                         <div id="cliOutput" class="output-box">Generate commands to see the CLI command...</div>
-                        <button type="button" class="btn btn-success copy-btn" onclick="copyToClipboard('cliOutput', this)">
+                        <button type="button" class="btn btn-success copy-btn" onclick="copyToClipboard('cliOutput', this, 'command')">
                             Copy Command
                         </button>
+                        <div id="commandCopyMessage" class="copy-message" style="display: none; margin-top: 10px; padding: 8px 12px; background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 4px; color: #0c5460; font-size: 0.9rem;">
+                            💻 Now run this command in your terminal in the SimulateDev directory
+                        </div>
                     </div>
-                </div>
-
-                <div style="margin-top: 30px; flex: 1; display: flex; flex-direction: column;">
-                    <h3 style="margin-bottom: 15px; color: #2c3e50;">Detailed Instructions</h3>
-                    <div id="instructionsOutput" class="output-box instructions-box">Generate commands to see detailed instructions...</div>
-                    <button type="button" class="btn btn-success copy-btn" onclick="copyToClipboard('instructionsOutput', this)">
-                        Copy Instructions
-                    </button>
                 </div>
             </div>
         </div>
@@ -595,12 +589,12 @@
     <script>
         // Available agent configurations
         const agentConfigs = {
-            ides: ['cursor', 'windsurf', 'claude_code', 'test'],
+            ides: ['cursor', 'windsurf', 'claude_code'],
             roles: ['Planner', 'Coder', 'Tester'],
             models: [
+                'claude-4-sonnet',
                 'Claude Sonnet 3.5',
                 'Claude Opus 3',
-                'claude-4-sonnet',
                 'GPT-4',
                 'GPT-4 Turbo',
                 'Gemini Pro'
@@ -609,9 +603,11 @@
 
         // Workflow descriptions
         const workflowDescriptions = {
-                            'custom_coding': 'Custom coding tasks with your own prompt. Perfect for feature development, bug fixes, and custom programming tasks.',
-            'bug_hunting': 'Automatically find and fix security vulnerabilities and bugs in your codebase.',
-            'code_optimization': 'Analyze and optimize your code for better performance, readability, and maintainability.'
+            'bugs': 'Systematically find and fix one high-impact bug or security vulnerability in your codebase.',
+            'optimize': 'Find and implement one high-value performance optimization to improve your application\'s speed and efficiency.',
+            'refactor': 'Improve code quality, maintainability, and structure through systematic refactoring.',
+            'low-hanging': 'Find and implement one impressive low-hanging fruit improvement that provides quick wins.',
+            'custom': 'Custom coding tasks with your own prompt. Perfect for feature development, bug fixes, and custom programming tasks.'
         };
 
         let agentCounter = 0;
@@ -635,7 +631,7 @@
                 }
 
                 // Show/hide task description based on workflow
-                if (selectedWorkflow === 'custom_coding') {
+                if (selectedWorkflow === 'custom') {
                     taskDescriptionGroup.style.display = 'block';
                     taskDescriptionField.required = true;
                 } else {
@@ -644,8 +640,6 @@
                     taskDescriptionField.value = ''; // Clear the field when hidden
                 }
             });
-
-
         });
 
         function addAgent(isDefault = false) {
@@ -728,10 +722,10 @@
                 return;
             }
 
-                            // Validate task description for custom_coding workflow
+            // Validate task description for custom workflow
             const workflow = document.getElementById('workflow').value;
             const taskDescription = document.getElementById('taskDescription').value;
-                            if (workflow === 'custom_coding' && !taskDescription.trim()) {
+            if (workflow === 'custom' && !taskDescription.trim()) {
                 alert('Task description is required for custom coding tasks.');
                 return;
             }
@@ -762,9 +756,6 @@
             
             // Generate setup instructions
             generateInstructions();
-            
-            // Generate quick setup
-            generateQuickSetup();
 
             // Reset button state
             setTimeout(() => {
@@ -862,27 +853,34 @@ AGENT_TIMEOUT_SECONDS=1200`;
 
             const agents = getAgentsConfig();
 
-                            // For custom_coding workflow, use the task description; for others, use workflow-specific descriptions
-            let taskParamRaw = '';
-                            if (workflow === 'custom_coding') {
-                taskParamRaw = taskDescription;
-            } else if (workflow === 'bug_hunting') {
-                taskParamRaw = 'Find and fix security vulnerabilities and bugs';
-            } else if (workflow === 'code_optimization') {
-                taskParamRaw = 'Optimize performance and improve code quality';
+            // Start with base command
+            let command = `python simulatedev.py --workflow ${workflow} --repo "${repoUrl}"`;
+
+            // Add task description for custom workflow
+            if (workflow === 'custom' && taskDescription) {
+                // Escape exclamation marks for zsh compatibility
+                const escapedTask = taskDescription.replace(/!/g, '\\!');
+                command += ` --task "${escapedTask}"`;
             }
 
-            // Escape exclamation marks for zsh compatibility
-            const taskParam = taskParamRaw.replace(/!/g, '\\!');
-
-            let command = `python simulatedev.py --task "${taskParam}" --repo "${repoUrl}" --workflow ${workflow}`;
-
-            // Add agents if more than one or if not default
-            if (agents.length > 1 || (agents.length === 1 && (agents[0].coding_ide !== 'cursor' || agents[0].model !== 'claude-4-sonnet' || agents[0].role !== 'Coder'))) {
+            // Add agent configuration
+            if (agents.length === 1) {
+                // Single agent - use --agent flag if it's the default configuration
+                const agent = agents[0];
+                if (agent.coding_ide === 'cursor' && agent.model === 'claude-4-sonnet' && agent.role === 'Coder') {
+                    command += ` --agent ${agent.coding_ide}`;
+                } else {
+                    // Non-default single agent - use --coding-agents
+                    const agentsJson = JSON.stringify(agents).replace(/"/g, '\\"');
+                    command += ` --coding-agents "${agentsJson}"`;
+                }
+            } else {
+                // Multiple agents - use --coding-agents
                 const agentsJson = JSON.stringify(agents).replace(/"/g, '\\"');
                 command += ` --coding-agents "${agentsJson}"`;
             }
 
+            // Add optional flags
             if (noPr) {
                 command += ` --no-pr`;
             }
@@ -894,11 +892,10 @@ AGENT_TIMEOUT_SECONDS=1200`;
             document.getElementById('cliOutput').textContent = command;
         }
 
-
-
-
-
         function generateInstructions() {
+            const workflow = document.getElementById('workflow').value;
+            const workflowName = workflow.charAt(0).toUpperCase() + workflow.slice(1);
+            
             const instructions = `Setup Instructions:
 
 1. Save the .env content to a file named '.env' in your SimulateDev project root
@@ -912,47 +909,30 @@ Prerequisites:
 - Valid Anthropic API key with Claude access
 - GitHub token (optional, for PR creation)
 - Target repository must be accessible
-- System packages for GUI automation (varies by OS)`;
+- System packages for GUI automation (varies by OS)
 
-            instructions += `
-
-Workflow Types:
-- custom_coding: Custom tasks with your own prompt
-- bug_hunting: Automated vulnerability and bug detection
-- code_optimization: Performance and code quality improvements
+Workflow Information:
+- Selected Workflow: ${workflowName}
+- ${workflowDescriptions[workflow] || 'Custom workflow with user-defined task'}
 
 Agent Roles:
 - Planner: Analyzes requirements and creates implementation plans
 - Coder: Implements the actual code changes
 - Tester: Creates and runs tests for the implemented features
 
-Note: Each role can only be assigned to one agent in multi-agent setups.`;
+Note: Each role can only be assigned to one agent in multi-agent setups.
+
+Supported IDEs:
+- Cursor: Full integration with Claude Computer Use
+- Windsurf: Full integration with Claude Computer Use
+- Claude Code: Headless integration (no GUI automation needed)
+
+Timeout Configuration:
+- Default timeout: 20 minutes (1200 seconds)
+- Adjust AGENT_TIMEOUT_SECONDS in .env for longer/shorter tasks
+- Range: 30 seconds to 2 hours (7200 seconds)`;
 
             document.getElementById('instructionsOutput').textContent = instructions;
-        }
-
-        function generateQuickSetup() {
-            const anthropicKey = document.getElementById('anthropicKey').value;
-            
-            const quickSetup = `# Quick Setup
-
-# 1. Clone SimulateDev
-git clone https://github.com/your-username/simulatedev.git
-cd simulatedev
-
-# 2. Create .env file
-cat > .env << 'EOF'
-ANTHROPIC_API_KEY=${anthropicKey || 'your_anthropic_key_here'}
-GITHUB_TOKEN=${document.getElementById('githubToken').value || 'your_github_token_here'}
-EOF
-
-# 3. Install Python dependencies
-pip install -r requirements.txt
-
-# 4. Run your task (use the command above)
-# python simulatedev.py [options]`;
-
-            document.getElementById('quickSetupOutput').textContent = quickSetup;
         }
 
         function generateActionList() {
@@ -1007,7 +987,7 @@ pip install -r requirements.txt
             document.getElementById('actionListContent').innerHTML = actionListHTML;
         }
 
-        function copyToClipboard(elementId, button) {
+        function copyToClipboard(elementId, button, type) {
             const element = document.getElementById(elementId);
             const text = element.textContent;
             
@@ -1015,6 +995,28 @@ pip install -r requirements.txt
                 const originalText = button.textContent;
                 button.textContent = 'Copied!';
                 button.classList.add('copied');
+                
+                // Show special message for .env content
+                if (type === 'env') {
+                    const envMessage = document.getElementById('envCopyMessage');
+                    envMessage.style.display = 'block';
+                    
+                    // Hide the message after 5 seconds
+                    setTimeout(function() {
+                        envMessage.style.display = 'none';
+                    }, 10000);
+                }
+                
+                // Show special message for command content
+                if (type === 'command') {
+                    const commandMessage = document.getElementById('commandCopyMessage');
+                    commandMessage.style.display = 'block';
+                    
+                    // Hide the message after 5 seconds
+                    setTimeout(function() {
+                        commandMessage.style.display = 'none';
+                    }, 10000);
+                }
                 
                 setTimeout(function() {
                     button.textContent = originalText;

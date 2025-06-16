@@ -91,7 +91,7 @@ class IntegrationTestRunner:
                 workflow_type="custom_coding",
                 repo_url=self.repo_url,
                 create_pr=True,
-                delete_existing=True  # Clean slate for testing
+                delete_existing_repo_env=True  # Clean slate for testing
             )
             
             print(f"Task: {self.simple_task}")
@@ -159,7 +159,7 @@ class IntegrationTestRunner:
                 workflow_type="custom_coding",
                 repo_url=self.repo_url,
                 create_pr=True,
-                delete_existing=True  # Clean slate for testing
+                delete_existing_repo_env=True  # Clean slate for testing
             )
             
             print(f"Task: {self.simple_task}")

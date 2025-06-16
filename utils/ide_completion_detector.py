@@ -302,7 +302,7 @@ async def click_ide_resume_button(resume_button_prompt):
         print(f"Error clicking resume button: {e}")
         return False
 
-async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, timeout_in_seconds, resume_button_prompt=None, require_two_subsequent_done_states=False):
+async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, timeout_in_seconds, resume_button_prompt=None, require_two_subsequent_done_states=False, project_name=None):
     """
     Wait until the specified IDE finishes processing.
     
@@ -311,6 +311,8 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
         interface_state_analysis_prompt (str): Prompt for analyzing IDE state.
         timeout_in_seconds (int): Maximum time to wait in seconds for THIS execution.
         resume_button_prompt (str, optional): Prompt for finding the resume button.
+        require_two_subsequent_done_states (bool): Whether to require two consecutive "done" states.
+        project_name (str, optional): Name of the project to verify correct window is focused.
     """
     try:
         # Create a temporary directory for screenshots
@@ -345,6 +347,18 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
             
             # Print that we're checking (every iteration)
             print(f"Checking {ide_name} state... (check #{screenshot_count}, {int(remaining)}s remaining)")
+            
+            # Check if the correct project window is visible and focused (if project_name is provided)
+            if project_name:
+                from utils.computer_use_utils import is_project_window_visible, play_beep_sound
+                
+                if not is_project_window_visible(ide_name, project_name):
+                    print(f"WARNING: {ide_name} window for project '{project_name}' is not visible/focused. Skipping monitoring and playing beep to get user's attention.")
+                    play_beep_sound()
+                    
+                    # Sleep for a shorter interval before checking again
+                    time.sleep(min(10.0, actual_sleep_time if 'actual_sleep_time' in locals() else 10.0))
+                    continue
             
             # Capture screenshot
             # TODO FIX and get size correctly
@@ -438,8 +452,16 @@ if __name__ == "__main__":
     parser.add_argument("--timeout", type=int, default=600, help="Maximum time to wait in seconds")
     parser.add_argument("--interface_state_analysis_prompt", required=True, help="Prompt for IDE state analysis")
     parser.add_argument("--resume_button_prompt", help="Prompt for finding the resume button (optional)")
+    parser.add_argument("--project_name", help="Name of the project to verify correct window is focused (optional)")
     
     args = parser.parse_args()
     
-    result = asyncio.run(wait_until_ide_finishes(args.ide, args.interface_state_analysis_prompt, args.timeout, args.resume_button_prompt))
+    result = asyncio.run(wait_until_ide_finishes(
+        args.ide, 
+        args.interface_state_analysis_prompt, 
+        args.timeout, 
+        args.resume_button_prompt,
+        require_two_subsequent_done_states=False,
+        project_name=args.project_name
+    ))
     sys.exit(0 if result else 1)

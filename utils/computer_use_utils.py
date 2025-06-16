@@ -5,7 +5,7 @@ import subprocess
 import pyautogui
 import platform
 from enum import Enum
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 from dotenv import load_dotenv
 import json
 from dataclasses import dataclass
@@ -31,6 +31,101 @@ class Coordinates:
 class ComputerUseAction:
     action_type: ActionType
     coordinates: Coordinates
+
+# IDE Configuration mapping
+IDE_CONFIG = {
+    "windsurf": {
+        "process_name": "Electron",
+        "display_name": "Windsurf"
+    },
+    "cursor": {
+        "process_name": "Cursor", 
+        "display_name": "Cursor"
+    }
+}
+
+def _get_ide_process_name(app_name: str) -> str:
+    """Get the process name for a given IDE application"""
+    app_name = app_name.lower()
+    if app_name in IDE_CONFIG:
+        return IDE_CONFIG[app_name]["process_name"]
+    return app_name.capitalize()
+
+def _get_ide_display_name(app_name: str) -> str:
+    """Get the display name for a given IDE application"""
+    app_name = app_name.lower()
+    if app_name in IDE_CONFIG:
+        return IDE_CONFIG[app_name]["display_name"]
+    return app_name.capitalize()
+
+def _run_applescript(script: str) -> Tuple[bool, str]:
+    """
+    Run an AppleScript and return success status and output.
+    
+    Returns:
+        Tuple[bool, str]: (success, output_or_error)
+    """
+    try:
+        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
+        return True, result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        return False, e.stderr.strip() if e.stderr else "AppleScript execution failed"
+    except Exception as e:
+        return False, str(e)
+
+def _get_process_window_titles(process_name: str) -> Tuple[bool, List[str]]:
+    """
+    Get all window titles for a given process using AppleScript.
+    
+    Returns:
+        Tuple[bool, List[str]]: (success, list_of_window_titles)
+    """
+    script = f'''
+    tell application "System Events"
+        tell process "{process_name}"
+            set windowTitles to name of every window
+        end tell
+    end tell
+    return windowTitles
+    '''
+    
+    success, output = _run_applescript(script)
+    if success:
+        # Handle empty output or single empty string
+        if not output or output == '""' or output == "":
+            return True, []
+        window_titles = [title.strip().strip('"') for title in output.split(",")]
+        return True, window_titles
+    else:
+        return False, []
+
+def _get_frontmost_process() -> Tuple[bool, str]:
+    """
+    Get the name of the frontmost process using AppleScript.
+    
+    Returns:
+        Tuple[bool, str]: (success, process_name)
+    """
+    script = '''
+    tell application "System Events"
+        set frontProcess to name of first application process whose frontmost is true
+    end tell
+    return frontProcess
+    '''
+    
+    return _run_applescript(script)
+
+def _find_window_with_project(window_titles: List[str], project_name: str) -> Optional[str]:
+    """
+    Find a window title that contains the project name.
+    
+    Returns:
+        Optional[str]: The matching window title, or None if not found
+    """
+    for title in window_titles:
+        if project_name.lower() in title.lower():
+            return title
+    return None
 
 class ClaudeComputerUse:
     """Simple class to interact with Claude Computer Use for getting coordinates"""
@@ -183,20 +278,11 @@ def get_coordinates_for_prompt(prompt: str) -> Optional[Tuple[int, int]]:
 
 def get_windsurf_project_window_name(project_contained_name: str):
     """Get Windsurf project window name since it runs as an Electron app"""
-    script = '''
-        tell application "System Events"
-            tell process "Electron"
-                set theWindowNames to name of every window
-            end tell
-        end tell
-        return theWindowNames
-    '''
-    try:
-        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
-        window_names = result.stdout.strip().split(",")
-        return next((name.strip() for name in window_names if project_contained_name in name), None)
-    except Exception as e:
-        print(f"Error getting Windsurf window names: {str(e)}")
+    success, window_titles = _get_process_window_titles("Electron")
+    if success:
+        return next((name for name in window_titles if project_contained_name in name), None)
+    else:
+        print(f"Error getting Windsurf window names")
         return None
 
 
@@ -247,20 +333,19 @@ def bring_to_front_window(app_name: str, window_title: str):
                     return tabFound
                 end tell
                 '''
-                result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
-                tab_found = result.stdout.strip() == "true"
-                if tab_found:
+                success, output = _run_applescript(script)
+                if success and output == "true":
                     return True
                 else:
                     print(f"Warning: Focused on Google Chrome, but could not find tab with title containing '{window_name}'")
                     return False
             else:
-                # windsurf runs as an Electron app, so we need to check the window names
-                app_name_for_script = "Electron" if app_name == "windsurf" else app_name.capitalize()
+                # Use the helper function to get process name
+                process_name = _get_ide_process_name(app_name)
                 
                 script = f'''
                 tell application "System Events"
-                    tell process "{app_name_for_script}"
+                    tell process "{process_name}"
                         set frontmost to true
                         repeat with w in windows
                             if name of w contains "{window_name}" then
@@ -272,8 +357,8 @@ def bring_to_front_window(app_name: str, window_title: str):
                 end tell
                 '''
 
-                subprocess.run(["osascript", "-e", script], check=True)
-                return True
+                success, _ = _run_applescript(script)
+                return success
 
         elif platform.system() == "Windows":
             # Windows-specific focusing script would be implemented here
@@ -289,8 +374,8 @@ def bring_to_front_window(app_name: str, window_title: str):
 
 def wait_for_focus(app_name, timeout=10):
     """Wait until the specified app is frontmost. Updated to handle Windsurf as Electron app."""
-    # Handle Windsurf as Electron app
-    process_name = "Electron" if app_name.lower() == "windsurf" else app_name
+    # Use the helper function to get process name
+    process_name = _get_ide_process_name(app_name)
     
     script = f'''
     tell application "System Events"
@@ -341,14 +426,11 @@ def get_current_window_name():
     end try
     '''
     
-    try:
-        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=False)
-        if result.returncode != 0:
-            print(f"Warning: AppleScript error when getting window name: {result.stderr.strip()}")
-            return "Unknown Window"
-        return result.stdout.strip()
-    except Exception as e:
-        print(f"Error getting current window name: {e}")
+    success, output = _run_applescript(script)
+    if success:
+        return output
+    else:
+        print(f"Warning: AppleScript error when getting window name: {output}")
         return "Unknown Window"
 
 
@@ -364,100 +446,30 @@ def is_ide_open_with_project(app_name: str, project_name: str) -> bool:
         bool: True if the IDE is running with the specified project, False otherwise
     """
     try:
-        app_name = app_name.lower()
-        
-        if platform.system() == "Darwin":
-            # Handle different IDEs
-            if app_name == "windsurf":
-                # Windsurf runs as Electron, check its windows
-                script = '''
-                tell application "System Events"
-                    tell process "Electron"
-                        set windowTitles to name of every window
-                    end tell
-                end tell
-                return windowTitles
-                '''
-                try:
-                    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
-                    window_titles = result.stdout.strip().split(",")
-                    
-                    # Check if any window title contains the project name
-                    for title in window_titles:
-                        title = title.strip()
-                        if project_name.lower() in title.lower():
-                            print(f"Found Windsurf window with project '{project_name}': {title}")
-                            return True
-                    
-                    print(f"Windsurf is running but no window found with project '{project_name}'")
-                    print(f"Available windows: {[t.strip() for t in window_titles]}")
-                    return False
-                    
-                except subprocess.CalledProcessError:
-                    print("Windsurf (Electron) is not running")
-                    return False
-                    
-            elif app_name == "cursor":
-                # Cursor runs as its own app
-                script = f'''
-                tell application "System Events"
-                    tell process "Cursor"
-                        set windowTitles to name of every window
-                    end tell
-                end tell
-                return windowTitles
-                '''
-                try:
-                    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
-                    window_titles = result.stdout.strip().split(",")
-                    
-                    # Check if any window title contains the project name
-                    for title in window_titles:
-                        title = title.strip()
-                        if project_name.lower() in title.lower():
-                            print(f"Found Cursor window with project '{project_name}': {title}")
-                            return True
-                    
-                    print(f"Cursor is running but no window found with project '{project_name}'")
-                    print(f"Available windows: {[t.strip() for t in window_titles]}")
-                    return False
-                    
-                except subprocess.CalledProcessError:
-                    print("Cursor is not running")
-                    return False
-                    
-            else:
-                # Generic IDE check
-                app_name_capitalized = app_name.capitalize()
-                script = f'''
-                tell application "System Events"
-                    tell process "{app_name_capitalized}"
-                        set windowTitles to name of every window
-                    end tell
-                end tell
-                return windowTitles
-                '''
-                try:
-                    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
-                    window_titles = result.stdout.strip().split(",")
-                    
-                    # Check if any window title contains the project name
-                    for title in window_titles:
-                        title = title.strip()
-                        if project_name.lower() in title.lower():
-                            print(f"Found {app_name_capitalized} window with project '{project_name}': {title}")
-                            return True
-                    
-                    print(f"{app_name_capitalized} is running but no window found with project '{project_name}'")
-                    print(f"Available windows: {[t.strip() for t in window_titles]}")
-                    return False
-                    
-                except subprocess.CalledProcessError:
-                    print(f"{app_name_capitalized} is not running")
-                    return False
-                    
-        else:
+        if platform.system() != "Darwin":
             print(f"IDE project checking not implemented for {platform.system()}")
+            return False
+            
+        app_name = app_name.lower()
+        process_name = _get_ide_process_name(app_name)
+        display_name = _get_ide_display_name(app_name)
+        
+        # Get window titles for the process
+        success, window_titles = _get_process_window_titles(process_name)
+        
+        if not success:
+            print(f"{display_name} ({process_name}) is not running")
+            return False
+        
+        # Check if any window title contains the project name
+        matching_window = _find_window_with_project(window_titles, project_name)
+        
+        if matching_window:
+            print(f"Found {display_name} window with project '{project_name}': {matching_window}")
+            return True
+        else:
+            print(f"{display_name} is running but no window found with project '{project_name}'")
+            print(f"Available windows: {window_titles}")
             return False
             
     except Exception as e:
@@ -477,40 +489,33 @@ def close_ide_window_for_project(app_name: str, project_name: str) -> bool:
         bool: True if window was closed successfully, False otherwise
     """
     try:
+        if platform.system() != "Darwin":
+            print(f"IDE window closing not implemented for {platform.system()}")
+            return False
+            
         app_name = app_name.lower()
+        process_name = _get_ide_process_name(app_name)
         
-        if platform.system() == "Darwin":
-            # Handle different IDEs
-            if app_name == "windsurf":
-                # Windsurf runs as Electron, target the Electron process
-                process_name = "Electron"
-            elif app_name == "cursor":
-                # Cursor runs as its own process
-                process_name = "Cursor"
-            else:
-                # Generic IDE - use capitalized app name
-                process_name = app_name.capitalize()
-            
-            # Use AppleScript to close the specific window containing the project name
-            close_script = f'''
-            tell application "System Events"
-                tell process "{process_name}"
-                    repeat with w in windows
-                        if name of w contains "{project_name}" then
-                            click button 1 of w
-                            exit repeat
-                        end if
-                    end repeat
-                end tell
+        # Use AppleScript to close the specific window containing the project name
+        close_script = f'''
+        tell application "System Events"
+            tell process "{process_name}"
+                repeat with w in windows
+                    if name of w contains "{project_name}" then
+                        click button 1 of w
+                        exit repeat
+                    end if
+                end repeat
             end tell
-            '''
-            
-            subprocess.run(["osascript", "-e", close_script], check=True)
+        end tell
+        '''
+        
+        success, _ = _run_applescript(close_script)
+        if success:
             print(f"SUCCESS: Attempted to close {app_name} window for project '{project_name}'")
             return True
-            
         else:
-            print(f"IDE window closing not implemented for {platform.system()}")
+            print(f"ERROR: Failed to close {app_name} window for project '{project_name}'")
             return False
             
     except Exception as e:
@@ -549,3 +554,73 @@ def take_screenshot(target_width, target_height, encode_base64: bool = False, mo
             return base64.b64encode(img_buffer.read()).decode()
         else:
             return img_buffer
+
+
+def play_beep_sound():
+    """Play a beep sound to alert the user"""
+    try:
+        if platform.system() == "Darwin":
+            # Use macOS system beep
+            subprocess.run(["afplay", "/System/Library/Sounds/Ping.aiff"], check=False)
+        elif platform.system() == "Windows":
+            # Use Windows system beep
+            import winsound
+            winsound.Beep(1000, 500)  # 1000 Hz for 500ms
+        else:
+            # Linux - try to use system bell
+            subprocess.run(["pactl", "upload-sample", "/usr/share/sounds/alsa/Front_Left.wav", "bell"], check=False)
+            subprocess.run(["pactl", "play-sample", "bell"], check=False)
+    except Exception as e:
+        print(f"Warning: Could not play beep sound: {e}")
+
+
+def is_project_window_visible(agent_name: str, project_name: str) -> bool:
+    """
+    Returns True if there is a visible and focused window for the given agent and project.
+    
+    This function checks both:
+    1. That the IDE is running with the specified project
+    2. That the IDE window with the project is currently focused/frontmost
+    
+    Args:
+        agent_name (str): Name of the IDE application (e.g., "Cursor", "Windsurf")
+        project_name (str): Name of the project to check for in window titles
+        
+    Returns:
+        bool: True if the IDE window for the project is visible and focused, False otherwise
+    """
+    try:
+        if platform.system() != "Darwin":
+            print(f"Project window visibility checking not implemented for {platform.system()}")
+            return False
+            
+        agent_name = agent_name.lower()
+        
+        # First check if the IDE is running with the project
+        if not is_ide_open_with_project(agent_name, project_name):
+            return False
+        
+        # Then check if the current focused window belongs to this IDE and project
+        current_window = get_current_window_name()
+        
+        # Get the frontmost process
+        success, frontmost_process = _get_frontmost_process()
+        if not success:
+            print("Could not determine frontmost process")
+            return False
+        
+        # Get expected process name for this IDE
+        expected_process = _get_ide_process_name(agent_name)
+        display_name = _get_ide_display_name(agent_name)
+        
+        # Check if the expected IDE is frontmost and current window contains project
+        if frontmost_process == expected_process and project_name.lower() in current_window.lower():
+            print(f"SUCCESS: {display_name} window for project '{project_name}' is visible and focused")
+            return True
+        else:
+            print(f"INFO: {display_name} window for project '{project_name}' is not focused. Current frontmost: {frontmost_process}, window: {current_window}")
+            return False
+            
+    except Exception as e:
+        print(f"Error checking if {agent_name} project window is visible: {e}")
+        return False

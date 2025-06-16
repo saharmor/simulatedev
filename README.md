@@ -95,79 +95,30 @@ The web interface provides:
 - **Multi-Agent Setup**: Simple interface for complex multi-agent workflows
 
 
-### Basic Usage
+## Usage
 
-SimulateDev provides a CLI that handles both single-agent and multi-agent workflows:
+SimulateDev offers three main ways to run coding tasks:
 
-```bash
-python simulatedev.py <task> <agent> --repo <repo_url>
-```
+### 1. 🚀 Quick Start with Predefined Workflows (Recommended)
 
-### Single-Agent Tasks (Most Common)
-
-For quick coding tasks with a single AI agent:
+Use built-in workflows for common coding tasks - no custom prompts needed:
 
 ```bash
-# Fix responsive design issues with Cursor
-python simulatedev.py "Fix responsive table design for mobile devices" cursor --repo https://github.com/user/repo
-
-# Add error handling with Windsurf  
-python simulatedev.py "Add comprehensive error handling to API endpoints" windsurf --repo https://github.com/user/repo
-
-# Test the pipeline and analyze codebase consistency
-python simulatedev.py "Analyze codebase for inconsistencies" test --repo https://github.com/user/repo
+python simulatedev.py --workflow <workflow_name> --repo <repo_url> --agent <agent_name>
 ```
 
-### Multi-Agent Collaboration
+**Available Workflows:**
 
-For complex tasks requiring multiple specialized agents working together:
-
-```bash
-# Multi-agent mode
-python simulatedev.py --multi task.json --repo https://github.com/user/repo --workflow custom_coding
-
-# Interactive mode
-python simulatedev.py --multi --interactive
-
-# From JSON string
-python simulatedev.py --multi --json '{
-  "coding_task_prompt": "Add support for Firefox browser automation",
-  "agents": [
-    {"coding_ide": "claude_code", "model": "claude-opus-4", "role": "Planner"},
-    {"coding_ide": "cursor", "model": "claude-sonnet-4", "role": "Coder"},
-    {"coding_ide": "windsurf", "model": "claude-sonnet-4", "role": "Tester"}
-  ]
-}' --repo https://github.com/browserbase/stagehand --workflow custom_coding
-```
-
-**Multi-Agent JSON Format:**
-
-**Key Fields:**
-- `coding_task_prompt`: Custom task description (required only for `custom_coding` workflow)
-
-**Command-Line Parameters:**
-- `--repo`: Repository URL to work on
-- `--workflow`: Optional predefined workflow (`bug_hunting`, `code_optimization`, `custom_coding`)
-
-**Supported Roles:**
-- **Planner**: Creates implementation plans and breaks down complex tasks
-- **Coder**: Implements the solution based on the plan
-- **Tester**: Tests and validates the implementation
-
-### Workflow System
-
-SimulateDev supports predefined workflows that can be specified in JSON:
-
-| Workflow | Description | Example |
-|----------|-------------|---------|
-| `bugs` | Find and fix bugs and security issues | `python simulatedev.py --workflow bugs --repo https://github.com/user/repo --agent cursor` |
-| `optimize` | Performance optimizations and improvements | `python simulatedev.py --workflow optimize --repo https://github.com/user/repo --agent windsurf` |
-| `refactor` | Code quality improvements and refactoring | `python simulatedev.py --workflow refactor --repo https://github.com/user/repo --agent cursor` |
-| `low-hanging` | Quick wins and easy improvements | `python simulatedev.py --workflow low-hanging --repo https://github.com/user/repo --agent windsurf` |
+| Workflow | Description | When to Use |
+|----------|-------------|-------------|
+| `bugs` | Find and fix bugs and security issues | Code has known issues or needs security audit |
+| `optimize` | Performance optimizations and improvements | App is slow or needs better performance |
+| `refactor` | Code quality improvements and refactoring | Code works but needs better structure/maintainability |
+| `low-hanging` | Quick wins and easy improvements | Want fast, low-risk improvements |
+| `custom` | Custom coding tasks with your own prompt | Need specific functionality or have custom requirements (see [Custom Single-Agent Tasks](#-custom-single-agent-tasks) section below) |
 
 
 **Examples:**
-
 ```bash
 # Hunt for bugs and security issues
 python simulatedev.py --workflow bugs --repo https://github.com/user/repo --agent cursor
@@ -180,9 +131,68 @@ python simulatedev.py --workflow refactor --repo https://github.com/user/repo --
 
 # Find easy wins and quick improvements
 python simulatedev.py --workflow low-hanging --repo https://github.com/user/repo --agent windsurf
+```
 
-# Skip pull request creation (only recommended for testing purposes)
+### 2. 🎯 Custom Single-Agent Tasks
+
+For specific coding tasks with your own custom coding prompt:
+
+```bash
+python simulatedev.py --workflow custom --task "<your_custom_task>" --repo <repo_url> --agent <agent_name>
+```
+
+**Examples:**
+```bash
+# Fix responsive design issues with Cursor
+python simulatedev.py --workflow custom --task "Fix responsive table design for mobile devices" --repo https://github.com/user/repo --agent cursor
+
+# Add error handling with Windsurf  
+python simulatedev.py --workflow custom --task "Add comprehensive error handling to API endpoints" --repo https://github.com/user/repo --agent windsurf
+
+# Custom analysis task
+python simulatedev.py --workflow custom --task "Analyze codebase for inconsistencies and create a report" --repo https://github.com/user/repo --agent cursor
+```
+
+### 3. 🤝 Multi-Agent Collaboration
+
+For complex tasks requiring multiple specialized agents working together:
+
+```bash
+# Multi-agent custom coding with inline JSON
+python simulatedev.py --workflow custom --task "<your_custom_task>" --repo <repo_url> --coding-agents '<json_config>'
+```
+
+**Multi-Agent JSON Format:**
+```json
+[
+  {"coding_ide": "claude_code", "model": "claude-4-sonnet", "role": "Planner"},
+  {"coding_ide": "cursor", "model": "claude-4-sonnet", "role": "Coder"},
+  {"coding_ide": "windsurf", "model": "claude-4-sonnet", "role": "Tester"}
+]
+```
+
+**Supported Roles:**
+- **Planner**: Creates implementation plans and breaks down complex tasks
+- **Coder**: Implements the solution based on the plan
+- **Tester**: Tests and validates the implementation
+
+**Example:**
+```bash
+python simulatedev.py --workflow custom --task "Add support for Firefox browser automation" --repo https://github.com/browserbase/stagehand --coding-agents '[
+  {"coding_ide": "claude_code", "model": "claude-4-sonnet", "role": "Planner"},
+  {"coding_ide": "cursor", "model": "claude-4-sonnet", "role": "Coder"},
+  {"coding_ide": "windsurf", "model": "claude-4-sonnet", "role": "Tester"}
+]'
+```
+
+### Additional Options
+
+```bash
+# Skip pull request creation (testing only)
 python simulatedev.py --workflow bugs --repo https://github.com/user/repo --agent cursor --no-pr
+
+# Keep existing repository directory (don't delete before cloning)
+python simulatedev.py --workflow bugs --repo https://github.com/user/repo --agent cursor --no-delete-existing-repo-env
 ```
 
 ## Configuration
@@ -199,12 +209,6 @@ All configuration is managed through environment variables in your `.env` file:
 | `GIT_USER_NAME` | Git commit author | Optional | Auto-detected from GitHub | Set to override GitHub account name |
 | `GIT_USER_EMAIL` | Git commit email | Optional | Auto-detected from GitHub | Set to override GitHub account email |
 
-### Git Configuration Behavior
-
-SimulateDev now provides intelligent git configuration with clear feedback:
-
-- **✓ GitHub token provided**: Automatically detects your GitHub name and email
-- **✓ Custom values set**: Uses your `GIT_USER_NAME` and `GIT_USER_EMAIL` 
 
 ### Timeout Configuration
 
@@ -226,6 +230,49 @@ The timeout is automatically validated and clamped to reasonable bounds (30 seco
 | Windsurf | Supported | Full integration |  
 | Claude Code | Supported (Headless) | Full integration |
 
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+#### IDE Window Focus Issues
+If you see warnings about IDE windows not being visible/focused, SimulateDev will:
+- **Play a beep sound** to alert you
+- **Skip the current monitoring cycle** and retry
+- **Continue monitoring** once the correct window is focused
+
+**Solution**: Make sure the correct IDE window with your project is visible and focused.
+
+#### Input Field Detection Issues
+If Claude cannot locate the IDE's input field, SimulateDev will:
+- **Play a beep sound** to alert you
+- **Retry the operation** after you address the issue
+- **Provide clear error messages** about what went wrong
+
+**Common causes**:
+- IDE interface has changed or is in an unexpected state
+- Wrong IDE window is focused
+- IDE is not fully loaded or ready
+
+#### Timeout Configuration
+If tasks are timing out, adjust the timeout in your `.env` file:
+```env
+# Increase timeout for complex tasks (in seconds)
+AGENT_TIMEOUT_SECONDS=3600  # 1 hour
+```
+
+#### Repository Access Issues
+If you see "Failed to clone repository" errors:
+- Check that the repository URL is correct and accessible
+- By default, existing repository directories are deleted before cloning (use `--no-delete-existing-repo-env` to keep existing directories)
+- Ensure you have proper GitHub access permissions
+
+### Error Handling Improvements
+SimulateDev now provides consistent error handling across all scenarios:
+- **Beep sounds** for attention-requiring issues
+- **Clear error messages** with specific guidance
+- **Automatic retries** for transient issues
+- **Graceful degradation** when possible
 
 ## License
 

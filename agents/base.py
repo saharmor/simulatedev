@@ -366,9 +366,21 @@ class CodingAgent(ABC):
     
     async def _send_prompt_to_interface(self, prompt: str):
         """Send a prompt to the agent interface (GUI-based implementation)"""
+        # Check if the correct project window is visible and focused
+        if self._current_project_name:
+            from utils.computer_use_utils import is_project_window_visible, play_beep_sound
+            
+            if not is_project_window_visible(self.agent_name, self._current_project_name):
+                print(f"WARNING: {self.agent_name} window for project '{self._current_project_name}' is not visible/focused. Playing beep.")
+                play_beep_sound()
+                raise Exception(f"{self.agent_name} window for project '{self._current_project_name}' is not visible/focused")
+        
         # Get input field coordinates
         input_coords = await self.get_input_field_coordinates()
         if not input_coords:
+            print(f"WARNING: Could not locate {self.agent_name} input field. Playing beep.")
+            from utils.computer_use_utils import play_beep_sound
+            play_beep_sound()
             raise Exception(f"Could not locate {self.agent_name} input field")
         
         # Click the input field
@@ -400,7 +412,14 @@ class CodingAgent(ABC):
         if not timeout_seconds:
             timeout_seconds = config.agent_timeout_seconds
         
-        await wait_until_ide_finishes(self.agent_name, self.interface_state_prompt, timeout_seconds, self.resume_button_prompt, require_two_subsequent_done_states=True)
+        await wait_until_ide_finishes(
+            self.agent_name, 
+            self.interface_state_prompt, 
+            timeout_seconds, 
+            self.resume_button_prompt, 
+            require_two_subsequent_done_states=True,
+            project_name=self._current_project_name
+        )
     
     async def _read_output_file(self) -> str:
         """Read the output file and return its content"""

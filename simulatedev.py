@@ -174,8 +174,8 @@ Examples:
   # Skip pull request creation (only recommended for testing purposes)
   python simulatedev.py --workflow bugs --repo https://github.com/user/repo --agent cursor --no-pr
   
-  # Delete existing repository folder if it exists
-  python simulatedev.py --workflow optimize --repo https://github.com/user/repo --agent cursor --delete-existing
+  # Keep existing repository folder (don't delete before cloning)
+  python simulatedev.py --workflow optimize --repo https://github.com/user/repo --agent cursor --no-delete-existing-repo-env
 
 Note: 
 - Repository must be a valid GitHub URL (https://github.com/user/repo)
@@ -209,8 +209,8 @@ Note:
     parser.add_argument("--no-pr", action="store_true", help="Skip creating pull request (only recommended for testing purposes)")
     parser.add_argument("--output", help="Output file for execution report")
     parser.add_argument("--no-report", action="store_true", help="Skip saving execution report")
-    parser.add_argument("--delete-existing", action="store_true", 
-                       help="Delete existing repository directory before cloning")
+    parser.add_argument("--no-delete-existing-repo-env", action="store_true",
+                       help="Keep existing repository directory (don't delete before cloning)")
     
     return parser.parse_args()
 
@@ -242,8 +242,12 @@ async def execute_task(args) -> bool:
             print("Error: Either --agent or --coding-agents must be specified")
             return False
         
+        # Determine if we should delete existing repository directory
+        # Default is True, unless --no-delete-existing-repo-env is specified
+        delete_existing_repo_env = not args.no_delete_existing_repo_env
+        
         # Handle repository deletion if requested
-        if args.delete_existing:
+        if delete_existing_repo_env:
             parsed_path = urlparse(args.repo).path.rstrip('/')
             repo_name = os.path.splitext(os.path.basename(parsed_path))[0]
             if repo_name.endswith('.git'):
@@ -283,7 +287,7 @@ async def execute_task(args) -> bool:
                     target_dir=args.target_dir,
                     create_pr=not args.no_pr,
                     work_directory=args.work_dir,
-                    delete_existing=args.delete_existing
+                    delete_existing_repo_env=delete_existing_repo_env
                 )
             else:
                 # Multi-agent
@@ -302,7 +306,7 @@ async def execute_task(args) -> bool:
                     target_dir=args.target_dir,
                     create_pr=not args.no_pr,
                     work_directory=args.work_dir,
-                    delete_existing=args.delete_existing
+                    delete_existing_repo_env=delete_existing_repo_env
                 )
         else:
             # Predefined workflow (bugs, optimize, refactor, low-hanging)
@@ -315,7 +319,7 @@ async def execute_task(args) -> bool:
                 agent_role=agent.role,
                 target_dir=args.target_dir,
                 create_pr=not args.no_pr,
-                delete_existing=args.delete_existing
+                delete_existing_repo_env=delete_existing_repo_env
             )
         
         # Print summary
@@ -340,8 +344,6 @@ async def execute_task(args) -> bool:
                 print("Opening pull request in your default browser...")
                 webbrowser.open(response.pr_url)
                 print(f"\nREVIEW: You can review the changes at: {response.pr_url}")
-            
-            print(f"\nRESULTS: Summary:\n{response.final_output}")
         else:
             print(f"\nFAILED: {args.workflow.title()} workflow did not complete successfully.")
             if response.error_message:

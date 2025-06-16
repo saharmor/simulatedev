@@ -36,7 +36,7 @@ class TaskRequest:
     target_dir: Optional[str] = None
     create_pr: bool = True
     work_directory: Optional[str] = None
-    delete_existing: bool = False
+    delete_existing_repo_env: bool = True
     
 
 class Orchestrator:
@@ -76,7 +76,7 @@ class Orchestrator:
                       target_dir: Optional[str] = None,
                       create_pr: bool = True,
                       work_directory: Optional[str] = None,
-                      delete_existing: bool = False) -> TaskRequest:
+                      delete_existing_repo_env: bool = True) -> TaskRequest:
         """
         Unified request creation method for all agent execution scenarios.
         
@@ -156,7 +156,7 @@ class Orchestrator:
             target_dir=target_dir,
             create_pr=create_pr,
             work_directory=work_directory,
-            delete_existing=delete_existing
+            delete_existing_repo_env=delete_existing_repo_env
         )
     
     @classmethod
@@ -206,7 +206,7 @@ class Orchestrator:
             # Clone repository if URL provided
             if request.target_dir:
                 repo_path = request.target_dir
-                success = clone_repository(request.repo_url, request.target_dir, request.delete_existing)
+                success = clone_repository(request.repo_url, request.target_dir, request.delete_existing_repo_env)
                 if not success:
                     raise Exception("Failed to clone repository")
             else:
@@ -216,7 +216,7 @@ class Orchestrator:
                     repo_name = repo_name[:-4]
                 
                 repo_path = os.path.join(self.base_dir, repo_name)
-                success = clone_repository(request.repo_url, repo_path, request.delete_existing)
+                success = clone_repository(request.repo_url, repo_path, request.delete_existing_repo_env)
                 if not success:
                     raise Exception("Failed to clone repository")
             
@@ -549,5 +549,4 @@ class Orchestrator:
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(report, f, indent=2, ensure_ascii=False)
         
-        print(f"Execution report saved to: {output_file}")
         return output_file 
