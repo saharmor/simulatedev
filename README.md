@@ -60,41 +60,6 @@ graph LR
 
 ### Installation
 
-Choose between local installation or Docker (recommended for easier setup):
-
-#### Option 1: Docker (Recommended)
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/your-username/simulatedev.git
-   cd simulatedev
-   ```
-
-2. **Set up environment variables:**
-   ```bash
-   cp env.example .env
-   # Edit .env with your API keys
-   ```
-
-3. **Build and run with Docker:**
-   ```bash
-   # Build the image
-   make build
-   
-   # Run a task
-   make run TASK="Fix responsive design" REPO="https://github.com/user/repo"
-   
-   # Or use docker-compose directly
-   docker-compose run --rm simulatedev python3 simulatedev.py \
-     --task "Your coding task" \
-     --repo https://github.com/user/repo \
-     --workflow general_coding
-   ```
-
-See [DOCKER.md](DOCKER.md) for comprehensive Docker documentation.
-
-#### Option 2: Local Installation
-
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/your-username/simulatedev.git
@@ -285,6 +250,15 @@ All configuration is managed through environment variables in your `.env` file:
 | `AGENT_TIMEOUT_SECONDS` | Agent execution timeout | Optional | 600 | 30-7200 seconds (0.5-120 minutes) |
 | `GIT_USER_NAME` | Git commit author | Optional | Auto-detected from GitHub | Set to override GitHub account name |
 | `GIT_USER_EMAIL` | Git commit email | Optional | Auto-detected from GitHub | Set to override GitHub account email |
+
+### Git Configuration Behavior
+
+SimulateDev now provides intelligent git configuration with clear feedback:
+
+- **✓ GitHub token provided**: Automatically detects your GitHub name and email
+- **✓ Custom values set**: Uses your `GIT_USER_NAME` and `GIT_USER_EMAIL` 
+- **✓ Mixed configuration**: Uses custom values where provided, GitHub info for missing values
+- **ℹ Default fallback**: Uses "SimulateDev Bot" when no GitHub token or custom values are available
 
 ### Timeout Configuration
 

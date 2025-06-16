@@ -1,0 +1,12 @@
+https://github.com/browserbase/stagehand
+https://github.com/browser-use/browser-use
+https://github.com/tavily-ai/tavily-python
+https://github.com/langchain-ai/langchain
+https://github.com/Significant-Gravitas/AutoGPT
+https://github.com/ggml-org/llama.cpp
+https://github.com/assafelovic/gpt-researcher
+https://github.com/crewAIInc/crewAI
+https://github.com/microsoft/playwright
+https://github.com/mem0ai/mem0
+https://github.com/pipecat-ai/pipecat
+https://github.com/All-Hands-AI/OpenHands
