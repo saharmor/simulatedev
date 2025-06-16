@@ -78,6 +78,27 @@ graph LR
    GITHUB_TOKEN=your_github_token_here  # Optional, for PR creation
    ```
 
+### 🌐 Web Interface (Recommended)
+
+For the easiest way to get started, use the **interactive web interface** to generate CLI commands:
+
+```bash
+# Open the web interface in your browser
+open simulatedev_ui.html
+```
+
+The web interface provides:
+- **Easy Configuration**: Visual forms for all settings and options
+- **Step-by-Step Guide**: Clear instructions for each step
+- **Command Generation**: Automatically generates the correct CLI command
+- **Multi-Agent Setup**: Simple interface for complex multi-agent workflows
+- **Built-in Help**: Tooltips and explanations for all options
+
+**Perfect for:**
+- First-time users getting familiar with SimulateDev
+- Complex multi-agent configurations
+- Quick command generation without memorizing syntax
+
 ### Basic Usage
 
 SimulateDev provides a **unified CLI** that handles both single-agent and multi-agent workflows:
