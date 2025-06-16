@@ -42,6 +42,18 @@ graph LR
 6. **Commit**: Creates a new branch with the changes
 7. **PR**: Creates pull request
 
+## How SimulateDev Operates
+
+SimulateDev runs **entirely on your local machine** (for now) and leverages your existing AI coding IDEs (Cursor, Windsurf, Claude Code) to execute collaborative agent workflows. Here's how it works under the hood:
+
+- **Local Execution**: All operations happen on your Mac
+- **IDE Integration**: SimulateDev opens and controls your installed coding IDEs (Cursor, Windsurf, Claude Code) programmatically
+- **Screen Analysis**: Uses Claude's vision capabilities to analyze IDE screenshots and detect task completion, progress, and UI states
+- **Window Focus Requirement**: The coding IDE window must be **visible and focused** for SimulateDev to work properly. If the IDE window (e.g. Cursor) loses focus or becomes hidden, SimulateDev will play a beep sound to alert you to bring the window back into focus
+- **Automated Monitoring**: Continuously monitors the IDE interface until tasks are completed, handling paused states and resume actions automatically
+
+**Important**: Keep your IDE window visible and focused during execution. SimulateDev relies on visual analysis of the IDE interface to track progress and determine when tasks are complete.
+
 ## Quick Start
 
 ### Prerequisites

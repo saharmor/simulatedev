@@ -176,4 +176,3 @@ execution_output/
 screenshot.png
 .DS_Store
 .vscode/launch.json
-multi_agent_execution_report.json

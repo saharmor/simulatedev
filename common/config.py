@@ -87,6 +87,12 @@ class Config:
         """Get the git user email"""
         return os.getenv('GIT_USER_EMAIL', 'simulatedev@example.com')
     
+    @property
+    def save_screenshots_for_debug(self) -> bool:
+        """Get whether to save screenshots for debugging purposes"""
+        value = os.getenv('SAVE_SCREENSHOTS_FOR_DEBUG', 'false').lower()
+        return value in ('true', '1', 'yes', 'on')
+    
     def validate_required_keys(self) -> bool:
         """Validate that required API keys are present"""
         missing_keys = []
@@ -108,6 +114,7 @@ class Config:
         print(f"  Anthropic API Key: {'✓ Set' if self.anthropic_api_key else '✗ Missing'}")
         print(f"  GitHub Token: {'✓ Set' if self.github_token else '✗ Not set (optional)'}")
         print(f"  Git User: {self.git_user_name} <{self.git_user_email}>")
+        print(f"  Save Screenshots for Debug: {'✓ Enabled' if self.save_screenshots_for_debug else '✗ Disabled'}")
         print(f"  Execution Output: {self.execution_output_path}")
         print(f"  Scanned Repos: {self.scanned_repos_path}")
         print(f"  Reports: {self.reports_path}")

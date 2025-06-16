@@ -885,8 +885,11 @@ AGENT_TIMEOUT_SECONDS=1200`;
                 command += ` --no-pr`;
             }
 
-            if (deleteExisting) {
-                command += ` --delete-existing`;
+            // Note: deleteExisting checkbox is "Delete existing repo" (checked = delete)
+            // But the CLI flag is --no-delete-existing-repo-env (present = don't delete)
+            // So we add the flag when deleteExisting is FALSE
+            if (!deleteExisting) {
+                command += ` --no-delete-existing-repo-env`;
             }
 
             document.getElementById('cliOutput').textContent = command;

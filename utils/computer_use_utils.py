@@ -152,8 +152,14 @@ class ClaudeComputerUse:
     
     
     
-    async def get_coordinates_from_claude(self, prompt: str, support_non_existing_elements: bool = False) -> Optional[ComputerUseAction]:
+    async def get_coordinates_from_claude(self, prompt: str, support_non_existing_elements: bool = False, ide_name: str = None, project_name: str = None) -> Optional[ComputerUseAction]:
         """Get coordinates and action type from Claude based on a natural language prompt
+        
+        Args:
+            prompt (str): Natural language description of the UI element to find
+            support_non_existing_elements (bool): Whether to handle non-existing elements gracefully
+            ide_name (str, optional): Name of the IDE to capture window for (e.g., "Cursor", "Windsurf")
+            project_name (str, optional): Name of the project to find in window titles
         
         Returns:
             Optional[ComputerUseAction]: A ComputerUseAction object containing:
@@ -172,8 +178,14 @@ class ClaudeComputerUse:
             # Initialize Anthropic client
             client = Anthropic(api_key=api_key)
             
-            # Take a screenshot
-            base64_image = take_screenshot(self.target_width, self.target_height, encode_base64=True)
+            # Take a screenshot - use IDE window screenshot if both ide_name and project_name are provided
+            if ide_name and project_name:
+                base64_image_data = take_ide_window_screenshot(ide_name, project_name, self.target_width, self.target_height, encode_base64=True)
+                if base64_image_data is None:
+                    print(f"WARNING: Could not capture {ide_name} window for project '{project_name}'. Falling back to full screen.")
+                    base64_image_data = take_screenshot(self.target_width, self.target_height, encode_base64=True)
+            else:
+                base64_image_data = take_screenshot(self.target_width, self.target_height, encode_base64=True)
             
             # Create the message with the screenshot and prompt
             system_prompt = """You are a UI Element Detection AI. Analyze screenshots to locate UI elements and output in JSON format with these exact keys:
@@ -191,10 +203,10 @@ class ClaudeComputerUse:
                 system_prompt = system_prompt + """ If the requested UI element is not found in the screenshot, respond with None. Otherwise, respond ONLY with the JSON format above and nothing else."""
             else:
                 system_prompt = system_prompt + """ Respond ONLY with the JSON format above and nothing else."""
-
-            response = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=1000,
+            
+            message = client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=1024,
                 system=system_prompt,
                 messages=[
                     {
@@ -205,7 +217,7 @@ class ClaudeComputerUse:
                                 "source": {
                                     "type": "base64",
                                     "media_type": "image/png",
-                                    "data": base64_image
+                                    "data": base64_image_data
                                 }
                             },
                             {
@@ -217,35 +229,41 @@ class ClaudeComputerUse:
                 ]
             )
             
-            # Extract coordinates from response
-            response_text = response.content[0].text
-
+            # Parse the response
+            response_text = message.content[0].text.strip()
+            
+            # Handle None response for non-existing elements
+            if support_non_existing_elements and response_text.lower() == "none":
+                return None
+            
+            # Parse JSON response
             try:
-                # Strip any code block markers from response text before parsing
-                response_text = response_text.strip('`').replace('json\n', '')
-                response_data = json.loads(response_text)
-                x = response_data['action']['coordinates']['x']
-                y = response_data['action']['coordinates']['y']
-                action_type_str = response_data['action']['type']
+                response_json = json.loads(response_text)
+                action_data = response_json.get("action", {})
                 
-                # Convert string action type to enum
-                action_type = ActionType(action_type_str)
-
-                # Scale coordinates from API format to screen format
-                scaled_x, scaled_y = self.scale_coordinates(ScalingSource.API, x, y)
+                # Extract action type and coordinates
+                action_type_str = action_data.get("type", "click")
+                action_type = ActionType.CLICK if action_type_str == "click" else ActionType.TYPE
+                
+                coords_data = action_data.get("coordinates", {})
+                x = coords_data.get("x", 0)
+                y = coords_data.get("y", 0)
+                
+                # Scale coordinates from Claude's coordinate system to real screen coordinates
+                real_x, real_y = self.scale_coordinates(ScalingSource.API, x, y)
                 
                 return ComputerUseAction(
                     action_type=action_type,
-                    coordinates=Coordinates(x=scaled_x, y=scaled_y)
+                    coordinates=Coordinates(real_x, real_y)
                 )
                 
-            except (json.JSONDecodeError, KeyError) as e:
-                print(f"Error parsing response from Claude: {str(e)}")
-                print(f"Response text was: {response_text}")
+            except json.JSONDecodeError as e:
+                print(f"Error parsing Claude response as JSON: {e}")
+                print(f"Response was: {response_text}")
                 return None
-            
+                
         except Exception as e:
-            print(f"Error getting coordinates from Claude: {str(e)}")
+            print(f"Error getting coordinates from Claude: {e}")
             return None
 
 
@@ -296,69 +314,67 @@ def get_ide_window_name(app_name: str, window_title: str):
         return window_title
 
 
-def bring_to_front_window(app_name: str, window_title: str):
+def bring_to_front_window(app_name: str, project_name: str):
     """
-    Focus the appropriate IDE window based on the current interface.
+    Focus the appropriate IDE window that contains the project name.
+    
+    Args:
+        app_name (str): Name of the IDE application (e.g., "Cursor", "Windsurf")
+        project_name (str): Name of the project to find in window titles
     
     Returns:
         bool: True if the window was successfully focused, False otherwise
     """
     try:
         app_name = app_name.lower()
-        window_name = get_ide_window_name(app_name, window_title)
+        process_name = _get_ide_process_name(app_name)
+        display_name = _get_ide_display_name(app_name)
+        
+        # First check if the IDE is running with the project
+        if not is_ide_open_with_project(app_name, project_name):
+            print(f"{display_name} is not open with project '{project_name}'")
+            return False
+        
+        # Get window titles for the process
+        success, window_titles = _get_process_window_titles(process_name)
+        if not success:
+            print(f"Could not get window titles for {display_name}")
+            return False
+        
+        # Find the window that contains the project name
+        matching_window = _find_window_with_project(window_titles, project_name)
+        if not matching_window:
+            print(f"No window found containing project '{project_name}'")
+            return False
+        
+        print(f"Bringing {display_name} window to focus: {matching_window}")
         
         if platform.system() == "Darwin":
-            # If the application is Google Chrome, or if it's Lovable or Bolt,
-            # then use Chrome to find the tab with the window_title.
-            window_name_for_script = window_name if window_name else app_name
-
-            if app_name in ["lovable", "bolt"]:
-                script = f'''
-                tell application "Google Chrome"
-                    activate
-                    set tabFound to false
+            # Use AppleScript to bring the specific window to front
+            script = f'''
+            tell application "System Events"
+                tell process "{process_name}"
+                    set frontmost to true
+                    delay 0.5
                     repeat with w in windows
-                        set tabCount to count of tabs in w
-                        repeat with i from 1 to tabCount
-                            if (title of (tab i of w) contains "{window_name_for_script}") then
-                                set active tab index of w to i
-                                -- Bring the window to the front
-                                set index of w to 1
-                                set tabFound to true
-                                exit repeat
-                            end if
-                        end repeat
-                        if tabFound then exit repeat
+                        if name of w contains "{project_name}" then
+                            perform action "AXRaise" of w
+                            set position of w to {{0, 0}}
+                            delay 0.5
+                            exit repeat
+                        end if
                     end repeat
-                    return tabFound
                 end tell
-                '''
-                success, output = _run_applescript(script)
-                if success and output == "true":
-                    return True
-                else:
-                    print(f"Warning: Focused on Google Chrome, but could not find tab with title containing '{window_name}'")
-                    return False
-            else:
-                # Use the helper function to get process name
-                process_name = _get_ide_process_name(app_name)
-                
-                script = f'''
-                tell application "System Events"
-                    tell process "{process_name}"
-                        set frontmost to true
-                        repeat with w in windows
-                            if name of w contains "{window_name}" then
-                                perform action "AXRaise" of w
-                                exit repeat
-                            end if
-                        end repeat
-                    end tell
-                end tell
-                '''
+            end tell
+            '''
 
-                success, _ = _run_applescript(script)
-                return success
+            success, _ = _run_applescript(script)
+            if success:
+                print(f"Successfully brought {display_name} window for project '{project_name}' to focus")
+                return True
+            else:
+                print(f"Failed to bring {display_name} window for project '{project_name}' to focus")
+                return False
 
         elif platform.system() == "Windows":
             # Windows-specific focusing script would be implemented here
@@ -574,7 +590,123 @@ def play_beep_sound():
         print(f"Warning: Could not play beep sound: {e}")
 
 
-def is_project_window_visible(agent_name: str, project_name: str) -> bool:
+def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: int = 1280, target_height: int = 720, encode_base64: bool = False):
+    """
+    Capture a screenshot of the specific IDE window that contains the project name.
+    Automatically brings the window to focus before taking the screenshot.
+    
+    Args:
+        ide_name (str): Name of the IDE application (e.g., "Cursor", "Windsurf")
+        project_name (str): Name of the project to find in window titles
+        target_width (int): Target width for the screenshot
+        target_height (int): Target height for the screenshot
+        encode_base64 (bool): Whether to return base64 encoded image
+        
+    Returns:
+        str or BytesIO: Screenshot data (base64 string if encode_base64=True, BytesIO buffer otherwise)
+        Returns None if the IDE window is not found or not focused
+    """
+    try:
+        if platform.system() != "Darwin":
+            print(f"IDE window screenshot not implemented for {platform.system()}")
+            return None
+            
+        ide_name = ide_name.lower()
+        process_name = _get_ide_process_name(ide_name)
+        display_name = _get_ide_display_name(ide_name)
+        
+        # First check if the IDE is running with the project
+        if not is_ide_open_with_project(ide_name, project_name):
+            print(f"{display_name} is not open with project '{project_name}'")
+            return None
+        
+        # Get window titles for the process
+        success, window_titles = _get_process_window_titles(process_name)
+        if not success:
+            print(f"Could not get window titles for {display_name}")
+            return None
+        
+        # Find the window that contains the project name
+        matching_window = _find_window_with_project(window_titles, project_name)
+        if not matching_window:
+            print(f"No window found containing project '{project_name}'")
+            return None
+        
+        print(f"Taking screenshot of {display_name} window: {matching_window}")
+        
+        # IMPORTANT: Bring the window to focus before taking screenshot
+        print(f"Bringing {display_name} window to focus...")
+        focus_success = bring_to_front_window(ide_name, project_name)
+        if not focus_success:
+            print(f"Warning: Could not bring {display_name} window to focus, but continuing...")
+        else:
+            # Wait a moment for the window to come to focus
+            import time
+            time.sleep(1.5)
+        
+        # Create a temporary file for the screenshot
+        import tempfile
+        fd, path = tempfile.mkstemp(suffix='.png')
+        os.close(fd)
+        
+        # Use AppleScript to ensure the window is frontmost and capture it
+        script = f'''
+        tell application "System Events"
+            set targetWindow to window "{matching_window}" of process "{process_name}"
+            if exists targetWindow then
+                set frontmost of process "{process_name}" to true
+                perform action "AXRaise" of targetWindow
+                delay 1.0
+            end if
+        end tell
+        '''
+        
+        # Run the AppleScript to bring window to front
+        subprocess.run(["osascript", "-e", script], capture_output=True)
+        
+        # Find the window ID for screencapture
+        list_cmd = ["screencapture", "-C", "-L"]
+        list_result = subprocess.run(list_cmd, capture_output=True, text=True)
+        window_id = None
+        
+        for line in list_result.stdout.splitlines():
+            if matching_window in line:
+                window_id = line.split(':')[0].strip()
+                break
+        
+        if window_id:
+            # Capture the specific window
+            subprocess.run(["screencapture", "-l", window_id, path], check=True)
+        else:
+            # Fallback to full screen if window ID not found
+            print(f"Warning: Could not find window ID for '{matching_window}', falling back to full screen")
+            subprocess.run(["screencapture", "-x", path], check=True)
+        
+        # Open and process the image
+        image = Image.open(path)
+        
+        # Resize to target dimensions
+        image = image.resize((target_width, target_height))
+        
+        # Save to in-memory buffer
+        img_buffer = io.BytesIO()
+        image.save(img_buffer, format="PNG", optimize=True)
+        img_buffer.seek(0)
+        
+        # Delete the temporary file
+        os.unlink(path)
+        
+        if encode_base64:
+            return base64.b64encode(img_buffer.read()).decode()
+        else:
+            return img_buffer
+            
+    except Exception as e:
+        print(f"Error taking IDE window screenshot: {e}")
+        return None
+
+
+def is_project_window_visible(agent_name: str, project_name: str, auto_focus: bool = True) -> bool:
     """
     Returns True if there is a visible and focused window for the given agent and project.
     
@@ -585,6 +717,7 @@ def is_project_window_visible(agent_name: str, project_name: str) -> bool:
     Args:
         agent_name (str): Name of the IDE application (e.g., "Cursor", "Windsurf")
         project_name (str): Name of the project to check for in window titles
+        auto_focus (bool): Whether to automatically bring the window to focus if it's not focused
         
     Returns:
         bool: True if the IDE window for the project is visible and focused, False otherwise
@@ -619,7 +752,31 @@ def is_project_window_visible(agent_name: str, project_name: str) -> bool:
             return True
         else:
             print(f"INFO: {display_name} window for project '{project_name}' is not focused. Current frontmost: {frontmost_process}, window: {current_window}")
-            return False
+            
+            # If auto_focus is enabled, try to bring the window to focus
+            if auto_focus:
+                print(f"Attempting to bring {display_name} window for project '{project_name}' to focus...")
+                focus_success = bring_to_front_window(agent_name, project_name)
+                if focus_success:
+                    # Wait a moment for the window to come to focus
+                    import time
+                    time.sleep(1.5)
+                    
+                    # Check again if the window is now focused
+                    current_window = get_current_window_name()
+                    success, frontmost_process = _get_frontmost_process()
+                    
+                    if success and frontmost_process == expected_process and project_name.lower() in current_window.lower():
+                        print(f"SUCCESS: {display_name} window for project '{project_name}' is now focused")
+                        return True
+                    else:
+                        print(f"WARNING: Could not bring {display_name} window for project '{project_name}' to focus")
+                        return False
+                else:
+                    print(f"ERROR: Failed to bring {display_name} window for project '{project_name}' to focus")
+                    return False
+            else:
+                return False
             
     except Exception as e:
         print(f"Error checking if {agent_name} project window is visible: {e}")

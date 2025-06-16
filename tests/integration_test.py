@@ -210,6 +210,8 @@ class IntegrationTestRunner:
     
     def save_test_report(self, filename: str = "integration_test_report.json"):
         """Save test results to JSON file"""
+        from common.config import config
+        
         report = {
             "test_run_timestamp": datetime.now().isoformat(),
             "total_scenarios": len(self.test_results),
@@ -218,11 +220,17 @@ class IntegrationTestRunner:
             "test_results": self.test_results
         }
         
-        with open(filename, 'w') as f:
+        # Save to execution output directory
+        output_path = os.path.join(config.execution_output_path, filename)
+        
+        # Ensure directory exists
+        os.makedirs(config.execution_output_path, exist_ok=True)
+        
+        with open(output_path, 'w') as f:
             json.dump(report, f, indent=2)
         
-        print(f"\nTest report saved to: {filename}")
-        return filename
+        print(f"\nTest report saved to: {output_path}")
+        return output_path
     
     def print_summary(self):
         """Print test execution summary"""

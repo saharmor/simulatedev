@@ -14,7 +14,7 @@ import subprocess
 from PIL import Image
 from dotenv import load_dotenv
 
-from utils.computer_use_utils import take_screenshot, ClaudeComputerUse
+from utils.computer_use_utils import take_screenshot, ClaudeComputerUse, take_ide_window_screenshot
 from utils.claude_client import analyze_ide_state_with_claude
 import pyautogui
 
@@ -264,12 +264,14 @@ def analyze_ide_state(image_input, interface_state_analysis_prompt):
         print(f"Error analyzing IDE state: {e}")
         return False, f"error: {str(e)}", str(e)
 
-async def click_ide_resume_button(resume_button_prompt):
+async def click_ide_resume_button(resume_button_prompt, ide_name=None, project_name=None):
     """
     Find and click the resume button using the provided prompt.
     
     Args:
         resume_button_prompt (str): Prompt for finding the resume button.
+        ide_name (str, optional): Name of the IDE for window-specific screenshots.
+        project_name (str, optional): Name of the project for window-specific screenshots.
         
     Returns:
         bool: True if button was found and clicked, False otherwise.
@@ -281,7 +283,9 @@ async def click_ide_resume_button(resume_button_prompt):
         # Look for the Resume button
         result = await claude.get_coordinates_from_claude(
             resume_button_prompt,
-            support_non_existing_elements=True
+            support_non_existing_elements=True,
+            ide_name=ide_name,
+            project_name=project_name
         )
         
         if result and result.coordinates:
@@ -352,8 +356,9 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
             if project_name:
                 from utils.computer_use_utils import is_project_window_visible, play_beep_sound
                 
-                if not is_project_window_visible(ide_name, project_name):
-                    print(f"WARNING: {ide_name} window for project '{project_name}' is not visible/focused. Skipping monitoring and playing beep to get user's attention.")
+                # Use auto_focus=True to automatically bring the window to focus if needed
+                if not is_project_window_visible(ide_name, project_name, auto_focus=True):
+                    print(f"ERROR: Could not bring {ide_name} window for project '{project_name}' to focus. Playing beep to get user's attention.")
                     play_beep_sound()
                     
                     # Sleep for a shorter interval before checking again
@@ -361,8 +366,14 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
                     continue
             
             # Capture screenshot
-            # TODO FIX and get size correctly
-            image = take_screenshot(1280, 720)
+            # Use IDE window screenshot if project name is provided, otherwise use full screen
+            if project_name:
+                image = take_ide_window_screenshot(ide_name, project_name, 1280, 720, verbose=False)
+                if image is None:
+                    print(f"WARNING: Could not capture {ide_name} window for project '{project_name}'. Falling back to full screen.")
+                    image = take_screenshot(1280, 720)
+            else:
+                image = take_screenshot(1280, 720)
             
             # Analyze screenshot
             is_done, state, reasoning = analyze_ide_state(image, interface_state_analysis_prompt)
@@ -390,7 +401,7 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
             if state == "paused_and_wanting_to_resume":
                 print(f"Detected {ide_name} is paused and wanting to resume. Attempting to resume...")
                 if resume_button_prompt:
-                    resume_success = await click_ide_resume_button(resume_button_prompt)
+                    resume_success = await click_ide_resume_button(resume_button_prompt, ide_name, project_name)
                     if resume_success:
                         print(f"Successfully resumed {ide_name}. Continuing to monitor...")
                         # Continue monitoring - don't reset the timeout, just continue

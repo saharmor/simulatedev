@@ -71,7 +71,7 @@ The tests provide real-time feedback with:
 - Summary statistics
 
 ### JSON Report
-Detailed results are saved to `integration_test_report.json` containing:
+Detailed results are saved to `execution_output/integration_test_report.json` containing:
 - Test execution timestamp
 - Individual scenario results
 - Execution times

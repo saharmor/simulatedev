@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 from enum import Enum
+from common.config import config
 
 
 class CodingAgentIdeType(Enum):
@@ -251,7 +252,7 @@ class CodingAgent(ABC):
             return False
             
         from utils.computer_use_utils import is_ide_open_with_project
-        return is_ide_open_with_project(self.window_name, self._current_project_name)
+        return is_ide_open_with_project(self.window_name, self._current_project_name, verbose=False)
     
     @abstractmethod
     async def is_coding_agent_open(self) -> bool:
@@ -282,7 +283,6 @@ class CodingAgent(ABC):
             print(f"{self.agent_name} interface is open but not with the correct project '{self._current_project_name}'")
             return False
             
-        print(f"SUCCESS: {self.agent_name} is open with the correct project '{self._current_project_name}'")
         return True
     
     @abstractmethod
@@ -316,12 +316,20 @@ class CodingAgent(ABC):
     
     async def get_input_field_coordinates(self):
         """Get the coordinates of the input field"""
-        result = await self.claude.get_coordinates_from_claude(self.input_field_prompt)
+        result = await self.claude.get_coordinates_from_claude(
+            self.input_field_prompt, 
+            ide_name=self.window_name, 
+            project_name=self._current_project_name
+        )
         return result
     
     async def get_copy_button_coordinates(self):
         """Get the coordinates of the copy button"""
-        result = await self.claude.get_coordinates_from_claude(self.copy_button_prompt)
+        result = await self.claude.get_coordinates_from_claude(
+            self.copy_button_prompt,
+            ide_name=self.window_name,
+            project_name=self._current_project_name
+        )
         return result
     
     async def execute_prompt(self, prompt: str) -> AgentResponse:
@@ -366,16 +374,17 @@ class CodingAgent(ABC):
     
     async def _send_prompt_to_interface(self, prompt: str):
         """Send a prompt to the agent interface (GUI-based implementation)"""
-        # Check if the correct project window is visible and focused
+        # Check if the correct project window is visible and focused (with auto-focus enabled)
         if self._current_project_name:
             from utils.computer_use_utils import is_project_window_visible, play_beep_sound
             
-            if not is_project_window_visible(self.agent_name, self._current_project_name):
-                print(f"WARNING: {self.agent_name} window for project '{self._current_project_name}' is not visible/focused. Playing beep.")
+            # Use auto_focus=True to automatically bring the window to focus if needed
+            if not is_project_window_visible(self.agent_name, self._current_project_name, auto_focus=True):
+                print(f"ERROR: Could not bring {self.agent_name} window for project '{self._current_project_name}' to focus. Playing beep.")
                 play_beep_sound()
-                raise Exception(f"{self.agent_name} window for project '{self._current_project_name}' is not visible/focused")
+                raise Exception(f"Could not bring {self.agent_name} window for project '{self._current_project_name}' to focus")
         
-        # Get input field coordinates
+        # Get input field coordinates (this will now use the focused window screenshot)
         input_coords = await self.get_input_field_coordinates()
         if not input_coords:
             print(f"WARNING: Could not locate {self.agent_name} input field. Playing beep.")
@@ -418,7 +427,8 @@ class CodingAgent(ABC):
             timeout_seconds, 
             self.resume_button_prompt, 
             require_two_subsequent_done_states=True,
-            project_name=self._current_project_name
+            project_name=self._current_project_name,
+            save_screenshots_for_debug=config.save_screenshots_for_debug
         )
     
     async def _read_output_file(self) -> str:

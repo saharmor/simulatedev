@@ -546,6 +546,16 @@ class Orchestrator:
         if hasattr(response, 'pr_url') and response.pr_url:
             report["pr_url"] = response.pr_url
         
+        # If output_file is a relative path (no directory separator), 
+        # save it in the execution output directory
+        if not os.path.dirname(output_file):
+            output_file = os.path.join(config.execution_output_path, output_file)
+        
+        # Ensure the directory exists
+        output_dir = os.path.dirname(output_file)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+        
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(report, f, indent=2, ensure_ascii=False)
         

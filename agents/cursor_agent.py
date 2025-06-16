@@ -61,8 +61,6 @@ Only analyze the right panel and provide nothing but valid JSON in your response
     async def is_coding_agent_open(self) -> bool:
         """Check if Cursor chat interface is currently open and ready"""
         try:
-            print(f"Checking if {self.agent_name} interface is already open...")
-            
             # First check if we have the correct project open (if project name is set)
             if self._current_project_name:
                 if not self.is_ide_open_with_correct_project():
@@ -72,7 +70,7 @@ Only analyze the right panel and provide nothing but valid JSON in your response
             # Then check if the input field is available
             input_coords = await self.get_input_field_coordinates()
             if input_coords:
-                print(f"SUCCESS: {self.agent_name} interface is already open")
+                print(f"INFO: {self.agent_name} interface is already open and input field coordinates are available")
                 return True
             else:
                 print(f"INFO: {self.agent_name} interface not detected")

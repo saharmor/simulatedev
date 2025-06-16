@@ -352,7 +352,13 @@ async def execute_task(args) -> bool:
         
         # Save report if requested
         if not args.no_report:
-            output_file = args.output or f"{args.workflow}_execution_report.json"
+            if args.output:
+                # If user specified a custom output path, use it as-is
+                output_file = args.output
+            else:
+                # Use the configured execution output directory
+                output_filename = f"{args.workflow}_execution_report.json"
+                output_file = os.path.join(config.execution_output_path, output_filename)
             orchestrator.save_execution_report(response, output_file)
             print(f"Execution report saved to: {output_file}")
         
