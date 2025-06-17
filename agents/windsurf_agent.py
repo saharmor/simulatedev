@@ -24,24 +24,40 @@ class WindsurfAgent(CodingAgent):
     
     @property
     def interface_state_prompt(self) -> str:
-        return """You are analyzing a screenshot of the Cascade AI coding assistant interface. You only care about the right panel that says 'Cascade | Write Mode'. IGNORE ALL THE REST OF THE SCREENSHOT. Determine the Cascade's current state based on visual cues in the right pane of the image. Return the following state for the following scenarios:
-'paused_and_wanting_to_resume' - the first thing you should check is if you you see any message indicating "Continue response?" Windsurf has paused due to execution limits, time limits, or similar constraints and is waiting for user action to resume"
+        return """You are analyzing a screenshot of the Cascade AI coding assistant interface. You only care about the right chat panel that is called 'Cascade'. IGNORE ALL THE REST OF THE SCREENSHOT.
 
-'done' - If you see a thumbs-up or thumbs-down icon in the right panel. Accept/Reject buttons do not imply Windsurf is done, it's just a way to give feedback to the agent!
+CRITICAL: First, systematically scan the right panel from top to bottom looking for these specific visual indicators in this exact order:
 
-'still_working' - if it says Running or Generating and there's a green dot on the bottom right of the chatbot panel. Another indicator is if you see a red rectangle in the bottom right of the chatbot panel.
+STEP 1 - CHECK FOR ACTIVE PROCESSING:
+- Look for 'Running' text with a green dot/circle
+- Look for a red square in the input field
+- If either is present → state is 'still_working'
+
+STEP 2 - CHECK FOR PAUSE STATE:
+- Look for 'Continue response?' or similar continuation prompts
+- Look for any message indicating Windsurf has paused due to execution/time limits
+- If present → state is 'paused_and_wanting_to_resume'
+
+STEP 3 - CHECK FOR COMPLETION:
+- Look for thumbs-up/thumbs-down feedback icons
+- If no signs of steps 1 or 2 are present → state is 'done'
+
+VERIFICATION: Before finalizing your answer, double-check the bottom portion of the right chat panel where status indicators typically appear. Can you see ANY green indicators, running text, or active processing signals? If yes, the state cannot be 'done'.
+
+Return the state based on these scenarios:
+- 'still_working': Green dot with 'Running' text OR red square in input field
+- 'paused_and_wanting_to_resume': 'Continue response?' prompt or pause indicators
+- 'done': Thumbs-up/down icons visible OR no active/pause indicators found
 
 IMPORTANT: Respond with a JSON object containing exactly these two keys:
-- 'interface_state': must be EXACTLY ONE of these values: 'still_working', 'paused_and_wanting_to_resume', or 'done'
-- 'reasoning': a brief explanation for your decision
+- 'interface_state': must be EXACTLY ONE of: 'still_working', 'paused_and_wanting_to_resume', or 'done'
+- 'reasoning': brief explanation including what specific visual indicator you found
 
 Example response format:
-```json
 {
-  "interface_state": "done",
-  "reasoning": "I can see a thumbs-up/thumbs-down icons in the right panel"
+ "interface_state": "still_working",
+ "reasoning": "Found 'Running' text with green dot indicator in the bottom of the right panel"
 }
-```
 
 Only analyze the right panel and provide nothing but valid JSON in your response."""
 

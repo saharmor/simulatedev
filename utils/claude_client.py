@@ -24,6 +24,9 @@ load_dotenv()
 class ClaudeClient:
     """Shared Claude API client for various operations"""
     
+    # Default model to use across all operations
+    DEFAULT_MODEL = "claude-sonnet-4-20250514"
+    
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
@@ -52,7 +55,7 @@ class ClaudeClient:
         image_input: Union[str, BytesIO, Image.Image],
         prompt: str,
         system_prompt: Optional[str] = None,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = None,
         max_tokens: int = 2000,
         expect_json: bool = False
     ) -> Optional[Dict[str, Any]]:
@@ -63,7 +66,7 @@ class ClaudeClient:
             image_input: Either a file path (str), BytesIO buffer, or PIL Image
             prompt: The analysis prompt
             system_prompt: Optional system prompt for context
-            model: Claude model to use
+            model: Claude model to use (defaults to DEFAULT_MODEL)
             max_tokens: Maximum tokens in response
             expect_json: Whether to expect and parse JSON response
             
@@ -73,6 +76,10 @@ class ClaudeClient:
         if not self.is_available():
             print("ERROR: Claude client not available")
             return None
+        
+        # Use default model if none specified
+        if model is None:
+            model = self.DEFAULT_MODEL
         
         try:
             # Convert image to base64
@@ -126,7 +133,7 @@ class ClaudeClient:
         self,
         prompt: str,
         system_prompt: Optional[str] = None,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = None,
         max_tokens: int = 2000,
         expect_json: bool = False
     ) -> Optional[Dict[str, Any]]:
@@ -136,7 +143,7 @@ class ClaudeClient:
         Args:
             prompt: The text prompt
             system_prompt: Optional system prompt for context
-            model: Claude model to use
+            model: Claude model to use (defaults to DEFAULT_MODEL)
             max_tokens: Maximum tokens in response
             expect_json: Whether to expect and parse JSON response
             
@@ -146,6 +153,10 @@ class ClaudeClient:
         if not self.is_available():
             print("ERROR: Claude client not available")
             return None
+        
+        # Use default model if none specified
+        if model is None:
+            model = self.DEFAULT_MODEL
         
         try:
             # Create message

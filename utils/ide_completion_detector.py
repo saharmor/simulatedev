@@ -317,13 +317,15 @@ def save_image_to_file(image, ide_name, project_name, screenshot_count):
         screenshot_count (int): The number of the screenshot.
     """
     try:
-        # Create a temporary directory for screenshots
-        import tempfile
         import io
-        temp_dir = tempfile.mkdtemp()
+        from common.config import config
         
-        # Save the image to the temporary directory
-        image_path = os.path.join(temp_dir, f"{ide_name}_{project_name}_{screenshot_count}.png")
+        # Create screenshots directory in execution output
+        screenshots_dir = os.path.join(config.execution_output_path, "screenshots")
+        os.makedirs(screenshots_dir, exist_ok=True)
+        
+        # Save the image to the screenshots directory
+        image_path = os.path.join(screenshots_dir, f"{ide_name}_{project_name}_{screenshot_count}.png")
         
         # Handle both PIL Image and BytesIO objects
         if isinstance(image, io.BytesIO):
