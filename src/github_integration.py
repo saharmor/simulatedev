@@ -479,8 +479,8 @@ class GitHubIntegration:
         """
         try:
             # Use the shared Claude client
-            from utils.claude_client import generate_commit_and_pr_content_with_claude
-            return generate_commit_and_pr_content_with_claude(agent_execution_report_summary, workflow_name, coding_ides_info)
+            from utils.llm_client import generate_commit_and_pr_content_with_llm
+            return generate_commit_and_pr_content_with_llm(agent_execution_report_summary, workflow_name, coding_ides_info)
                 
         except Exception as e:
             print(f"WARNING: Error calling Claude for content generation: {str(e)}")

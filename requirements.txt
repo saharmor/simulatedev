@@ -1,4 +1,6 @@
 anthropic==0.52.2
+litellm>=1.72.0
+openai>=1.54.0
 pyautogui==0.9.54
 pyperclip==1.9.0
 python-dotenv==1.0.1
