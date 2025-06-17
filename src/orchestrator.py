@@ -15,7 +15,7 @@ from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 from datetime import datetime
 
-from utils.computer_use_utils import ClaudeComputerUse
+from utils.computer_use_utils import LLMComputerUse
 from agents import (
     AgentFactory, CodingAgentIdeType, AgentRole, MultiAgentTask, 
     AgentDefinition, AgentContext, MultiAgentResponse
@@ -43,7 +43,7 @@ class Orchestrator:
     """Unified orchestrator for all agent execution scenarios"""
     
     def __init__(self):
-        self.computer_use_client = ClaudeComputerUse()
+        self.computer_use_client = LLMComputerUse()
         self.github_integration = GitHubIntegration()
         self.execution_log = []
         

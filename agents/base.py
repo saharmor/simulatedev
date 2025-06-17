@@ -200,8 +200,8 @@ class MultiAgentResponse:
 class CodingAgent(ABC):
     """Abstract base class for AI coding agents"""
     
-    def __init__(self, claude_computer_use):
-        self.claude = claude_computer_use
+    def __init__(self, computer_use_client):
+        self.computer_use_client = computer_use_client
         self.agent_name = self.__class__.__name__.lower().replace('agent', '')
         self.output_file = "agent_execution_output.md"
         self._current_project_name = None  # Track current project
@@ -310,7 +310,7 @@ class CodingAgent(ABC):
     
     async def get_input_field_coordinates(self):
         """Get the coordinates of the input field"""
-        result = await self.claude.get_coordinates_from_claude(
+        result = await self.computer_use_client.get_coordinates_from_vision_model(
             self.input_field_prompt, 
             ide_name=self.window_name, 
             project_name=self._current_project_name

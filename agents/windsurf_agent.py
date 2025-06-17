@@ -192,7 +192,7 @@ Only analyze the right panel and provide nothing but valid JSON in your response
     async def handle_trust_workspace_popup(self):
         """Handle the 'Trust this workspace' popup specific to Windsurf"""
         print("Checking for 'Trust this workspace' prompt for Windsurf...")
-        result = await self.claude.get_coordinates_from_claude(
+        result = await self.computer_use_client.get_coordinates_from_vision_model(
             "A button that states 'I trust this workspace' as part of a popup", 
             support_non_existing_elements=True
         )

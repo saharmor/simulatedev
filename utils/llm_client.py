@@ -16,15 +16,47 @@ OpenAI-compatible format for responses.
 import os
 import json
 import base64
-from typing import Optional, Dict, Any, Union, Literal
+import warnings
+from typing import Optional, Dict, Any, Union, Literal, List
 from PIL import Image
 from io import BytesIO
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 load_dotenv()
 
 # Supported LLM providers
 LLMProvider = Literal["anthropic", "openai"]
+
+# Pydantic models for structured responses
+class Coordinates(BaseModel):
+    """Coordinates for UI actions"""
+    x: int = Field(description="X coordinate")
+    y: int = Field(description="Y coordinate")
+
+class Action(BaseModel):
+    """UI action with type and coordinates"""
+    type: str = Field(description="Type of action (click, type, etc.)")
+    coordinates: Coordinates = Field(description="Coordinates for the action")
+
+class ActionResponse(BaseModel):
+    """Response containing an action"""
+    action: Action = Field(description="The action to perform")
+
+class IDEState(BaseModel):
+    """IDE state analysis response"""
+    interface_state: Literal["done", "still_working", "paused_and_wanting_to_resume"] = Field(
+        description="Current state of the IDE interface"
+    )
+    reasoning: str = Field(description="Brief explanation of why this state was determined")
+
+class CommitPRContent(BaseModel):
+    """Git commit and PR content"""
+    commit_message: str = Field(description="Professional git commit message following conventional commit format")
+    pr_title: str = Field(description="Brief, descriptive PR title")
+    pr_description: str = Field(description="Professional description of the changes")
+    pr_changes_summary: str = Field(description="Clear summary of what was modified/added/removed")
+    branch_name: str = Field(description="Descriptive branch name following git conventions")
 
 class LLMClient:
     """Unified LLM client using LiteLLM for multiple provider support"""
@@ -165,15 +197,22 @@ class LLMClient:
             # Get model name
             model_name = self.get_model_name(model)
             
-            # Make the completion call using LiteLLM
-            response = self._litellm.completion(
-                model=model_name,
-                messages=messages,
-                max_tokens=max_tokens
-            )
+            # Prepare completion parameters
+            completion_params = {
+                "model": model_name,
+                "messages": messages,
+                "max_tokens": max_tokens
+            }
             
-            # Extract response text
-            response_text = response.choices[0].message.content.strip()
+            # Add response_format if expecting JSON
+            if expect_json:
+                completion_params["response_format"] = {"type": "json_object"}
+            
+            # Make the completion call using LiteLLM
+            response = self._litellm.completion(**completion_params)
+            
+            # Extract response text from the response object
+            response_text = response["choices"][0]["message"]["content"].strip()
             
             if expect_json:
                 return self._parse_json_response(response_text)
@@ -222,16 +261,23 @@ class LLMClient:
             # Get model name
             model_name = self.get_model_name(model)
             
-            # Make the completion call using LiteLLM
-            response = self._litellm.completion(
-                model=model_name,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature
-            )
+            # Prepare completion parameters
+            completion_params = {
+                "model": model_name,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature
+            }
             
-            # Extract response text
-            response_text = response.choices[0].message.content.strip()
+            # Add response_format if expecting JSON
+            if expect_json:
+                completion_params["response_format"] = {"type": "json_object"}
+            
+            # Make the completion call using LiteLLM
+            response = self._litellm.completion(**completion_params)
+            
+            # Extract response text from the response object
+            response_text = response["choices"][0]["message"]["content"].strip()
             
             if expect_json:
                 return self._parse_json_response(response_text)
@@ -278,13 +324,39 @@ class LLMClient:
     def _parse_json_response(self, response_text: str) -> Dict[str, Any]:
         """Parse JSON response from LLM, handling code blocks"""
         try:
+            # Clean up the response text
+            response_text = response_text.strip()
+            
             # Remove any markdown code block formatting
             if "```json" in response_text:
-                json_content = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
-            elif "```" in response_text and "```" in response_text.split("```", 1)[1]:
-                json_content = response_text.split("```", 1)[1].split("```", 1)[0].strip()
+                # Extract content between ```json and ```
+                parts = response_text.split("```json", 1)
+                if len(parts) > 1:
+                    json_part = parts[1].split("```", 1)[0].strip()
+                    json_content = json_part
+                else:
+                    json_content = response_text
+            elif response_text.startswith("```") and response_text.count("```") >= 2:
+                # Handle generic code blocks
+                parts = response_text.split("```", 2)
+                if len(parts) >= 3:
+                    json_content = parts[1].strip()
+                else:
+                    json_content = response_text
             else:
                 json_content = response_text
+            
+            # Additional cleanup - remove any leading/trailing whitespace and newlines
+            json_content = json_content.strip()
+            
+            # Try to find JSON object boundaries if the content has extra text
+            if not json_content.startswith('{') and '{' in json_content:
+                start_idx = json_content.find('{')
+                json_content = json_content[start_idx:]
+            
+            if not json_content.endswith('}') and '}' in json_content:
+                end_idx = json_content.rfind('}') + 1
+                json_content = json_content[:end_idx]
             
             # Parse the JSON
             parsed_data = json.loads(json_content)
@@ -294,6 +366,152 @@ class LLMClient:
             print(f"Failed to parse JSON response: {e}")
             print(f"Response was: {response_text}")
             return {"error": f"JSON parsing failed: {e}", "response": response_text, "success": False}
+        except Exception as e:
+            print(f"Unexpected error parsing JSON response: {e}")
+            print(f"Response was: {response_text}")
+            return {"error": f"Unexpected parsing error: {e}", "response": response_text, "success": False}
+
+    def analyze_image_with_structured_response(
+        self,
+        image_input: Union[str, BytesIO, Image.Image],
+        prompt: str,
+        response_model: BaseModel,
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        max_tokens: int = 2000
+    ) -> Optional[BaseModel]:
+        """
+        Analyze an image with a text prompt using LiteLLM and return structured Pydantic response
+        
+        Args:
+            image_input: Either a file path (str), BytesIO buffer, or PIL Image
+            prompt: The analysis prompt
+            response_model: Pydantic model class for the expected response structure
+            system_prompt: Optional system prompt for context
+            model: Model to use (uses default if not specified)
+            max_tokens: Maximum tokens in response
+            
+        Returns:
+            Instance of the response_model, or None if failed
+        """
+        if not self.is_available():
+            print("ERROR: LLM client not available")
+            return None
+        
+        try:
+            # Convert image to base64
+            base64_image = self._image_to_base64(image_input)
+            if not base64_image:
+                return None
+            
+            # Prepare message content for vision
+            message_content = [
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{base64_image}"
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": prompt
+                }
+            ]
+            
+            # Create messages
+            messages = [{"role": "user", "content": message_content}]
+            
+            # Add system message if provided
+            if system_prompt:
+                messages.insert(0, {"role": "system", "content": system_prompt})
+            
+            # Get model name
+            model_name = self.get_model_name(model)
+            
+            # Prepare completion parameters with Pydantic model
+            completion_params = {
+                "model": model_name,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "response_format": response_model
+            }
+            
+            # Make the completion call using LiteLLM
+            response = self._litellm.completion(**completion_params)
+            
+            # Extract and parse the structured response
+            if hasattr(response.choices[0].message, 'parsed') and response.choices[0].message.parsed:
+                return response.choices[0].message.parsed
+            else:
+                # Fallback to manual parsing if parsed attribute not available
+                response_text = response.choices[0].message.content.strip()
+                return response_model.model_validate_json(response_text)
+                
+        except Exception as e:
+            print(f"Error analyzing image with structured response: {e}")
+            return None
+
+    def generate_structured_text(
+        self,
+        prompt: str,
+        response_model: BaseModel,
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        max_tokens: int = 2000,
+        temperature: float = 0.1
+    ) -> Optional[BaseModel]:
+        """
+        Generate structured text using LiteLLM with Pydantic model
+        
+        Args:
+            prompt: The text prompt
+            response_model: Pydantic model class for the expected response structure
+            system_prompt: Optional system prompt for context
+            model: Model to use (uses default if not specified)
+            max_tokens: Maximum tokens in response
+            temperature: Sampling temperature (0.0 to 1.0)
+            
+        Returns:
+            Instance of the response_model, or None if failed
+        """
+        if not self.is_available():
+            print("ERROR: LLM client not available")
+            return None
+        
+        try:
+            # Create messages
+            messages = [{"role": "user", "content": prompt}]
+            
+            # Add system message if provided
+            if system_prompt:
+                messages.insert(0, {"role": "system", "content": system_prompt})
+            
+            # Get model name
+            model_name = self.get_model_name(model)
+            
+            # Prepare completion parameters with Pydantic model
+            completion_params = {
+                "model": model_name,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "response_format": response_model
+            }
+            
+            # Make the completion call using LiteLLM
+            response = self._litellm.completion(**completion_params)
+            
+            # Extract and parse the structured response
+            if hasattr(response.choices[0].message, 'parsed') and response.choices[0].message.parsed:
+                return response.choices[0].message.parsed
+            else:
+                # Fallback to manual parsing if parsed attribute not available
+                response_text = response.choices[0].message.content.strip()
+                return response_model.model_validate_json(response_text)
+                
+        except Exception as e:
+            print(f"Error generating structured text: {e}")
+            return None
 
 
 # Global instance for easy access - completely LLM-agnostic
@@ -305,7 +523,7 @@ def analyze_ide_state_with_llm(
     interface_state_analysis_prompt: str
 ) -> tuple[bool, str, str]:
     """
-    Analyze IDE state using the configured LLM provider
+    Analyze IDE state using the configured LLM provider with structured response
     
     Args:
         image_input: Either a path to screenshot image (str), BytesIO buffer, or PIL Image
@@ -316,39 +534,30 @@ def analyze_ide_state_with_llm(
     """
     system_prompt = """You are an IDE State Analysis AI. Analyze screenshots of IDE interfaces to determine their current state.
 
-You must respond with JSON in this exact format:
-{
-    "interface_state": "done" | "processing" | "paused_and_wanting_to_resume" | "error",
-    "reasoning": "Brief explanation of why you determined this state"
-}
-
 State definitions:
 - "done": The IDE has completed its task and is ready for new input
-- "processing": The IDE is actively working on a task
+- "still_working": The IDE is actively working on a task
 - "paused_and_wanting_to_resume": The IDE is paused and waiting for user action to continue
-- "error": The IDE encountered an error or is in an error state
 
-Respond ONLY with the JSON format above."""
+Analyze the image and provide your assessment in the required JSON format."""
     
     try:
-        result = llm_client.analyze_image_with_prompt(
+        result = llm_client.analyze_image_with_structured_response(
             image_input=image_input,
             prompt=interface_state_analysis_prompt,
-            system_prompt=system_prompt,
-            expect_json=True
+            response_model=IDEState,
+            system_prompt=system_prompt
         )
         
-        if not result or not result.get("success"):
-            error_msg = result.get("error", "Unknown error") if result else "LLM client unavailable"
-            return False, "error", f"LLM analysis failed: {error_msg}"
-        
-        analysis = result["data"]
-        state = analysis["interface_state"].lower()
-        reasoning = analysis["reasoning"]
-        
-        # Determine if IDE is done
-        is_done = state == "done"
-        return is_done, state, reasoning
+        if result:
+            state = result.interface_state.lower()
+            reasoning = result.reasoning
+            
+            # Determine if IDE is done
+            is_done = state == "done"
+            return is_done, state, reasoning
+        else:
+            return False, "error", "LLM analysis failed: No response received"
         
     except Exception as e:
         print(f"Error analyzing IDE state with LLM: {e}")
@@ -361,7 +570,7 @@ def generate_commit_and_pr_content_with_llm(
     coding_ides_info: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Use the configured LLM provider to generate both commit message and PR content in a single API call
+    Use the configured LLM provider to generate both commit message and PR content using structured response
     
     Args:
         agent_execution_report_summary: The summary/output from the coding agent
@@ -379,15 +588,6 @@ Given a coding agent's execution report summary, original prompt, and agent name
 3. A professional PR description 
 4. A clear summary of what changed
 5. A descriptive branch name for the changes
-
-Format your response as JSON with these exact keys:
-{
-    "commit_message": "Professional git commit message following conventional commit format",
-    "pr_title": "Brief, descriptive PR title",
-    "pr_description": "Professional description of the changes",
-    "pr_changes_summary": "Clear summary of what was modified/added/removed",
-    "branch_name": "Descriptive branch name following git conventions"
-}
 
 Guidelines for commit message:
 - Use conventional commit format: type(scope): description
@@ -435,32 +635,24 @@ Guidelines for branch name:
     user_message = "\n".join(user_message_parts)
     
     try:
-        result = llm_client.generate_text(
+        result = llm_client.generate_structured_text(
             prompt=user_message,
+            response_model=CommitPRContent,
             system_prompt=system_prompt,
-            max_tokens=2500,
-            expect_json=True
+            max_tokens=2500
         )
         
-        if not result or not result.get("success"):
-            print("WARNING: LLM PR content generation failed, using default formats")
-            return _generate_default_commit_and_pr_content(workflow_name)
-        
-        parsed_response = result["data"]
-        
-        # Validate required keys
-        required_keys = ['commit_message', 'pr_title', 'pr_description', 'pr_changes_summary', 'branch_name']
-        if all(key in parsed_response for key in required_keys):
-            # Basic validation for commit message
-            commit_msg = parsed_response['commit_message']
-            if commit_msg and len(commit_msg) > 10:
-                print(f"SUCCESS: Generated commit message and PR content using {llm_client.provider.upper()}")
-                return parsed_response
-            else:
-                print("WARNING: LLM generated invalid commit message, using default formats")
-                return _generate_default_commit_and_pr_content(workflow_name)
+        if result:
+            print(f"SUCCESS: Generated commit message and PR content using {llm_client.provider.upper()}")
+            return {
+                "commit_message": result.commit_message,
+                "pr_title": result.pr_title,
+                "pr_description": result.pr_description,
+                "pr_changes_summary": result.pr_changes_summary,
+                "branch_name": result.branch_name
+            }
         else:
-            print("WARNING: LLM response missing required keys, using default formats")
+            print("WARNING: LLM PR content generation failed, using default formats")
             return _generate_default_commit_and_pr_content(workflow_name)
             
     except Exception as e:
