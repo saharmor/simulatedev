@@ -201,14 +201,15 @@ class LLMClient:
             completion_params = {
                 "model": model_name,
                 "messages": messages,
-                "max_tokens": max_tokens
+                "max_tokens": max_tokens,
+                "num_retries": 3  # Add retry mechanism
             }
             
             # Add response_format if expecting JSON
             if expect_json:
                 completion_params["response_format"] = {"type": "json_object"}
             
-            # Make the completion call using LiteLLM
+            # Make the completion call using LiteLLM with retries
             response = self._litellm.completion(**completion_params)
             
             # Extract response text from the response object
@@ -266,14 +267,15 @@ class LLMClient:
                 "model": model_name,
                 "messages": messages,
                 "max_tokens": max_tokens,
-                "temperature": temperature
+                "temperature": temperature,
+                "num_retries": 3
             }
             
             # Add response_format if expecting JSON
             if expect_json:
                 completion_params["response_format"] = {"type": "json_object"}
             
-            # Make the completion call using LiteLLM
+            # Make the completion call using LiteLLM with retries
             response = self._litellm.completion(**completion_params)
             
             # Extract response text from the response object
@@ -433,10 +435,11 @@ class LLMClient:
                 "model": model_name,
                 "messages": messages,
                 "max_tokens": max_tokens,
-                "response_format": response_model
+                "response_format": response_model,
+                "num_retries": 3
             }
             
-            # Make the completion call using LiteLLM
+            # Make the completion call using LiteLLM with retries
             response = self._litellm.completion(**completion_params)
             
             # Extract and parse the structured response
@@ -449,6 +452,16 @@ class LLMClient:
                 
         except Exception as e:
             print(f"Error analyzing image with structured response: {e}")
+            
+            # Provide more specific error handling for common issues
+            error_str = str(e).lower()
+            if "overloaded" in error_str:
+                print("INFO: Anthropic API is temporarily overloaded. LiteLLM will automatically retry with exponential backoff and fallback to alternative models if configured.")
+            elif "rate" in error_str and "limit" in error_str:
+                print("INFO: Rate limit encountered. LiteLLM will handle cooldown periods and retry automatically.")
+            elif "context" in error_str and ("length" in error_str or "window" in error_str):
+                print("INFO: Context window exceeded. LiteLLM will attempt fallback to models with larger context windows if configured.")
+            
             return None
 
     def generate_structured_text(
@@ -495,10 +508,11 @@ class LLMClient:
                 "messages": messages,
                 "max_tokens": max_tokens,
                 "temperature": temperature,
-                "response_format": response_model
+                "response_format": response_model,
+                "num_retries": 3
             }
             
-            # Make the completion call using LiteLLM
+            # Make the completion call using LiteLLM with retries
             response = self._litellm.completion(**completion_params)
             
             # Extract and parse the structured response

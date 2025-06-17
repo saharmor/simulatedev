@@ -5,12 +5,13 @@ import subprocess
 import pyautogui
 import platform
 from enum import Enum
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Union
 from dotenv import load_dotenv
-import json
 from dataclasses import dataclass
 from mss import mss
 from PIL import Image
+from functools import wraps
+from .llm_client import llm_client, ActionResponse
 
 load_dotenv()
 
@@ -22,6 +23,10 @@ class ActionType(Enum):
     CLICK = "click"
     TYPE = "type"
 
+class ScreenshotType(Enum):
+    FULL_SCREEN = "full_screen"
+    WINDOW_SPECIFIC = "window_specific"
+
 @dataclass
 class Coordinates:
     x: int
@@ -32,6 +37,15 @@ class ComputerUseAction:
     action_type: ActionType
     coordinates: Coordinates
 
+@dataclass
+class ScreenshotMetadata:
+    """Metadata about how a screenshot was captured"""
+    screenshot_type: ScreenshotType
+    window_x: int = 0  # Window position on screen (for window screenshots)
+    window_y: int = 0  # Window position on screen (for window screenshots)
+    original_width: int = 0  # Original screenshot dimensions
+    original_height: int = 0  # Original screenshot dimensions
+    
 # IDE Configuration mapping
 IDE_CONFIG = {
     "windsurf": {
@@ -44,267 +58,374 @@ IDE_CONFIG = {
     }
 }
 
-def _get_ide_process_name(app_name: str) -> str:
-    """Get the process name for a given IDE application"""
-    app_name = app_name.lower()
-    if app_name in IDE_CONFIG:
-        return IDE_CONFIG[app_name]["process_name"]
-    return app_name.capitalize()
+def darwin_only(operation_name: str):
+    """Decorator to ensure function only runs on macOS"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            if platform.system() != "Darwin":
+                print(f"{operation_name} not implemented for {platform.system()}")
+                return None if func.__annotations__.get('return') == Optional[str] else False
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
 
-def _get_ide_display_name(app_name: str) -> str:
-    """Get the display name for a given IDE application"""
-    app_name = app_name.lower()
-    if app_name in IDE_CONFIG:
-        return IDE_CONFIG[app_name]["display_name"]
-    return app_name.capitalize()
-
-def _run_applescript(script: str) -> Tuple[bool, str]:
-    """
-    Run an AppleScript and return success status and output.
+@dataclass
+class IDEContext:
+    """Context object for IDE operations"""
+    app_name: str
+    process_name: str
+    display_name: str
     
-    Returns:
-        Tuple[bool, str]: (success, output_or_error)
-    """
-    try:
-        result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
-        return True, result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        return False, e.stderr.strip() if e.stderr else "AppleScript execution failed"
-    except Exception as e:
-        return False, str(e)
+    @classmethod
+    def create(cls, app_name: str) -> 'IDEContext':
+        """Create IDE context from app name"""
+        app_name_lower = app_name.lower()
+        if app_name_lower in IDE_CONFIG:
+            config = IDE_CONFIG[app_name_lower]
+            return cls(
+                app_name=app_name_lower,
+                process_name=config["process_name"],
+                display_name=config["display_name"]
+            )
+        else:
+            capitalized = app_name.capitalize()
+            return cls(
+                app_name=app_name_lower,
+                process_name=capitalized,
+                display_name=capitalized
+            )
 
-def _get_process_window_titles(process_name: str) -> Tuple[bool, List[str]]:
-    """
-    Get all window titles for a given process using AppleScript.
+class WindowMatcher:
+    """Handles window matching logic with multiple strategies"""
     
-    Returns:
-        Tuple[bool, List[str]]: (success, list_of_window_titles)
-    """
-    script = f'''
-    tell application "System Events"
-        tell process "{process_name}"
-            set windowTitles to name of every window
+    @staticmethod
+    def find_window_with_project(window_titles: List[str], project_name: str) -> Optional[str]:
+        """Find a window title that matches the project name using comprehensive matching"""
+        if not window_titles or not project_name:
+            return None
+        
+        project_name_lower = project_name.lower()
+        
+        # Try each window title with comprehensive matching
+        for title in window_titles:
+            if WindowMatcher.window_matches_project(title, project_name):
+                return title
+        
+        return None
+    
+    @staticmethod
+    def window_matches_project(window_title: str, project_name: str) -> bool:
+        """Check if a window title matches the project name using improved matching logic"""
+        if not window_title or not project_name:
+            return False
+        
+        window_title_lower = window_title.lower()
+        project_name_lower = project_name.lower()
+        
+        # Strategy 1: Exact match
+        if window_title_lower == project_name_lower:
+            return True
+        
+        # Strategy 2: Window title ends with " - projectname" or " — projectname"
+        if (window_title_lower.endswith(f" - {project_name_lower}") or 
+            window_title_lower.endswith(f" — {project_name_lower}")):
+            return True
+        
+        # Strategy 3: Window title starts with "projectname - " or "projectname — "
+        if (window_title_lower.startswith(f"{project_name_lower} - ") or 
+            window_title_lower.startswith(f"{project_name_lower} — ")):
+            return True
+        
+        # Strategy 4: Project name surrounded by separators
+        separators = [" - ", " — ", " | ", " :: ", " / "]
+        for sep in separators:
+            if f"{sep}{project_name_lower}{sep}" in window_title_lower:
+                return True
+        
+        # Strategy 5: Fallback to simple substring match
+        if project_name_lower in window_title_lower:
+            return True
+        
+        return False
+
+class AppleScriptRunner:
+    """Handles AppleScript execution"""
+    
+    @staticmethod
+    def run(script: str) -> Tuple[bool, str]:
+        """Run an AppleScript and return success status and output"""
+        try:
+            result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=True)
+            return True, result.stdout.strip()
+        except subprocess.CalledProcessError as e:
+            return False, e.stderr.strip() if e.stderr else "AppleScript execution failed"
+        except Exception as e:
+            return False, str(e)
+    
+    @staticmethod
+    def get_process_window_titles(process_name: str) -> Tuple[bool, List[str]]:
+        """Get all window titles for a given process"""
+        script = f'''
+        tell application "System Events"
+            tell process "{process_name}"
+                set windowTitles to name of every window
+            end tell
         end tell
-    end tell
-    return windowTitles
-    '''
+        return windowTitles
+        '''
+        
+        success, output = AppleScriptRunner.run(script)
+        if success:
+            # Handle empty output or single empty string
+            if not output or output == '""' or output == "":
+                return True, []
+            window_titles = [title.strip().strip('"') for title in output.split(",")]
+            return True, window_titles
+        else:
+            return False, []
     
-    success, output = _run_applescript(script)
-    if success:
-        # Handle empty output or single empty string
-        if not output or output == '""' or output == "":
-            return True, []
-        window_titles = [title.strip().strip('"') for title in output.split(",")]
-        return True, window_titles
-    else:
-        return False, []
+    @staticmethod
+    def get_frontmost_process() -> Tuple[bool, str]:
+        """Get the name of the frontmost process"""
+        script = '''
+        tell application "System Events"
+            set frontProcess to name of first application process whose frontmost is true
+        end tell
+        return frontProcess
+        '''
+        return AppleScriptRunner.run(script)
+    
+    @staticmethod
+    def get_window_position(process_name: str, window_name: str) -> Tuple[bool, int, int]:
+        """Get the position of a specific window"""
+        script = f'''
+        tell application "System Events"
+            tell process "{process_name}"
+                repeat with w in windows
+                    if name of w is "{window_name}" then
+                        set windowPosition to position of w
+                        set x to item 1 of windowPosition
+                        set y to item 2 of windowPosition
+                        return x & "," & y
+                    end if
+                end repeat
+            end tell
+        end tell
+        return "0,0"
+        '''
+        
+        success, output = AppleScriptRunner.run(script)
+        if success and "," in output:
+            try:
+                x, y = map(int, output.split(","))
+                return True, x, y
+            except ValueError:
+                return False, 0, 0
+        return False, 0, 0
 
-def _get_frontmost_process() -> Tuple[bool, str]:
-    """
-    Get the name of the frontmost process using AppleScript.
+class WindowOperations:
+    """Handles common window operations"""
     
-    Returns:
-        Tuple[bool, str]: (success, process_name)
-    """
-    script = '''
-    tell application "System Events"
-        set frontProcess to name of first application process whose frontmost is true
-    end tell
-    return frontProcess
-    '''
+    @staticmethod
+    def validate_ide_with_project(ide_context: IDEContext, project_name: str) -> bool:
+        """Check if IDE is running with the specified project"""
+        return is_ide_open_with_project(ide_context.app_name, project_name, verbose=False)
     
-    return _run_applescript(script)
+    @staticmethod
+    def discover_project_window(ide_context: IDEContext, project_name: str) -> Optional[str]:
+        """Discover the window that contains the project"""
+        success, window_titles = AppleScriptRunner.get_process_window_titles(ide_context.process_name)
+        if not success:
+            print(f"Could not get window titles for {ide_context.display_name}")
+            return None
+        
+        matching_window = WindowMatcher.find_window_with_project(window_titles, project_name)
+        if not matching_window:
+            print(f"No window found containing project '{project_name}'")
+            return None
+        
+        return matching_window
+    
+    @staticmethod
+    def check_window_focus(ide_context: IDEContext, project_name: str) -> bool:
+        """Check if the IDE window with project is currently focused"""
+        current_window = get_current_window_name()
+        success, frontmost_process = AppleScriptRunner.get_frontmost_process()
+        
+        if not success:
+            print("Could not determine frontmost process")
+            return False
+        
+        return (frontmost_process == ide_context.process_name and 
+                WindowMatcher.window_matches_project(current_window, project_name))
 
-def _find_window_with_project(window_titles: List[str], project_name: str) -> Optional[str]:
-    """
-    Find a window title that contains the project name.
+class ImageProcessor:
+    """Handles image processing operations"""
     
-    Returns:
-        Optional[str]: The matching window title, or None if not found
-    """
-    for title in window_titles:
-        if project_name.lower() in title.lower():
-            return title
-    return None
+    @staticmethod
+    def process_image_to_buffer(image: Image.Image, target_width: int, target_height: int, 
+                              encode_base64: bool = False) -> Union[str, io.BytesIO]:
+        """Process image and return as base64 string or BytesIO buffer"""
+        # Resize to target dimensions
+        image = image.resize((target_width, target_height))
+        
+        # Save to in-memory buffer
+        img_buffer = io.BytesIO()
+        image.save(img_buffer, format="PNG", optimize=True)
+        img_buffer.seek(0)
+        
+        if encode_base64:
+            return base64.b64encode(img_buffer.read()).decode()
+        else:
+            return img_buffer
 
-class ClaudeComputerUse:
-    """Simple class to interact with Claude Computer Use for getting coordinates"""
+class LLMComputerUse:
+    """Enhanced class to interact with LLM Computer Use with proper coordinate scaling"""
     
     def __init__(self):
         # Get the actual screen dimensions
         self.screen_width, self.screen_height = pyautogui.size()
         
-        # Set target dimensions (what Claude expects)
-        self.target_width = 1280  # Claude's max screenshot width
+        # Set target dimensions (what LLM expects)
+        self.target_width = 1280  # LLM's max screenshot width
         self.target_height = int(self.screen_height * (self.target_width / self.screen_width))
-    
-    def scale_coordinates(self, source: ScalingSource, x: int, y: int) -> Tuple[int, int]:
-        """Scale coordinates between Claude's coordinate system and real screen coordinates"""
-        x_scaling_factor = self.screen_width / self.target_width
-        y_scaling_factor = self.screen_height / self.target_height
         
-        if source == ScalingSource.API:
-            # Claude's coordinates -> real screen coordinates
-            return round(x * x_scaling_factor), round(y * y_scaling_factor)
+        # Track screenshot metadata for coordinate scaling
+        self.last_screenshot_metadata: Optional[ScreenshotMetadata] = None
+    
+    def scale_coordinates(self, source: ScalingSource, x: int, y: int, 
+                         metadata: Optional[ScreenshotMetadata] = None) -> Tuple[int, int]:
+        """Scale coordinates between LLM's coordinate system and real screen coordinates"""
+        
+        # Use provided metadata or fall back to last screenshot metadata
+        screenshot_metadata = metadata or self.last_screenshot_metadata
+        
+        if screenshot_metadata and screenshot_metadata.screenshot_type == ScreenshotType.WINDOW_SPECIFIC:
+            # For window-specific screenshots, we need to:
+            # 1. Scale from target dimensions to original window dimensions
+            # 2. Offset by window position on screen
+            
+            if source == ScalingSource.API:
+                # LLM coordinates (based on target_width/height) -> real screen coordinates
+                
+                # First, scale from target dimensions to original window dimensions
+                window_x_scale = screenshot_metadata.original_width / self.target_width
+                window_y_scale = screenshot_metadata.original_height / self.target_height
+                
+                window_x = round(x * window_x_scale)
+                window_y = round(y * window_y_scale)
+                
+                # Then offset by window position on screen
+                screen_x = window_x + screenshot_metadata.window_x
+                screen_y = window_y + screenshot_metadata.window_y
+                
+                return screen_x, screen_y
+            else:
+                # Real screen coordinates -> LLM coordinate system
+                # First, subtract window offset
+                window_x = x - screenshot_metadata.window_x
+                window_y = y - screenshot_metadata.window_y
+                
+                # Then scale from original window dimensions to target dimensions
+                window_x_scale = self.target_width / screenshot_metadata.original_width
+                window_y_scale = self.target_height / screenshot_metadata.original_height
+                
+                target_x = round(window_x * window_x_scale)
+                target_y = round(window_y * window_y_scale)
+                
+                return target_x, target_y
         else:
-            # Real screen coordinates -> Claude's coordinate system
-            return round(x / x_scaling_factor), round(y / y_scaling_factor)
+            # Full screen scaling (original behavior)
+            x_scaling_factor = self.screen_width / self.target_width
+            y_scaling_factor = self.screen_height / self.target_height
+            
+            if source == ScalingSource.API:
+                # LLM's coordinates -> real screen coordinates
+                return round(x * x_scaling_factor), round(y * y_scaling_factor)
+            else:
+                # Real screen coordinates -> LLM's coordinate system
+                return round(x / x_scaling_factor), round(y / y_scaling_factor)
     
-    
-    
-    async def get_coordinates_from_claude(self, prompt: str, support_non_existing_elements: bool = False, ide_name: str = None, project_name: str = None) -> Optional[ComputerUseAction]:
-        """Get coordinates and action type from Claude based on a natural language prompt
-        
-        Args:
-            prompt (str): Natural language description of the UI element to find
-            support_non_existing_elements (bool): Whether to handle non-existing elements gracefully
-            ide_name (str, optional): Name of the IDE to capture window for (e.g., "Cursor", "Windsurf")
-            project_name (str, optional): Name of the project to find in window titles
-        
-        Returns:
-            Optional[ComputerUseAction]: A ComputerUseAction object containing:
-                - action_type: ActionType enum (CLICK or TYPE)
-                - coordinates: Coordinates object with x and y attributes
-        """
+    async def get_coordinates_from_vision_model(self, prompt: str, support_non_existing_elements: bool = False, 
+                                               ide_name: str = None, project_name: str = None) -> Optional[ComputerUseAction]:
+        """Get coordinates and action type from vision model based on a natural language prompt"""
         try:
-            from anthropic import Anthropic
-            
-            # Get API key from environment
-            api_key = os.getenv("ANTHROPIC_API_KEY")
-            if not api_key:
-                print("Error: ANTHROPIC_API_KEY not found in environment variables")
+            # Check if LLM client is available
+            if not llm_client.is_available():
+                print("Error: LLM client not available")
                 return None
-            
-            # Initialize Anthropic client
-            client = Anthropic(api_key=api_key)
             
             # Take a screenshot - use IDE window screenshot if both ide_name and project_name are provided
+            screenshot_metadata = None
             if ide_name and project_name:
-                base64_image_data = take_ide_window_screenshot(ide_name, project_name, self.target_width, self.target_height, encode_base64=True)
-                if base64_image_data is None:
+                screenshot_result = take_ide_window_screenshot_with_metadata(ide_name, project_name, self.target_width, self.target_height, encode_base64=True)
+                if screenshot_result:
+                    base64_image_data, screenshot_metadata = screenshot_result
+                    self.last_screenshot_metadata = screenshot_metadata
+                else:
                     print(f"WARNING: Could not capture {ide_name} window for project '{project_name}'. Falling back to full screen.")
                     base64_image_data = take_screenshot(self.target_width, self.target_height, encode_base64=True)
+                    self.last_screenshot_metadata = ScreenshotMetadata(ScreenshotType.FULL_SCREEN)
             else:
                 base64_image_data = take_screenshot(self.target_width, self.target_height, encode_base64=True)
+                self.last_screenshot_metadata = ScreenshotMetadata(ScreenshotType.FULL_SCREEN)
             
-            # Create the message with the screenshot and prompt
-            system_prompt = """You are a UI Element Detection AI. Analyze the attached screenshot to locate UI elements and output in JSON format with these exact keys:
-{
-    "action": {
-        "type": "click" or "type" (use "click" for buttons/links, "type" for text inputs),
-        "coordinates": {
-            "x": number (horizontal position),
-            "y": number (vertical position)
-        },
-    }
+            # Convert base64 string to BytesIO for llm_client
+            image_data = base64.b64decode(base64_image_data)
+            image_buffer = io.BytesIO(image_data)
+            
+            # Create the system prompt
+            system_prompt = """You are a UI Element Detection AI. Analyze the attached screenshot to locate UI elements.
 
-    IMPORTANT: If there is more than one element that matches the prompt, choose the one that is more prominent, for example, the one that is more visible, or the one in the focused and front window.
-}"""
+IMPORTANT: If there is more than one element that matches the prompt, choose the one that is more prominent, for example, the one that is more visible, or the one in the focused and front window.
+
+Use "click" for buttons/links and "type" for text inputs."""
 
             if support_non_existing_elements:
-                system_prompt = system_prompt + """ If the requested UI element is not found in the screenshot, respond with None. Otherwise, respond ONLY with the JSON format above and nothing else."""
-            else:
-                system_prompt = system_prompt + """ Respond ONLY with the JSON format above and nothing else."""
+                system_prompt += """ If the requested UI element is not found in the screenshot, you may indicate this in your response."""
             
-            message = client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=1024,
-                system=system_prompt,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "image/png",
-                                    "data": base64_image_data
-                                }
-                            },
-                            {
-                                "type": "text",
-                                "text": prompt
-                            }
-                        ]
-                    }
-                ]
+            # Use llm_client with structured response
+            result = llm_client.analyze_image_with_structured_response(
+                image_input=image_buffer,
+                prompt=prompt,
+                response_model=ActionResponse,
+                system_prompt=system_prompt,
+                max_tokens=1024
             )
             
-            # Parse the response
-            response_text = message.content[0].text.strip()
-            
-            # Handle None response for non-existing elements
-            if support_non_existing_elements and response_text.lower() == "none":
+            if not result:
+                print("Error getting response from LLM: No response received")
                 return None
             
-            # Parse JSON response
-            try:
-                response_json = json.loads(response_text)
-                action_data = response_json.get("action", {})
-                
-                # Extract action type and coordinates
-                action_type_str = action_data.get("type", "click")
-                action_type = ActionType.CLICK if action_type_str == "click" else ActionType.TYPE
-                
-                coords_data = action_data.get("coordinates", {})
-                x = coords_data.get("x", 0)
-                y = coords_data.get("y", 0)
-                
-                # Scale coordinates from Claude's coordinate system to real screen coordinates
-                real_x, real_y = self.scale_coordinates(ScalingSource.API, x, y)
-                
-                return ComputerUseAction(
-                    action_type=action_type,
-                    coordinates=Coordinates(real_x, real_y)
-                )
-                
-            except json.JSONDecodeError as e:
-                print(f"Error parsing Claude response as JSON: {e}")
-                print(f"Response was: {response_text}")
-                return None
+            # Extract action type and coordinates from the Pydantic model
+            action_type_str = result.action.type
+            action_type = ActionType.CLICK if action_type_str == "click" else ActionType.TYPE
+            
+            x = result.action.coordinates.x
+            y = result.action.coordinates.y
+            
+            # Scale coordinates using the appropriate metadata
+            real_x, real_y = self.scale_coordinates(ScalingSource.API, x, y, screenshot_metadata)
+            
+            return ComputerUseAction(
+                action_type=action_type,
+                coordinates=Coordinates(real_x, real_y)
+            )
                 
         except Exception as e:
-            print(f"Error getting coordinates from Claude: {e}")
+            print(f"Error getting coordinates from LLM: {e}")
             return None
 
-
-def get_coordinates_for_prompt(prompt: str) -> Optional[Tuple[int, int]]:
-    import asyncio
-    
-    claude = ClaudeComputerUse()
-    
-    # Run the async function in a new event loop
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        coordinates = loop.run_until_complete(claude.get_coordinates_from_claude(prompt))
-        loop.close()
-    except Exception as e:
-        print(f"Error running async function: {str(e)}")
-        return None
-    
-    if coordinates:
-        api_x, api_y = coordinates
-        print(f"Claude coordinates: ({api_x}, {api_y})")
-        
-        # Scale the coordinates to match the actual screen dimensions
-        scaled_x, scaled_y = claude.scale_coordinates(ScalingSource.API, api_x, api_y)        
-        return scaled_x, scaled_y
-    else:
-        print("Failed to get coordinates from Claude")
-        return None
-
-
+# Legacy function - kept for backward compatibility but simplified
 def get_windsurf_project_window_name(project_contained_name: str):
     """Get Windsurf project window name since it runs as an Electron app"""
-    success, window_titles = _get_process_window_titles("Electron")
+    success, window_titles = AppleScriptRunner.get_process_window_titles("Electron")
     if success:
-        return next((name for name in window_titles if project_contained_name in name), None)
+        return WindowMatcher.find_window_with_project(window_titles, project_contained_name)
     else:
         print(f"Error getting Windsurf window names")
         return None
-
 
 def get_ide_window_name(app_name: str, window_title: str):
     """Extract the appropriate window name based on the IDE"""
@@ -315,85 +436,57 @@ def get_ide_window_name(app_name: str, window_title: str):
     else:
         return window_title
 
-
-def bring_to_front_window(app_name: str, project_name: str):
-    """
-    Focus the appropriate IDE window that contains the project name.
-    
-    Args:
-        app_name (str): Name of the IDE application (e.g., "Cursor", "Windsurf")
-        project_name (str): Name of the project to find in window titles
-    
-    Returns:
-        bool: True if the window was successfully focused, False otherwise
-    """
+@darwin_only("Window focusing")
+def bring_to_front_window(app_name: str, project_name: str) -> bool:
+    """Focus the appropriate IDE window that contains the project name"""
     try:
-        app_name = app_name.lower()
-        process_name = _get_ide_process_name(app_name)
-        display_name = _get_ide_display_name(app_name)
+        ide_context = IDEContext.create(app_name)
         
-        # First check if the IDE is running with the project
-        if not is_ide_open_with_project(app_name, project_name, verbose=False):
-            print(f"{display_name} is not open with project '{project_name}'")
+        # Validate IDE is running with project
+        if not WindowOperations.validate_ide_with_project(ide_context, project_name):
+            print(f"{ide_context.display_name} is not open with project '{project_name}'")
             return False
         
-        # Get window titles for the process
-        success, window_titles = _get_process_window_titles(process_name)
-        if not success:
-            print(f"Could not get window titles for {display_name}")
-            return False
-        
-        # Find the window that contains the project name
-        matching_window = _find_window_with_project(window_titles, project_name)
+        # Discover the project window
+        matching_window = WindowOperations.discover_project_window(ide_context, project_name)
         if not matching_window:
-            print(f"No window found containing project '{project_name}'")
             return False
         
-        if platform.system() == "Darwin":
-            # Use AppleScript to bring the specific window to front
-            script = f'''
-            tell application "System Events"
-                tell process "{process_name}"
-                    set frontmost to true
-                    delay 0.5
-                    repeat with w in windows
-                        if name of w contains "{project_name}" then
-                            perform action "AXRaise" of w
-                            set position of w to {{0, 0}}
-                            delay 0.5
-                            exit repeat
-                        end if
-                    end repeat
-                end tell
+        # Use AppleScript to bring the specific window to front without affecting other windows
+        script = f'''
+        tell application "System Events"
+            tell process "{ide_context.process_name}"
+                repeat with w in windows
+                    if name of w is "{matching_window}" then
+                        perform action "AXRaise" of w
+                        set position of w to {{0, 0}}
+                        delay 0.5
+                        exit repeat
+                    end if
+                end repeat
+                set frontmost to true
             end tell
-            '''
+        end tell
+        '''
 
-            success, _ = _run_applescript(script)
-            if not success:
-                print(f"Failed to bring {display_name} window for project '{project_name}' to focus")
-                return False
+        success, _ = AppleScriptRunner.run(script)
+        if not success:
+            print(f"Failed to bring {ide_context.display_name} window for project '{project_name}' to focus")
+            return False
 
-            return True
-        elif platform.system() == "Windows":
-            # Windows-specific focusing script would be implemented here
-            print("Window focusing not implemented for Windows")
-            return False
-        else:
-            print(f"Window focusing not implemented for {platform.system()}")
-            return False
+        return True
+        
     except Exception as e:
         print(f"Error focusing window: {e}")
         return False
 
-
 def wait_for_focus(app_name, timeout=10):
-    """Wait until the specified app is frontmost. Updated to handle Windsurf as Electron app."""
-    # Use the helper function to get process name
-    process_name = _get_ide_process_name(app_name)
+    """Wait until the specified app is frontmost"""
+    ide_context = IDEContext.create(app_name)
     
     script = f'''
     tell application "System Events"
-        repeat until (name of first application process whose frontmost is true) is "{process_name}"
+        repeat until (name of first application process whose frontmost is true) is "{ide_context.process_name}"
             delay 0.5
         end repeat
     end tell
@@ -402,15 +495,14 @@ def wait_for_focus(app_name, timeout=10):
         subprocess.run(["osascript", "-e", script], timeout=timeout)
         return True
     except subprocess.TimeoutExpired:
-        print(f"Timed out waiting for {app_name} (process: {process_name}) to become active.")
+        print(f"Timed out waiting for {app_name} (process: {ide_context.process_name}) to become active.")
         return False
     except Exception as e:
         print(f"Error waiting for focus: {str(e)}")
         return False
 
-
 def get_current_window_name():
-    """Get the name of the currently active window, with robust error handling."""
+    """Get the name of the currently active window, with robust error handling"""
     script = '''
     try
         tell application "System Events"
@@ -440,54 +532,37 @@ def get_current_window_name():
     end try
     '''
     
-    success, output = _run_applescript(script)
+    success, output = AppleScriptRunner.run(script)
     if success:
         return output
     else:
         print(f"Warning: AppleScript error when getting window name: {output}")
         return "Unknown Window"
 
-
+@darwin_only("IDE project checking")
 def is_ide_open_with_project(app_name: str, project_name: str, verbose: bool = True) -> bool:
-    """
-    Check if a specific IDE is running and has the specified project open.
-    
-    Args:
-        app_name (str): Name of the IDE application (e.g., "Cursor", "Windsurf")
-        project_name (str): Name of the project to check for in window titles
-        verbose (bool): Whether to print status messages
-        
-    Returns:
-        bool: True if the IDE is running with the specified project, False otherwise
-    """
+    """Check if a specific IDE is running and has the specified project open"""
     try:
-        if platform.system() != "Darwin":
-            if verbose:
-                print(f"IDE project checking not implemented for {platform.system()}")
-            return False
-            
-        app_name = app_name.lower()
-        process_name = _get_ide_process_name(app_name)
-        display_name = _get_ide_display_name(app_name)
+        ide_context = IDEContext.create(app_name)
         
         # Get window titles for the process
-        success, window_titles = _get_process_window_titles(process_name)
+        success, window_titles = AppleScriptRunner.get_process_window_titles(ide_context.process_name)
         
         if not success:
             if verbose:
-                print(f"{display_name} ({process_name}) is not running")
+                print(f"{ide_context.display_name} ({ide_context.process_name}) is not running")
             return False
         
         # Check if any window title contains the project name
-        matching_window = _find_window_with_project(window_titles, project_name)
+        matching_window = WindowMatcher.find_window_with_project(window_titles, project_name)
         
         if matching_window:
             if verbose:
-                print(f"Found {display_name} window with project '{project_name}': {matching_window}")
+                print(f"Found {ide_context.display_name} window with project '{project_name}': {matching_window}")
             return True
         else:
             if verbose:
-                print(f"{display_name} is running but no window found with project '{project_name}'")
+                print(f"{ide_context.display_name} is running but no window found with project '{project_name}'")
                 print(f"Available windows: {window_titles}")
             return False
             
@@ -496,32 +571,28 @@ def is_ide_open_with_project(app_name: str, project_name: str, verbose: bool = T
             print(f"Error checking if {app_name} is open with project '{project_name}': {e}")
         return False
 
-
+@darwin_only("IDE window closing")
 def close_ide_window_for_project(app_name: str, project_name: str) -> bool:
-    """
-    Close a specific IDE window that contains the project name.
-    
-    Args:
-        app_name (str): Name of the IDE application (e.g., "Cursor", "Windsurf")
-        project_name (str): Name of the project to close the window for
-        
-    Returns:
-        bool: True if window was closed successfully, False otherwise
-    """
+    """Close a specific IDE window that contains the project name"""
     try:
-        if platform.system() != "Darwin":
-            print(f"IDE window closing not implemented for {platform.system()}")
-            return False
-            
-        app_name = app_name.lower()
-        process_name = _get_ide_process_name(app_name)
+        ide_context = IDEContext.create(app_name)
         
-        # Use AppleScript to close the specific window containing the project name
+        # Validate IDE is running with project
+        if not WindowOperations.validate_ide_with_project(ide_context, project_name):
+            print(f"{ide_context.display_name} is not open with project '{project_name}'")
+            return True  # Nothing to close
+        
+        # Discover the project window
+        matching_window = WindowOperations.discover_project_window(ide_context, project_name)
+        if not matching_window:
+            return True  # Nothing to close
+        
+        # Use AppleScript to close the specific window by exact title match
         close_script = f'''
         tell application "System Events"
-            tell process "{process_name}"
+            tell process "{ide_context.process_name}"
                 repeat with w in windows
-                    if name of w contains "{project_name}" then
+                    if name of w is "{matching_window}" then
                         click button 1 of w
                         exit repeat
                     end if
@@ -530,9 +601,8 @@ def close_ide_window_for_project(app_name: str, project_name: str) -> bool:
         end tell
         '''
         
-        success, _ = _run_applescript(close_script)
+        success, _ = AppleScriptRunner.run(close_script)
         if success:
-            print(f"SUCCESS: Attempted to close {app_name} window for project '{project_name}'")
             return True
         else:
             print(f"ERROR: Failed to close {app_name} window for project '{project_name}'")
@@ -542,15 +612,8 @@ def close_ide_window_for_project(app_name: str, project_name: str) -> bool:
         print(f"ERROR: Failed to close {app_name} window for project '{project_name}': {e}")
         return False
 
-
-def take_screenshot(target_width, target_height, encode_base64: bool = False, monitor_number: int = 0) -> str:
-    """
-    Capture screenshot using mss library with multi-monitor support.
-    
-    Args:
-        monitor_number (int, optional): The monitor number to capture (0-based index).
-                                        If None, captures the entire screen across all monitors.
-    """
+def take_screenshot(target_width, target_height, encode_base64: bool = False, monitor_number: int = 0) -> Union[str, io.BytesIO]:
+    """Capture screenshot using mss library with multi-monitor support"""
     with mss() as sct:
         if monitor_number < 0 or monitor_number >= len(sct.monitors):
             raise ValueError(f"Invalid monitor number. Available monitors: 0-{len(sct.monitors)-1}")
@@ -560,21 +623,7 @@ def take_screenshot(target_width, target_height, encode_base64: bool = False, mo
         # Convert to PIL Image for resizing
         screenshot = Image.frombytes('RGB', screenshot.size, screenshot.rgb)
         
-        # Resize to target dimensions
-        screenshot = screenshot.resize((target_width, target_height))
-        
-
-
-        # Save to in-memory buffer
-        img_buffer = io.BytesIO()
-        screenshot.save(img_buffer, format="PNG", optimize=True)
-        img_buffer.seek(0)
-        
-        if encode_base64:# Return base64 encoded image
-            return base64.b64encode(img_buffer.read()).decode()
-        else:
-            return img_buffer
-
+        return ImageProcessor.process_image_to_buffer(screenshot, target_width, target_height, encode_base64)
 
 def play_beep_sound():
     """Play a beep sound to alert the user"""
@@ -593,73 +642,62 @@ def play_beep_sound():
     except Exception as e:
         print(f"Warning: Could not play beep sound: {e}")
 
+@darwin_only("IDE window screenshot")
+def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: int = 1280, target_height: int = 720, 
+                              encode_base64: bool = False, verbose: bool = False) -> Optional[Union[str, io.BytesIO]]:
+    """Capture a screenshot of the specific IDE window that contains the project name"""
+    result = take_ide_window_screenshot_with_metadata(ide_name, project_name, target_width, target_height, encode_base64, verbose)
+    if result:
+        return result[0]  # Return just the image data, not the metadata
+    return None
 
-def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: int = 1280, target_height: int = 720, encode_base64: bool = False, verbose: bool = False):
-    """
-    Capture a screenshot of the specific IDE window that contains the project name.
-    Automatically brings the window to focus before taking the screenshot.
-    
-    Args:
-        ide_name (str): Name of the IDE application (e.g., "Cursor", "Windsurf")
-        project_name (str): Name of the project to find in window titles
-        target_width (int): Target width for the screenshot
-        target_height (int): Target height for the screenshot
-        encode_base64 (bool): Whether to return base64 encoded image
-        verbose (bool): Whether to print detailed status messages
-        
-    Returns:
-        str or BytesIO: Screenshot data (base64 string if encode_base64=True, BytesIO buffer otherwise)
-        Returns None if the IDE window is not found or not focused
-    """
+@darwin_only("IDE window screenshot with metadata")
+def take_ide_window_screenshot_with_metadata(ide_name: str, project_name: str, target_width: int = 1280, target_height: int = 720, 
+                                           encode_base64: bool = False, verbose: bool = False) -> Optional[Tuple[Union[str, io.BytesIO], ScreenshotMetadata]]:
+    """Capture a screenshot of the specific IDE window and return both image data and metadata"""
     try:
-        if platform.system() != "Darwin":
-            print(f"IDE window screenshot not implemented for {platform.system()}")
-            return None
-            
-        ide_name = ide_name.lower()
-        process_name = _get_ide_process_name(ide_name)
-        display_name = _get_ide_display_name(ide_name)
+        ide_context = IDEContext.create(ide_name)
         
-        # First check if the IDE is running with the project
-        if not is_ide_open_with_project(ide_name, project_name, verbose=False):
-            print(f"{display_name} is not open with project '{project_name}'")
+        # Validate IDE is running with project
+        if not WindowOperations.validate_ide_with_project(ide_context, project_name):
+            print(f"{ide_context.display_name} is not open with project '{project_name}'")
             return None
         
-        # Get window titles for the process
-        success, window_titles = _get_process_window_titles(process_name)
-        if not success:
-            print(f"Could not get window titles for {display_name}")
-            return None
-        
-        # Find the window that contains the project name
-        matching_window = _find_window_with_project(window_titles, project_name)
+        # Discover the project window
+        matching_window = WindowOperations.discover_project_window(ide_context, project_name)
         if not matching_window:
-            print(f"No window found containing project '{project_name}'")
             return None
         
         # IMPORTANT: Bring the window to focus before taking screenshot
         focus_success = bring_to_front_window(ide_name, project_name)
         if not focus_success:
-            print(f"Warning: Could not bring {display_name} window to focus, but continuing...")
+            print(f"Warning: Could not bring {ide_context.display_name} window to focus, but continuing...")
         else:
             # Wait a moment for the window to come to focus
             import time
             time.sleep(1.5)
+        
+        # Get window position for coordinate scaling
+        window_pos_success, window_x, window_y = AppleScriptRunner.get_window_position(ide_context.process_name, matching_window)
+        if not window_pos_success:
+            window_x, window_y = 0, 0
         
         # Create a temporary file for the screenshot
         import tempfile
         fd, path = tempfile.mkstemp(suffix='.png')
         os.close(fd)
         
-        # Use AppleScript to ensure the window is frontmost and capture it
+        # Use AppleScript to ensure the specific window is frontmost and capture it
         script = f'''
         tell application "System Events"
-            set targetWindow to window "{matching_window}" of process "{process_name}"
-            if exists targetWindow then
-                set frontmost of process "{process_name}" to true
-                perform action "AXRaise" of targetWindow
-                delay 1.0
-            end if
+            tell process "{ide_context.process_name}"
+                set targetWindow to window "{matching_window}"
+                if exists targetWindow then
+                    perform action "AXRaise" of targetWindow
+                    delay 1.0
+                end if
+                set frontmost to true
+            end tell
         end tell
         '''
         
@@ -682,82 +720,56 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
                 window_id = line.split(':')[0].strip()
                 break
         
+        screenshot_type = ScreenshotType.WINDOW_SPECIFIC
+        
         if window_id:
             # Capture the specific window
             subprocess.run(["screencapture", "-l", window_id, path], check=True)
         else:
             # Fallback to full screen if window ID not found
-            # Only print warning in verbose mode to reduce noise
             if verbose:
                 print(f"Warning: Could not find window ID for '{matching_window}', falling back to full screen")
             subprocess.run(["screencapture", "-x", path], check=True)
+            screenshot_type = ScreenshotType.FULL_SCREEN
+            window_x, window_y = 0, 0
         
         # Open and process the image
         image = Image.open(path)
+        original_width, original_height = image.size
         
-        # Resize to target dimensions
-        image = image.resize((target_width, target_height))
-        
-        # Save to in-memory buffer
-        img_buffer = io.BytesIO()
-        image.save(img_buffer, format="PNG", optimize=True)
-        img_buffer.seek(0)
+        # Create metadata
+        metadata = ScreenshotMetadata(
+            screenshot_type=screenshot_type,
+            window_x=window_x,
+            window_y=window_y,
+            original_width=original_width,
+            original_height=original_height
+        )
         
         # Delete the temporary file
         os.unlink(path)
         
-        if encode_base64:
-            return base64.b64encode(img_buffer.read()).decode()
-        else:
-            return img_buffer
+        # Process the image
+        processed_image = ImageProcessor.process_image_to_buffer(image, target_width, target_height, encode_base64)
+        
+        return processed_image, metadata
             
     except Exception as e:
         print(f"Error taking IDE window screenshot: {e}")
         return None
 
-
+@darwin_only("Project window visibility checking")
 def is_project_window_visible(agent_name: str, project_name: str, auto_focus: bool = True) -> bool:
-    """
-    Returns True if there is a visible and focused window for the given agent and project.
-    
-    This function checks both:
-    1. That the IDE is running with the specified project
-    2. That the IDE window with the project is currently focused/frontmost
-    
-    Args:
-        agent_name (str): Name of the IDE application (e.g., "Cursor", "Windsurf")
-        project_name (str): Name of the project to check for in window titles
-        auto_focus (bool): Whether to automatically bring the window to focus if it's not focused
-        
-    Returns:
-        bool: True if the IDE window for the project is visible and focused, False otherwise
-    """
+    """Returns True if there is a visible and focused window for the given agent and project"""
     try:
-        if platform.system() != "Darwin":
-            print(f"Project window visibility checking not implemented for {platform.system()}")
-            return False
-            
-        agent_name = agent_name.lower()
+        ide_context = IDEContext.create(agent_name)
         
         # First check if the IDE is running with the project
-        if not is_ide_open_with_project(agent_name, project_name, verbose=False):
+        if not WindowOperations.validate_ide_with_project(ide_context, project_name):
             return False
         
-        # Then check if the current focused window belongs to this IDE and project
-        current_window = get_current_window_name()
-        
-        # Get the frontmost process
-        success, frontmost_process = _get_frontmost_process()
-        if not success:
-            print("Could not determine frontmost process")
-            return False
-        
-        # Get expected process name for this IDE
-        expected_process = _get_ide_process_name(agent_name)
-        display_name = _get_ide_display_name(agent_name)
-        
-        # Check if the expected IDE is frontmost and current window contains project
-        if frontmost_process == expected_process and project_name.lower() in current_window.lower():
+        # Check if the window is currently focused
+        if WindowOperations.check_window_focus(ide_context, project_name):
             return True
         else:
             # If auto_focus is enabled, try to bring the window to focus
@@ -769,16 +781,13 @@ def is_project_window_visible(agent_name: str, project_name: str, auto_focus: bo
                     time.sleep(1.5)
                     
                     # Check again if the window is now focused
-                    current_window = get_current_window_name()
-                    success, frontmost_process = _get_frontmost_process()
-                    
-                    if success and frontmost_process == expected_process and project_name.lower() in current_window.lower():
+                    if WindowOperations.check_window_focus(ide_context, project_name):
                         return True
                     else:
-                        print(f"WARNING: Could not bring {display_name} window for project '{project_name}' to focus")
+                        print(f"WARNING: Could not bring {ide_context.display_name} window for project '{project_name}' to focus")
                         return False
                 else:
-                    print(f"ERROR: Failed to bring {display_name} window for project '{project_name}' to focus")
+                    print(f"ERROR: Failed to bring {ide_context.display_name} window for project '{project_name}' to focus")
                     return False
             else:
                 return False

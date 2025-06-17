@@ -14,7 +14,7 @@ import subprocess
 from PIL import Image
 from dotenv import load_dotenv
 
-from utils.computer_use_utils import take_screenshot, ClaudeComputerUse, take_ide_window_screenshot
+from utils.computer_use_utils import take_screenshot, LLMComputerUse, take_ide_window_screenshot
 from utils.llm_client import analyze_ide_state_with_llm
 import pyautogui
 
@@ -173,17 +173,15 @@ def capture_window_by_title(title_substring, app_name=None):
         title = window['window_title']
         script = f'''
         tell application "System Events"
-            set frontApp to name of first application process whose frontmost is true
-            set frontAppWindow to "None"
-            
-            set targetWindow to window "{title}" of process "{window['app_name']}"
-            if exists targetWindow then
-                set frontAppWindow to name of window 1 of process frontApp
-                set position of targetWindow to {0, 0}
-                set frontmost of process "{window['app_name']}" to true
-            end if
-            
-            delay 0.5
+            tell process "{window['app_name']}"
+                set targetWindow to window "{title}"
+                if exists targetWindow then
+                    perform action "AXRaise" of targetWindow
+                    set position of targetWindow to {{0, 0}}
+                    delay 0.5
+                end if
+                set frontmost to true
+            end tell
         end tell
         '''
         
@@ -286,10 +284,10 @@ async def click_ide_resume_button(resume_button_prompt, ide_name=None, project_n
     """
     try:
         # Initialize Claude Computer Use for finding the button
-        claude = ClaudeComputerUse()
+        computer_use_client = LLMComputerUse()
         
         # Look for the Resume button
-        result = await claude.get_coordinates_from_claude(
+        result = await computer_use_client.get_coordinates_from_vision_model(
             resume_button_prompt,
             support_non_existing_elements=True,
             ide_name=ide_name,

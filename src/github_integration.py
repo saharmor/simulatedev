@@ -32,6 +32,9 @@ class GitHubIntegration:
             "Accept": "application/vnd.github.v3+json",
             "X-GitHub-Api-Version": "2022-11-28"
         }
+        
+        # Track the last pushed branch name (for handling conflicts)
+        self._last_pushed_branch = None
     
     def get_authenticated_user(self) -> Optional[str]:
         """Get the authenticated user's username"""
@@ -303,7 +306,7 @@ class GitHubIntegration:
             return False
     
     def push_branch(self, repo_path: str, branch_name: str, repo_url: str) -> bool:
-        """Push branch to remote repository"""
+        """Push branch to remote repository with conflict resolution"""
         try:
             # Add remote origin if it doesn't exist
             result = subprocess.run(
@@ -319,18 +322,99 @@ class GitHubIntegration:
                     check=True
                 )
             
-            # Push the branch
+            # Try to push the branch
+            try:
+                subprocess.run(
+                    ["git", "push", "-u", "origin", branch_name],
+                    cwd=repo_path,
+                    check=True,
+                    capture_output=True
+                )
+                print(f"SUCCESS: Pushed branch {branch_name} to remote")
+                return True
+                
+            except subprocess.CalledProcessError as push_error:
+                error_output = push_error.stderr.decode()
+                
+                # Check if it's a non-fast-forward error
+                if "non-fast-forward" in error_output or "rejected" in error_output:
+                    print(f"INFO: Branch {branch_name} has conflicts with remote. Attempting to resolve...")
+                    
+                    # Try to fetch and merge remote changes
+                    try:
+                        # Fetch the latest changes
+                        subprocess.run(
+                            ["git", "fetch", "origin", branch_name],
+                            cwd=repo_path,
+                            check=True,
+                            capture_output=True
+                        )
+                        
+                        # Try to merge the remote changes
+                        subprocess.run(
+                            ["git", "merge", f"origin/{branch_name}"],
+                            cwd=repo_path,
+                            check=True,
+                            capture_output=True
+                        )
+                        
+                        # Try pushing again after merge
+                        subprocess.run(
+                            ["git", "push", "-u", "origin", branch_name],
+                            cwd=repo_path,
+                            check=True,
+                            capture_output=True
+                        )
+                        print(f"SUCCESS: Resolved conflicts and pushed branch {branch_name} to remote")
+                        return True
+                        
+                    except subprocess.CalledProcessError:
+                        # If merge fails, create a new unique branch name
+                        print(f"INFO: Cannot merge conflicts automatically. Creating new unique branch...")
+                        return self._create_and_push_unique_branch(repo_path, branch_name, repo_url)
+                else:
+                    # Re-raise for other types of push errors
+                    raise push_error
+            
+        except subprocess.CalledProcessError as e:
+            print(f"ERROR: Failed to push branch {branch_name}: {e.stderr.decode()}")
+            return False
+    
+    def _create_and_push_unique_branch(self, repo_path: str, original_branch_name: str, repo_url: str) -> bool:
+        """Create a new unique branch name and push it"""
+        from datetime import datetime
+        
+        # Generate a unique branch name with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        unique_branch_name = f"{original_branch_name}_{timestamp}"
+        
+        try:
+            # Create and checkout the new unique branch
             subprocess.run(
-                ["git", "push", "-u", "origin", branch_name],
+                ["git", "checkout", "-b", unique_branch_name],
                 cwd=repo_path,
                 check=True,
                 capture_output=True
             )
-            print(f"SUCCESS: Pushed branch {branch_name} to remote")
+            
+            # Push the new unique branch
+            subprocess.run(
+                ["git", "push", "-u", "origin", unique_branch_name],
+                cwd=repo_path,
+                check=True,
+                capture_output=True
+            )
+            
+            print(f"SUCCESS: Created and pushed unique branch {unique_branch_name} to remote")
+            
+            # Update the branch name in the class for PR creation
+            # We need to return the new branch name somehow - let's store it as an instance variable
+            self._last_pushed_branch = unique_branch_name
+            
             return True
             
         except subprocess.CalledProcessError as e:
-            print(f"ERROR: Failed to push branch {branch_name}: {e.stderr.decode()}")
+            print(f"ERROR: Failed to create and push unique branch: {e.stderr.decode()}")
             return False
     
     def get_default_branch(self, repo_url: str) -> str:
@@ -407,7 +491,10 @@ class GitHubIntegration:
                 head_ref = branch_name
                 print(f"INFO: Creating PR within {target_repo_info['owner']}/{target_repo_info['repo']}")
             
-            print(f"INFO: PR details - head: {head_ref}, base: {base_branch}")
+            # Validate that head_ref is not None or empty
+            if not head_ref:
+                print(f"ERROR: Invalid branch name: {branch_name}")
+                return None
             
             pr_data = {
                 "title": title,
@@ -416,6 +503,8 @@ class GitHubIntegration:
                 "base": base_branch,
                 "maintainer_can_modify": True
             }
+            
+            print(f"INFO: PR details - head: {head_ref}, base: {base_branch}")
             
             url = f"https://api.github.com/repos/{target_repo_info['owner']}/{target_repo_info['repo']}/pulls"
             
@@ -430,19 +519,12 @@ class GitHubIntegration:
                 print(f"SUCCESS: Pull request created: {pr_data['html_url']}")
                 return pr_data
             elif response.status_code == 422:
-                # Handle validation errors - try common branch names
-                print(f"WARNING: PR creation failed with validation error. Trying fallback branches...")
+                # Handle validation errors - only try 'main' as fallback if not already tried
+                print(f"WARNING: PR creation failed with validation error: {response.text}")
                 
-                fallback_branches = ["master", "develop", "dev"]
-                if base_branch not in fallback_branches:
-                    fallback_branches.insert(0, "main")  # Try main first if not already tried
-                
-                for fallback_branch in fallback_branches:
-                    if fallback_branch == base_branch:
-                        continue  # Skip the one we already tried
-                    
-                    print(f"INFO: Trying base branch: {fallback_branch}")
-                    pr_data["base"] = fallback_branch
+                if base_branch != "main":
+                    print(f"INFO: Trying base branch: main")
+                    pr_data["base"] = "main"
                     
                     retry_response = requests.post(
                         url,
@@ -452,10 +534,14 @@ class GitHubIntegration:
                     
                     if retry_response.status_code == 201:
                         pr_data = retry_response.json()
-                        print(f"SUCCESS: Pull request created with base branch '{fallback_branch}': {pr_data['html_url']}")
+                        print(f"SUCCESS: Pull request created with base branch 'main': {pr_data['html_url']}")
                         return pr_data
+                    else:
+                        print(f"ERROR: Failed to create PR with 'main' base branch: {retry_response.status_code} - {retry_response.text}")
+                else:
+                    print(f"ERROR: Already tried 'main' as base branch")
                 
-                print(f"ERROR: Failed to create PR with any base branch: {response.status_code} - {response.text}")
+                print(f"ERROR: Failed to create PR: {response.status_code} - {response.text}")
                 return None
             else:
                 print(f"ERROR: Failed to create PR: {response.status_code} - {response.text}")
@@ -621,13 +707,17 @@ class GitHubIntegration:
         if not self.commit_changes(repo_path, commit_message):
             return None
         
-        # Push branch
+        # Push branch - this may create a unique branch name if conflicts occur
+        self._last_pushed_branch = None  # Reset before push
         if not self.push_branch(repo_path, branch_name, repo_url):
             return None
         
+        # Use the actual pushed branch name (may be different if conflicts were resolved)
+        final_branch_name = self._last_pushed_branch if self._last_pushed_branch else branch_name
+        
         pr = self.create_pull_request(
             repo_url=repo_url,
-            branch_name=branch_name,
+            branch_name=final_branch_name,
             title=pr_title,
             description=pr_description
         )
@@ -731,14 +821,18 @@ class GitHubIntegration:
         if not self.commit_changes(repo_path, commit_message):
             return None
         
-        # Step 6: Push to fork
+        # Step 6: Push to fork - this may create a unique branch name if conflicts occur
+        self._last_pushed_branch = None  # Reset before push
         if not self.push_branch(repo_path, branch_name, fork_git_url):
             return None
+        
+        # Use the actual pushed branch name (may be different if conflicts were resolved)
+        final_branch_name = self._last_pushed_branch if self._last_pushed_branch else branch_name
         
         # Step 7: Create cross-repository pull request
         pr = self.create_pull_request(
             repo_url=original_repo_url,  # Target: original repo
-            branch_name=branch_name,
+            branch_name=final_branch_name,
             title=pr_title,
             description=pr_description,
             head_repo_url=fork_url  # Source: our fork

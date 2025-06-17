@@ -108,8 +108,6 @@ Only analyze the right panel and provide nothing but valid JSON in your response
                 print(f"WARNING: No project name set for {self.agent_name}, cannot close project-specific window")
                 return True  # Return True since we can't identify what to close
             
-            print(f"Closing {self.agent_name} window for project: {self._current_project_name}")
-            
             # Check if Cursor is open with our project
             if not self.is_ide_open_with_correct_project():
                 print(f"INFO: {self.agent_name} is not open with project '{self._current_project_name}', nothing to close")
