@@ -125,19 +125,118 @@ Create production-ready code that feels like a natural extension of the existing
     def create_prompt_with_workflow(self, task: str, context: AgentContext, 
                                   agent_definition: AgentDefinition, 
                                   workflow_type: str = None) -> str:
-        """Create a workflow-aware coding prompt"""
-        base_prompt = self.create_prompt(task, context, agent_definition)
+        """Create a workflow-aware coding prompt with workflow context first"""
+        # Start with workflow context if available
+        prompt_parts = []
         
         if workflow_type:
             workflow_specific = self._get_coder_workflow_context(workflow_type)
             if workflow_specific:
-                # Insert workflow context after the role description but before task details
-                lines = base_prompt.split('\n')
-                insert_index = 3  # After "## YOUR ROLE AS CODER" section
-                lines.insert(insert_index, workflow_specific)
-                base_prompt = '\n'.join(lines)
+                prompt_parts.append(workflow_specific)
         
-        return base_prompt
+        # Add the main role-specific prompt
+        role_prompt = f"""You are {agent_definition.coding_ide}, acting as a SOFTWARE DEVELOPER.
+
+## TASK TO IMPLEMENT
+{task}
+
+## YOUR ROLE AS CODER
+Your job is to implement the solution based on the planning information provided.
+You are responsible for creating working, production-ready code that fulfills the requirements.
+
+## CONTEXT INFORMATION
+- Work Directory: {context.work_directory}
+- Current Step: {context.current_step}/{context.total_steps}
+"""
+        
+        # Include planner output if available
+        planner_output = context.get_latest_output_by_role(AgentRole.PLANNER)
+        if planner_output:
+            role_prompt += f"""
+## IMPLEMENTATION PLAN (from Planner)
+{planner_output['output']}
+
+## YOUR IMPLEMENTATION TASK
+Follow the plan above and implement the solution. Key points to consider:
+- Implement all components outlined in the plan
+- Follow the suggested file structure
+- Include all specified dependencies
+- If the plan needs adjustments based on your technical expertise, make them but explain why
+"""
+            
+            # Include extracted plan sections if available
+            if 'plan_sections' in planner_output:
+                sections = planner_output['plan_sections']
+                if sections.get('files'):
+                    role_prompt += f"""
+### File Structure to Implement:
+{sections['files']}
+"""
+                if sections.get('dependencies'):
+                    role_prompt += f"""
+### Dependencies to Include:
+{sections['dependencies']}
+"""
+        else:
+            role_prompt += """
+## NO PRE-EXISTING PLAN
+No planner output is available. Please create and implement a solution from scratch.
+Analyze the requirements carefully and design an appropriate solution.
+"""
+        
+        # Include previous coder attempts if any
+        previous_coder_outputs = context.get_outputs_by_role(AgentRole.CODER)
+        if previous_coder_outputs:
+            role_prompt += f"""
+## PREVIOUS IMPLEMENTATION ATTEMPTS
+{len(previous_coder_outputs)} previous coding attempt(s) were made:
+"""
+            for i, output in enumerate(previous_coder_outputs[-2:], 1):  # Show last 2 attempts
+                status = "SUCCESS" if output['success'] else "FAILED"
+                role_prompt += f"""
+### Attempt {i} by {output['coding_ide']} ({status})
+Output: {output['output'][:500]}...
+"""
+                if not output['success'] and output.get('error'):
+                    role_prompt += f"Error: {output['error']}\n"
+            
+            role_prompt += """
+## IMPROVEMENT INSTRUCTIONS
+Please improve upon or complete the previous work:
+- Fix any errors or issues from previous attempts
+- Complete any unfinished functionality
+- Enhance code quality and structure
+- Add missing components or features
+"""
+        
+        role_prompt += """
+## CRITICAL: ANALYZE REPOSITORY FIRST
+Before coding, study existing files to understand:
+- Coding style (indentation, naming, comments, imports)
+- Architecture patterns and file organization
+- Error handling and testing approaches
+
+**REQUIREMENT**: Your code MUST match the existing repository's style and conventions exactly.
+
+## IMPLEMENTATION STEPS
+1. **ANALYZE** existing codebase for style and patterns
+2. **CREATE** working code files that match repository style
+3. **IMPLEMENT** full functionality following existing patterns
+4. **TEST** implementation works correctly
+5. **DOCUMENT** what you built and how it integrates
+
+## DELIVERABLES
+□ Complete, working code files
+□ Code matches repository style
+□ Proper error handling
+□ Clear documentation
+□ Implementation summary
+
+Create production-ready code that feels like a natural extension of the existing codebase.
+"""
+        
+        prompt_parts.append(role_prompt)
+        return '\n\n'.join(prompt_parts)
     
     def _get_coder_workflow_context(self, workflow_type: str) -> str:
         """Get coder-specific workflow context"""

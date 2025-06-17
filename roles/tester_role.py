@@ -184,19 +184,177 @@ Remember: Your goal is to ensure the implementation is reliable, usable, and mee
     def create_prompt_with_workflow(self, task: str, context: AgentContext, 
                                   agent_definition: AgentDefinition, 
                                   workflow_type: str = None) -> str:
-        """Create a workflow-aware testing prompt"""
-        base_prompt = self.create_prompt(task, context, agent_definition)
+        """Create a workflow-aware testing prompt with workflow context first"""
+        # Start with workflow context if available
+        prompt_parts = []
         
         if workflow_type:
             workflow_specific = self._get_tester_workflow_context(workflow_type)
             if workflow_specific:
-                # Insert workflow context after the role description
-                lines = base_prompt.split('\n')
-                insert_index = 8  # After "## YOUR ROLE AS TESTER" section
-                lines.insert(insert_index, workflow_specific)
-                base_prompt = '\n'.join(lines)
+                prompt_parts.append(workflow_specific)
         
-        return base_prompt
+        # Add the main role-specific prompt
+        role_prompt = f"""You are {agent_definition.coding_ide}, acting as a SOFTWARE TESTER.
+
+## ORIGINAL TASK
+{task}
+
+## YOUR ROLE AS TESTER
+Your job is to thoroughly test the implementation created by the coding agents.
+You are responsible for ensuring quality, functionality, and reliability of the solution.
+
+## CONTEXT INFORMATION
+- Work Directory: {context.work_directory}
+- Current Step: {context.current_step}/{context.total_steps}
+"""
+        
+        # Include planner output for reference
+        planner_output = context.get_latest_output_by_role(AgentRole.PLANNER)
+        if planner_output:
+            role_prompt += f"""
+## ORIGINAL PLAN (for Reference)
+{planner_output['output'][:1000]}...
+
+### Testing Strategy from Plan:
+"""
+            if 'plan_sections' in planner_output and planner_output['plan_sections'].get('testing'):
+                role_prompt += planner_output['plan_sections']['testing']
+            else:
+                role_prompt += "No specific testing strategy was provided in the plan."
+        
+        # Include coder output - this is the main focus for testing
+        coder_outputs = context.get_outputs_by_role(AgentRole.CODER)
+        if coder_outputs:
+            role_prompt += f"""
+## IMPLEMENTATION TO TEST
+The following implementations were created and need to be tested:
+"""
+            for i, output in enumerate(coder_outputs, 1):
+                status = "SUCCESS" if output['success'] else "FAILED"
+                role_prompt += f"""
+### Implementation {i} by {output['coding_ide']} ({status})
+{output['output'][:1200]}...
+"""
+                if 'implementation_info' in output:
+                    info = output['implementation_info']
+                    if info.get('files_created'):
+                        role_prompt += f"\nFiles Created: {', '.join(info['files_created'])}"
+                    if info.get('technologies_used'):
+                        role_prompt += f"\nTechnologies: {', '.join(info['technologies_used'])}"
+                    if info.get('setup_instructions'):
+                        role_prompt += f"\nSetup Info: {info['setup_instructions'][:200]}..."
+        else:
+            role_prompt += """
+## NO IMPLEMENTATION FOUND
+No coder outputs available to test. This indicates a problem in the workflow.
+Please investigate why no implementation was created.
+"""
+        
+        # Include previous testing attempts if any
+        previous_test_outputs = context.get_outputs_by_role(AgentRole.TESTER)
+        if previous_test_outputs:
+            role_prompt += f"""
+## PREVIOUS TESTING ATTEMPTS
+{len(previous_test_outputs)} previous testing attempt(s) were made:
+"""
+            for i, output in enumerate(previous_test_outputs[-2:], 1):
+                status = "SUCCESS" if output['success'] else "FAILED"
+                role_prompt += f"""
+### Test {i} ({status})
+{output['output'][:600]}...
+"""
+            role_prompt += "\nPlease build upon previous testing efforts and address any remaining issues."
+        
+        role_prompt += """
+## COMPREHENSIVE TESTING REQUIREMENTS
+
+### 1. FUNCTIONALITY TESTING
+- **Verify Core Features**: Test all main functionality described in the original task
+- **Input Validation**: Test with various inputs (valid, invalid, edge cases)
+- **Output Verification**: Ensure outputs match expected results
+- **Error Handling**: Test error conditions and exception handling
+- **Integration Testing**: Verify components work together correctly
+
+### 2. CODE QUALITY ASSESSMENT
+- **Code Structure**: Evaluate organization, modularity, and architecture
+- **Best Practices**: Check adherence to coding standards and conventions
+- **Documentation**: Verify comments, docstrings, and README quality
+- **Security**: Look for potential security vulnerabilities
+- **Performance**: Assess efficiency and resource usage
+
+### 3. ENVIRONMENT TESTING
+- **Setup Process**: Test installation and setup instructions
+- **Dependencies**: Verify all required dependencies are properly specified
+- **Cross-platform**: Consider compatibility across different environments
+- **File Structure**: Ensure all necessary files are present and correctly organized
+
+### 4. USER EXPERIENCE TESTING
+- **Usability**: Evaluate ease of use and user interface (if applicable)
+- **Documentation Quality**: Test clarity of usage instructions
+- **Error Messages**: Verify error messages are helpful and informative
+- **Examples**: Test provided examples and demonstrations
+
+## TESTING METHODOLOGY
+1. **Static Analysis**: Review code without executing it
+2. **Unit Testing**: Test individual components/functions
+3. **Integration Testing**: Test component interactions
+4. **System Testing**: Test the complete system end-to-end
+5. **User Acceptance Testing**: Verify requirements are met
+6. **Regression Testing**: Ensure changes don't break existing functionality
+
+## TEST DELIVERABLES
+Please provide a comprehensive report with:
+
+### 1. EXECUTIVE SUMMARY
+- Overall assessment (Pass/Fail with confidence level)
+- Key findings and recommendations
+- Critical issues that must be addressed
+
+### 2. DETAILED TEST RESULTS
+- **Functionality Tests**: What was tested and results
+- **Code Quality Assessment**: Strengths and weaknesses
+- **Setup and Installation**: Step-by-step verification
+- **Performance Evaluation**: Speed, memory usage, scalability
+
+### 3. BUG REPORT
+- **Critical Issues**: Bugs that prevent basic functionality
+- **Major Issues**: Significant problems affecting usability
+- **Minor Issues**: Small improvements and optimizations
+- **Enhancement Suggestions**: Ideas for future improvements
+
+### 4. VERIFICATION CHECKLIST
+□ All core functionality works as expected
+□ Error handling is robust and informative
+□ Code follows best practices and standards
+□ Documentation is clear and complete
+□ Setup instructions work correctly
+□ Dependencies are properly specified
+□ No critical security vulnerabilities found
+□ Performance is acceptable for intended use
+
+### 5. RECOMMENDATIONS
+- **Immediate Actions**: Critical fixes needed before deployment
+- **Short-term Improvements**: Enhancements for next iteration
+- **Long-term Considerations**: Strategic improvements for future
+
+## OUTPUT FORMAT
+Structure your response with clear sections and use bullet points for readability.
+Be specific about what you tested, how you tested it, and what the results were.
+Include code snippets or examples where relevant.
+
+## TESTING PRINCIPLES
+- Be thorough but practical
+- Focus on real-world usage scenarios
+- Document everything clearly
+- Provide actionable feedback
+- Consider the end user's perspective
+- Balance perfectionism with practicality
+
+Remember: Your goal is to ensure the implementation is reliable, usable, and meets the original requirements.
+"""
+        
+        prompt_parts.append(role_prompt)
+        return '\n\n'.join(prompt_parts)
     
     def _get_tester_workflow_context(self, workflow_type: str) -> str:
         """Get tester-specific workflow context"""
