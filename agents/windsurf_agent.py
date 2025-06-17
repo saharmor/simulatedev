@@ -81,7 +81,7 @@ Only analyze the right panel and provide nothing but valid JSON in your response
             # Then check if the input field is available
             input_coords = await self.get_input_field_coordinates()
             if input_coords:
-                print(f"SUCCESS: {self.agent_name} interface is already open")
+                print(f"SUCCESS: {self.agent_name} interface is open")
                 return True
             else:
                 print(f"INFO: {self.agent_name} interface not detected")
@@ -167,8 +167,8 @@ Only analyze the right panel and provide nothing but valid JSON in your response
             # Open Windsurf with the current project
             print(f"Opening Windsurf application with project: {project_path}")
             subprocess.run(["open", "-a", self.window_name, project_path])
-            print("Waiting 3 seconds for app to start...")
-            time.sleep(3)  # wait for the app to start
+            print("Waiting 5 seconds for app to start...")
+            time.sleep(5)  # wait for the app to start
             
             # Activate the application
             activate_script = f'''

@@ -15,7 +15,7 @@ from PIL import Image
 from dotenv import load_dotenv
 
 from utils.computer_use_utils import take_screenshot, ClaudeComputerUse, take_ide_window_screenshot
-from utils.claude_client import analyze_ide_state_with_claude
+from utils.llm_client import analyze_ide_state_with_llm
 import pyautogui
 
 def get_window_list():
@@ -221,9 +221,9 @@ def capture_window_by_title(title_substring, app_name=None):
         print(f"Error capturing window: {e}")
         return None, None
 
-def initialize_claude_client():
+def initialize_llm_client():
     """
-    Initialize the Claude API client.
+    Initialize the LLM client (supports both OpenAI and Anthropic providers).
     
     Returns:
         bool: True if initialization is successful, False otherwise.
@@ -232,18 +232,26 @@ def initialize_claude_client():
         # Load environment variables from .env file if it exists
         load_dotenv()
         
-        # Import the global claude client
-        from utils.claude_client import claude_client
+        # Import the global LLM client
+        from utils.llm_client import llm_client
         
-        # Check if Claude client is available
-        if not claude_client.is_available():
-            print("Error: ANTHROPIC_API_KEY environment variable not set or Claude client unavailable.")
-            print("Please create a .env file with the line: ANTHROPIC_API_KEY=your_api_key_here")
+        # Check if LLM client is available
+        if not llm_client.is_available():
+            provider = llm_client.provider
+            if provider == "anthropic":
+                print("Error: ANTHROPIC_API_KEY environment variable not set or unavailable.")
+                print("Please create a .env file with the line: ANTHROPIC_API_KEY=your_api_key_here")
+            elif provider == "openai":
+                print("Error: OPENAI_API_KEY environment variable not set or unavailable.")
+                print("Please create a .env file with the line: OPENAI_API_KEY=your_api_key_here")
+            else:
+                print(f"Error: Invalid LLM provider '{provider}'. Please set LLM_PROVIDER to 'anthropic' or 'openai'.")
             return False
         
+        print(f"Successfully initialized LLM client using {llm_client.provider.upper()} provider")
         return True
     except Exception as e:
-        print(f"Error initializing Claude client: {e}")
+        print(f"Error initializing LLM client: {e}")
         return False
 
 def analyze_ide_state(image_input, interface_state_analysis_prompt):
@@ -259,7 +267,7 @@ def analyze_ide_state(image_input, interface_state_analysis_prompt):
     """
     try:
         # Use the shared Claude client for IDE state analysis
-        return analyze_ide_state_with_claude(image_input, interface_state_analysis_prompt)
+        return analyze_ide_state_with_llm(image_input, interface_state_analysis_prompt)
     except Exception as e:
         print(f"Error analyzing IDE state: {e}")
         return False, f"error: {str(e)}", str(e)
@@ -359,9 +367,9 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
         import tempfile
         temp_dir = tempfile.mkdtemp()
         
-        # Initialize Claude API
-        if not initialize_claude_client():
-            print(f"Failed to initialize Claude API. Cannot monitor {ide_name} state.")
+        # Initialize LLM API
+        if not initialize_llm_client():
+            print(f"Failed to initialize LLM API. Cannot monitor {ide_name} state.")
             return False
             
         print("-" * 30)

@@ -148,8 +148,8 @@ Only analyze the right panel and provide nothing but valid JSON in your response
             # Open Cursor with the current project
             print(f"Opening Cursor application with project: {project_path}")
             subprocess.run(["open", "-a", self.window_name, project_path])
-            print("Waiting 3 seconds for app to start...")
-            time.sleep(3)  # wait for the app to start
+            print("Waiting 5 seconds for app to start...")
+            time.sleep(5)  # wait for the app to start
             
             # Activate the application
             activate_script = f'''
