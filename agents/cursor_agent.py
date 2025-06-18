@@ -60,7 +60,6 @@ Only analyze the right panel and provide nothing but valid JSON in your response
             # First check if we have the correct project open (if project name is set)
             if self._current_project_name:
                 if not self.is_ide_open_with_correct_project():
-                    print(f"INFO: {self.agent_name} is not open with the correct project '{self._current_project_name}'")
                     return False
             
             # Then check if the input field is available
@@ -110,7 +109,6 @@ Only analyze the right panel and provide nothing but valid JSON in your response
             
             # Check if Cursor is open with our project
             if not self.is_ide_open_with_correct_project():
-                print(f"INFO: {self.agent_name} is not open with project '{self._current_project_name}', nothing to close")
                 return True
             
             # Use utility function to close the specific Cursor window

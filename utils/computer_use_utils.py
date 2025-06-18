@@ -439,7 +439,7 @@ def get_window_bounds(ide_name: str, window_title: str) -> Optional[Tuple[int, i
 
 @darwin_only("Window focusing")
 def bring_to_front_window(app_name: str, project_name: str) -> bool:
-    """Focus the appropriate IDE window that contains the project name"""
+    """Bring the appropriate IDE window to front without focusing (allows continued work on other monitors)"""
     try:
         ide_context = IDEContext.create(app_name)
         
@@ -448,18 +448,17 @@ def bring_to_front_window(app_name: str, project_name: str) -> bool:
             print(f"{ide_context.display_name} is not open with project '{project_name}'")
             return False
         
-        # Use simplified AppleScript to bring window to front (reusing same logic as get_window_bounds_simple)
+        # Use AppleScript to bring window to front WITHOUT focusing
+        # This allows users to continue working on other monitors while SimulateDev monitors the IDE
         script = f'''
         tell application "System Events"
             tell process "{ide_context.process_name}"
-                set frontmost to true
-                
                 set windowList to every window
                 repeat with w in windowList
                     try
                         if name of w contains "{project_name}" then
+                            -- Only raise the window to front, don't focus or make process frontmost
                             perform action "AXRaise" of w
-                            set focused of w to true
                             return true
                         end if
                     end try
@@ -471,13 +470,13 @@ def bring_to_front_window(app_name: str, project_name: str) -> bool:
 
         success, output = AppleScriptRunner.run(script)
         if not success:
-            print(f"Failed to bring {ide_context.display_name} window for project '{project_name}' to focus")
+            print(f"Failed to bring {ide_context.display_name} window for project '{project_name}' to front")
             return False
 
         return output.strip() == "true"
         
     except Exception as e:
-        print(f"Error focusing window: {e}")
+        print(f"Error bringing window to front: {e}")
         return False
 
 
@@ -660,7 +659,7 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
                 print(f"{ide_context.display_name} is not open with project '{project_name}'")
             return None
         
-        # Bring the window to focus first
+        # Bring the window to focus
         focus_success = bring_to_front_window(ide_name, project_name)
         if not focus_success:
             if verbose:
@@ -718,6 +717,9 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
         
         # Process the image using the calculated target dimensions
         processed_image = ImageProcessor.process_image_to_buffer(image, target_width, target_height, encode_base64)
+        
+        if verbose:
+            print(f"Successfully captured screenshot: {original_width}x{original_height} -> {target_width}x{target_height}")
         
         # Return based on whether metadata is requested
         if return_metadata:
