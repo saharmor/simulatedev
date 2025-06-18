@@ -192,7 +192,9 @@ Only analyze the right panel and provide nothing but valid JSON in your response
         print("Checking for 'Trust this workspace' prompt for Windsurf...")
         result = await self.computer_use_client.get_coordinates_from_vision_model(
             "A button that states 'I trust this workspace' as part of a popup", 
-            support_non_existing_elements=True
+            support_non_existing_elements=True,
+            ide_name=self.window_name,
+            project_name=self._current_project_name
         )
         if result:
             print("Found trust workspace button, clicking it...")

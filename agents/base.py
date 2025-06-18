@@ -309,10 +309,10 @@ class CodingAgent(ABC):
         pass
     
     async def get_input_field_coordinates(self):
-        """Get the coordinates of the input field"""
+        """Get the coordinates of the input field using full screen screenshot with window context"""
         result = await self.computer_use_client.get_coordinates_from_vision_model(
-            self.input_field_prompt, 
-            ide_name=self.window_name, 
+            self.input_field_prompt,
+            ide_name=self.window_name,
             project_name=self._current_project_name
         )
         return result
