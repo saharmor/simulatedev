@@ -3,6 +3,7 @@ Run cutting-edge AI coding IDEs such as Cursor, Devin, and Claude Code via code.
 
 SimulateDev is an automation tool that runs AI coding agents (Cursor, Devin, Claude Code) on any GitHub repository with custom prompts and automatically creates pull requests with the changes. It supports both **single-agent** and **multi-agent collaborative workflows**.
 
+
 ## Features
 
 - **Multi-Agent Collaboration**: Planner → Coder → Tester workflows with specialized roles
@@ -75,18 +76,29 @@ SimulateDev runs **entirely on your local machine** (for now) and leverages your
    cd simulatedev
    ```
 
-2. **Install dependencies:**
+2. **Create and activate a virtual environment (recommended):**
+   ```bash
+   # Create virtual environment
+   python -m venv venv
+   
+   # Activate virtual environment
+   source venv/bin/activate  # On macOS/Linux
+   # or
+   venv\Scripts\activate     # On Windows
+   ```
+
+3. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
 
-3. **Set up environment variables:**
+4. **Set up environment variables:**
    ```bash
    cp env.example .env
    # Edit .env with your API keys
    ```
 
-4. **Configure your API keys in `.env`:**
+5. **Configure your API keys in `.env`:**
    ```env
    ANTHROPIC_API_KEY=your_anthropic_key_here
    GITHUB_TOKEN=your_github_token_here  # Optional, for PR creation
@@ -190,8 +202,7 @@ python simulatedev.py --workflow custom --task "<your_custom_task>" --repo <repo
 
 **Example:**
 ```bash
-python simulatedev.py --workflow custom --task "Add support for Firefox browser automation" --repo https://github.com/browserbase/stagehand --coding-agents '[
-  {"coding_ide": "claude_code", "model": "claude-4-sonnet", "role": "Planner"},
+python simulatedev.py --workflow custom --task "Find one critical bug and fix it" --repo https://github.com/browserbase/stagehand --coding-agents '[
   {"coding_ide": "cursor", "model": "claude-4-sonnet", "role": "Coder"},
   {"coding_ide": "windsurf", "model": "claude-4-sonnet", "role": "Tester"}
 ]'
