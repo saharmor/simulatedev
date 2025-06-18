@@ -45,15 +45,17 @@ graph LR
 
 ## How SimulateDev Operates
 
-SimulateDev runs **entirely on your local machine** (for now) and leverages your existing AI coding IDEs (Cursor, Windsurf, Claude Code) to execute collaborative agent workflows. Here's how it works under the hood:
+SimulateDev runs **entirely on your local machine** and leverages your existing AI coding IDEs (Cursor, Windsurf, Claude Code) to execute both single-agent and multi-agent collaborative workflows. Here's how it works under the hood:
 
-- **Local Execution**: All operations happen on your Mac
-- **IDE Integration**: SimulateDev opens and controls your installed coding IDEs (Cursor, Windsurf, Claude Code) programmatically
+- **Local Execution**: All operations happen on your Mac using your locally installed IDEs
+- **Multi-Agent Orchestration**: Supports collaborative workflows where specialized agents (Planner → Coder → Tester) work together sequentially on complex tasks
+- **IDE Integration**: SimulateDev programmatically opens and controls your installed coding IDEs through:
+  - **GUI Automation**: Uses keyboard shortcuts and UI interaction for Cursor and Windsurf
 - **Screen Analysis**: Uses Claude's vision capabilities to analyze IDE screenshots and detect task completion, progress, and UI states
-- **Window Focus Requirement**: The coding IDE window must be **visible and focused** for SimulateDev to work properly. If the IDE window (e.g. Cursor) loses focus or becomes hidden, SimulateDev will play a beep sound to alert you to bring the window back into focus
-- **Automated Monitoring**: Continuously monitors the IDE interface until tasks are completed, handling paused states and resume actions automatically
+- **Intelligent Monitoring**: Continuously monitors IDE interfaces with adaptive check intervals, automatic resume detection, and timeout management
+- **Window Focus Management**: For GUI-based IDEs like Cursor, the window must be **visible and focused**. SimulateDev will play a beep sound and pause execution if the IDE window loses focus
 
-**Important**: Keep your IDE window visible and focused during execution. SimulateDev relies on visual analysis of the IDE interface to track progress and determine when tasks are complete.
+**Important**: For Cursor and Windsurf, keep the IDE window visible and focused during execution. Claude Code runs headlessly and doesn't require window focus.
 
 ## Quick Start
 
@@ -66,6 +68,7 @@ SimulateDev runs **entirely on your local machine** (for now) and leverages your
   - [Cursor](https://cursor.com/)
   - [Windsurf](https://windsurf.ai/)
   - Claude Code
+- **IDE Setup**: Your chosen coding IDE must be properly installed and configured (logged in, authenticated, ready to use) before running SimulateDev
 - API keys (see Setup section)
 
 ### Installation

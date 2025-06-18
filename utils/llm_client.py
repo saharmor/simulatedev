@@ -45,7 +45,7 @@ class ActionResponse(BaseModel):
 
 class IDEState(BaseModel):
     """IDE state analysis response"""
-    interface_state: Literal["done", "still_working", "paused_and_wanting_to_resume"] = Field(
+    interface_state: Literal["done", "still_working", "paused_and_wanting_to_resume", "ide_not_visible"] = Field(
         description="Current state of the IDE interface"
     )
     reasoning: str = Field(description="Brief explanation of why this state was determined")
@@ -534,7 +534,9 @@ llm_client = LLMClient()
 
 def analyze_ide_state_with_llm(
     image_input: Union[str, BytesIO, Image.Image],
-    interface_state_analysis_prompt: str
+    interface_state_analysis_prompt: str,
+    ide_name: Optional[str] = None,
+    project_name: Optional[str] = None
 ) -> tuple[bool, str, str]:
     """
     Analyze IDE state using the configured LLM provider with structured response
@@ -542,16 +544,46 @@ def analyze_ide_state_with_llm(
     Args:
         image_input: Either a path to screenshot image (str), BytesIO buffer, or PIL Image
         interface_state_analysis_prompt: Prompt for IDE state analysis
+        ide_name: Optional IDE name for enhanced visibility detection
+        project_name: Optional project name for enhanced visibility detection
         
     Returns:
         tuple: (bool, str, str) - (Whether the IDE is done, State, Reasoning)
     """
-    system_prompt = """You are an IDE State Analysis AI. Analyze screenshots of IDE interfaces to determine their current state.
+    # Create enhanced system prompt based on whether IDE info is provided
+    if ide_name and project_name:
+        from .computer_use_utils import IDEContext, get_ide_window_title_for_project
+        
+        ide_context = IDEContext.create(ide_name)
+        expected_window_title = get_ide_window_title_for_project(ide_name, project_name)
+        
+        system_prompt = f"""You are an IDE State Analysis AI. Analyze screenshots of IDE interfaces to determine their current state.
+
+IMPORTANT: You are specifically looking for {ide_context.display_name} with project '{project_name}'.
+
+First, determine if the target IDE is visible in the screenshot:
+- Look for {ide_context.display_name} windows that are clearly visible (not minimized or completely obscured)
+- Check window titles, tab titles, or visible project files that indicate project '{project_name}' is open
+- Expected window title pattern: "{expected_window_title if expected_window_title else f'{project_name}'}"
+
+State definitions:
+- "done": The IDE has completed its task and is ready for new input
+- "still_working": The IDE is actively working on a task  
+- "paused_and_wanting_to_resume": The IDE is paused and waiting for user action to continue
+- "ide_not_visible": The specified IDE with the project is not clearly visible in the screenshot
+
+If the IDE is not visible or you cannot clearly identify {ide_context.display_name} with project '{project_name}', return "ide_not_visible".
+Only analyze the IDE state if you can clearly see the target IDE window.
+
+Analyze the image and provide your assessment in the required JSON format."""
+    else:
+        system_prompt = """You are an IDE State Analysis AI. Analyze screenshots of IDE interfaces to determine their current state.
 
 State definitions:
 - "done": The IDE has completed its task and is ready for new input
 - "still_working": The IDE is actively working on a task
 - "paused_and_wanting_to_resume": The IDE is paused and waiting for user action to continue
+- "ide_not_visible": The IDE is not visible or identifiable in the screenshot
 
 Analyze the image and provide your assessment in the required JSON format."""
     

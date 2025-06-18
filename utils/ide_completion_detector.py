@@ -252,20 +252,22 @@ def initialize_llm_client():
         print(f"Error initializing LLM client: {e}")
         return False
 
-def analyze_ide_state(image_input, interface_state_analysis_prompt):
+def analyze_ide_state(image_input, interface_state_analysis_prompt, ide_name=None, project_name=None):
     """
     Analyze a screenshot to determine if the IDE has finished processing.
     
     Args:
         image_input: Either a path to screenshot image (str) or a BytesIO buffer from take_screenshot.
         interface_state_analysis_prompt (str): Prompt for IDE state analysis.
+        ide_name (str, optional): Name of the IDE for enhanced visibility detection.
+        project_name (str, optional): Name of the project for enhanced visibility detection.
         
     Returns:
         tuple: (bool, str, str) - (Whether the IDE is done, State, Reasoning)
     """
     try:
         # Use the shared Claude client for IDE state analysis
-        return analyze_ide_state_with_llm(image_input, interface_state_analysis_prompt)
+        return analyze_ide_state_with_llm(image_input, interface_state_analysis_prompt, ide_name, project_name)
     except Exception as e:
         print(f"Error analyzing IDE state: {e}")
         return False, f"error: {str(e)}", str(e)
@@ -396,38 +398,37 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
             # Print that we're checking (every iteration)
             print(f"Checking {ide_name} state... (check #{screenshot_count}, {int(remaining)}s remaining)")
             
-            # Check if the correct project window is visible and focused (if project_name is provided)
-            if project_name:
-                from utils.computer_use_utils import is_project_window_visible, play_beep_sound
-                
-                # Use auto_focus=True to automatically bring the window to focus if needed
-                if not is_project_window_visible(ide_name, project_name, auto_focus=True):
-                    print(f"ERROR: Could not bring {ide_name} window for project '{project_name}' to focus. Playing beep to get user's attention.")
-                    play_beep_sound()
-                    
-                    # Sleep for a shorter interval before checking again
-                    time.sleep(min(10.0, actual_sleep_time if 'actual_sleep_time' in locals() else 10.0))
-                    continue
-            
             # Capture screenshot
-            # Use IDE window screenshot if project name is provided, otherwise use full screen
-            if project_name:
-                image = take_ide_window_screenshot(ide_name, project_name, verbose=False)
-                if image is None:
-                    print(f"WARNING: Could not capture {ide_name} window for project '{project_name}'. Falling back to full screen.")
-                    from utils.computer_use_utils import get_llm_target_dimensions
-                    target_width, target_height = get_llm_target_dimensions()
-                    image = take_screenshot(target_width, target_height)
-            else:
-                from utils.computer_use_utils import get_llm_target_dimensions
-                target_width, target_height = get_llm_target_dimensions()
-                image = take_screenshot(target_width, target_height)
+            # Always use full screen screenshot for better visibility detection
+            # The LLM will determine if the IDE is visible and analyze its state
+            from utils.computer_use_utils import get_llm_target_dimensions
+            target_width, target_height = get_llm_target_dimensions()
+            image = take_screenshot(target_width, target_height)
 
             if save_screenshots_for_debug:
                 save_image_to_file(image, ide_name, project_name, screenshot_count)
 
             # Analyze screenshot
-            is_done, state, reasoning = analyze_ide_state(image, interface_state_analysis_prompt)
+            is_done, state, reasoning = analyze_ide_state(image, interface_state_analysis_prompt, ide_name, project_name)
+            
+            # Handle IDE not visible state
+            if state == "ide_not_visible":
+                print(f"IDE {ide_name} with project '{project_name}' is not visible. Attempting to bring to focus...")
+                from utils.computer_use_utils import bring_to_front_window
+                
+                focus_success = bring_to_front_window(ide_name, project_name)
+                if focus_success:
+                    print(f"Successfully brought {ide_name} window to focus. Continuing monitoring...")
+                    # Wait a moment for window to come to focus, then continue to next iteration
+                    time.sleep(1.0)
+                    continue
+                else:
+                    print(f"ERROR: Could not bring {ide_name} window for project '{project_name}' to focus.")
+                    from utils.computer_use_utils import play_beep_sound
+                    play_beep_sound()
+                    # Sleep for a shorter interval before checking again
+                    time.sleep(min(10.0, actual_sleep_time if 'actual_sleep_time' in locals() else 10.0))
+                    continue
             
             # Report state change
             if state != last_state:
@@ -438,7 +439,7 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
             if is_done:
                 if require_two_subsequent_done_states:
                     print(f"Checking again if {ide_name} completed its task to make sure it was not a false positive")
-                    is_done, state, reasoning = analyze_ide_state(image, interface_state_analysis_prompt)
+                    is_done, state, reasoning = analyze_ide_state(image, interface_state_analysis_prompt, ide_name, project_name)
                     if state == "done":
                         print(f"SUCCESS: {ide_name} has completed its task! Reasoning: {reasoning}")
                         return True
