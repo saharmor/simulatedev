@@ -276,8 +276,8 @@ async def click_ide_resume_button(resume_button_prompt, ide_name=None, project_n
     
     Args:
         resume_button_prompt (str): Prompt for finding the resume button.
-        ide_name (str, optional): Name of the IDE for window-specific screenshots.
-        project_name (str, optional): Name of the project for window-specific screenshots.
+        ide_name (str, optional): Name of the IDE (no longer used, kept for compatibility).
+        project_name (str, optional): Name of the project (no longer used, kept for compatibility).
         
     Returns:
         bool: True if button was found and clicked, False otherwise.
@@ -286,12 +286,12 @@ async def click_ide_resume_button(resume_button_prompt, ide_name=None, project_n
         # Initialize Claude Computer Use for finding the button
         computer_use_client = LLMComputerUse()
         
-        # Look for the Resume button
+        # Look for the Resume button using full screen screenshot
+        # Note: ide_name and project_name are ignored since get_coordinates_from_vision_model
+        # now always uses full screen screenshots for accurate coordinate detection
         result = await computer_use_client.get_coordinates_from_vision_model(
             resume_button_prompt,
-            support_non_existing_elements=True,
-            ide_name=ide_name,
-            project_name=project_name
+            support_non_existing_elements=True
         )
         
         if result and result.coordinates:
