@@ -412,12 +412,16 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
             # Capture screenshot
             # Use IDE window screenshot if project name is provided, otherwise use full screen
             if project_name:
-                image = take_ide_window_screenshot(ide_name, project_name, 1280, 720, verbose=False)
+                image = take_ide_window_screenshot(ide_name, project_name, verbose=False)
                 if image is None:
                     print(f"WARNING: Could not capture {ide_name} window for project '{project_name}'. Falling back to full screen.")
-                    image = take_screenshot(1280, 720)
+                    from utils.computer_use_utils import get_llm_target_dimensions
+                    target_width, target_height = get_llm_target_dimensions()
+                    image = take_screenshot(target_width, target_height)
             else:
-                image = take_screenshot(1280, 720)
+                from utils.computer_use_utils import get_llm_target_dimensions
+                target_width, target_height = get_llm_target_dimensions()
+                image = take_screenshot(target_width, target_height)
 
             if save_screenshots_for_debug:
                 save_image_to_file(image, ide_name, project_name, screenshot_count)
