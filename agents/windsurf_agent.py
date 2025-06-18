@@ -11,6 +11,7 @@ import os
 
 from utils.computer_use_utils import bring_to_front_window, close_ide_window_for_project
 
+
 class WindsurfAgent(CodingAgent):
     """Windsurf AI coding agent implementation"""
     
@@ -175,11 +176,11 @@ Only analyze the right panel and provide nothing but valid JSON in your response
             subprocess.run(["osascript", "-e", activate_script], check=True)
             time.sleep(1)
             
-            # Use computer_use_utils to bring window to front
+            # Use computer_use_utils to activate window and steal focus for initial setup
             repo_name = os.path.basename(project_path)
             ide_open_success = bring_to_front_window(self.window_name, repo_name)
             if not ide_open_success:
-                print("Warning: Could not bring Windsurf window to front, but continuing...")
+                print("Warning: Could not activate Windsurf window, but continuing...")
                 
         except Exception as e:
             print(f"Warning: Could not open Windsurf application: {str(e)}")
@@ -188,6 +189,7 @@ Only analyze the right panel and provide nothing but valid JSON in your response
     async def handle_trust_workspace_popup(self):
         """Handle the 'Trust this workspace' popup specific to Windsurf"""
         print("Checking for 'Trust this workspace' prompt for Windsurf...")
+        
         result = await self.computer_use_client.get_coordinates_from_vision_model(
             "A button that states 'I trust this workspace' as part of a popup", 
             support_non_existing_elements=True,

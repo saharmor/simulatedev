@@ -392,20 +392,32 @@ def get_ide_window_title_for_project(ide_name: str, project_name: str) -> Option
     except Exception as e:
         return None
 
-def get_window_bounds(ide_name: str, window_title: str) -> Optional[Tuple[int, int, int, int]]:
+def get_window_bounds(ide_name: str, project_name: str) -> Optional[Tuple[int, int, int, int]]:
     """
-    Get the bounds of a specific IDE window using a simpler, more reliable approach.
+    Get the bounds of a specific IDE window by first finding the correct window title for the project,
+    then getting the exact bounds for that window.
     Returns (x, y, width, height) or None if not found.
     """
     ide_context = IDEContext.create(ide_name)
     
+    # First, get all window titles for the process
+    success, window_titles = AppleScriptRunner.get_process_window_titles(ide_context.process_name)
+    if not success:
+        return None
+    
+    # Find the matching window title using WindowMatcher logic
+    matching_window_title = WindowMatcher.find_window_with_project(window_titles, project_name)
+    if not matching_window_title:
+        return None
+    
+    # Now get the bounds for the exact window title
     applescript = f'''
     tell application "System Events"
         tell process "{ide_context.process_name}"
             set windowList to every window
             repeat with w in windowList
                 try
-                    if name of w contains "{window_title}" then
+                    if name of w is "{matching_window_title}" then
                         set windowPosition to position of w
                         set windowSize to size of w
                         set x to item 1 of windowPosition
@@ -439,7 +451,7 @@ def get_window_bounds(ide_name: str, window_title: str) -> Optional[Tuple[int, i
 
 @darwin_only("Window focusing")
 def bring_to_front_window(app_name: str, project_name: str) -> bool:
-    """Bring the appropriate IDE window to front without focusing (allows continued work on other monitors)"""
+    """Bring the appropriate IDE window to front above all other applications"""
     try:
         ide_context = IDEContext.create(app_name)
         
@@ -448,32 +460,94 @@ def bring_to_front_window(app_name: str, project_name: str) -> bool:
             print(f"{ide_context.display_name} is not open with project '{project_name}'")
             return False
         
-        # Use AppleScript to bring window to front WITHOUT focusing
-        # This allows users to continue working on other monitors while SimulateDev monitors the IDE
-        script = f'''
-        tell application "System Events"
-            tell process "{ide_context.process_name}"
-                set windowList to every window
-                repeat with w in windowList
-                    try
-                        if name of w contains "{project_name}" then
-                            -- Only raise the window to front, don't focus or make process frontmost
-                            perform action "AXRaise" of w
-                            return true
-                        end if
-                    end try
-                end repeat
+        # Use the more reliable activation method as the primary approach
+        comprehensive_script = f'''
+        try
+            -- Primary method: Use application activation first (more reliable when IDE not visible)
+            tell application "{ide_context.display_name if ide_context.process_name == "Electron" else ide_context.process_name}" to activate
+            delay 0.5
+            
+            tell application "System Events"
+                tell process "{ide_context.process_name}"
+                    set windowList to every window
+                    set windowFound to false
+                    repeat with w in windowList
+                        try
+                            if name of w contains "{project_name}" then
+                                perform action "AXRaise" of w
+                                set windowFound to true
+                                exit repeat
+                            end if
+                        end try
+                    end repeat
+                    
+                    -- Verify the process is frontmost and return result
+                    delay 0.2
+                    set frontProcess to name of first application process whose frontmost is true
+                    if frontProcess is "{ide_context.process_name}" and windowFound then
+                        return "success"
+                    else if not windowFound then
+                        return "window_not_found"
+                    else
+                        return "not_frontmost:" & frontProcess
+                    end if
+                end tell
             end tell
-        end tell
-        return false
+        on error errorMessage
+            -- If the primary method fails, try the old System Events approach as fallback
+            try
+                tell application "System Events"
+                    tell process "{ide_context.process_name}"
+                        set frontmost to true
+                        delay 0.3
+                        
+                        set windowList to every window
+                        repeat with w in windowList
+                            try
+                                if name of w contains "{project_name}" then
+                                    perform action "AXRaise" of w
+                                    return "success_fallback"
+                                end if
+                            end try
+                        end repeat
+                    end tell
+                end tell
+                return "fallback_window_not_found"
+            on error fallbackError
+                return "error:" & errorMessage & " | " & fallbackError
+            end try
+        end try
         '''
 
-        success, output = AppleScriptRunner.run(script)
+        success, output = AppleScriptRunner.run(comprehensive_script)
+        
         if not success:
-            print(f"Failed to bring {ide_context.display_name} window for project '{project_name}' to front")
+            print(f"Failed to execute window focusing script: {output}")
             return False
-
-        return output.strip() == "true"
+        
+        result = output.strip()
+        
+        # Parse the result and provide appropriate feedback
+        if result == "success":
+            print(f"Successfully brought {ide_context.display_name} window to front")
+            return True
+        elif result == "success_fallback":
+            print(f"Successfully brought {ide_context.display_name} window to front using System Events fallback")
+            return True
+        elif result == "window_not_found" or result == "fallback_window_not_found":
+            print(f"Could not find window containing '{project_name}' in {ide_context.display_name}")
+            return False
+        elif result.startswith("not_frontmost:"):
+            current_frontmost = result.split(":", 1)[1]
+            print(f"WARNING: Expected {ide_context.process_name} to be frontmost, but {current_frontmost} is frontmost")
+            return False
+        elif result.startswith("error:"):
+            error_msg = result.split(":", 1)[1]
+            print(f"Error in window focusing: {error_msg}")
+            return False
+        else:
+            print(f"Unexpected result from window focusing: {result}")
+            return False
         
     except Exception as e:
         print(f"Error bringing window to front: {e}")
@@ -659,18 +733,10 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
                 print(f"{ide_context.display_name} is not open with project '{project_name}'")
             return None
         
-        # Bring the window to focus
-        focus_success = bring_to_front_window(ide_name, project_name)
-        if not focus_success:
-            if verbose:
-                print(f"Warning: Could not bring {ide_context.display_name} window to focus")
-            return None
-        
-        # Wait a moment for the window to come to focus
-        time.sleep(0.5)
-        
-        # Get window bounds using the simpler, more reliable method
+        # Check if the window is already visible/accessible before attempting to focus
         bounds = get_window_bounds(ide_name, project_name)
+        
+        # If bounds is None, it means we couldn't find the window, so return None
         if not bounds:
             if verbose:
                 print(f"Could not get bounds for window with project '{project_name}' in {ide_name}")
@@ -734,7 +800,7 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
 
 @darwin_only("Project window visibility checking")
 def is_project_window_visible(agent_name: str, project_name: str, auto_focus: bool = True) -> bool:
-    """Returns True if there is a visible and focused window for the given agent and project"""
+    """Returns True if there is a visible window for the given agent and project (focus not required)"""
     try:
         ide_context = IDEContext.create(agent_name)
         
@@ -742,40 +808,32 @@ def is_project_window_visible(agent_name: str, project_name: str, auto_focus: bo
         if not is_ide_open_with_project(ide_context.app_name, project_name, verbose=False):
             return False
         
-        # Check if the window is currently focused
-        def check_window_focus() -> bool:
-            """Check if the IDE window with project is currently focused"""
-            current_window = get_current_window_name()
-            success, frontmost_process = AppleScriptRunner.get_frontmost_process()
-            
-            if not success:
-                print("Could not determine frontmost process")
-                return False
-            
-            return (frontmost_process == ide_context.process_name and 
-                    WindowMatcher.window_matches_project(current_window, project_name))
-        
-        if check_window_focus():
+        # Check if the window is accessible (visible)
+        bounds = get_window_bounds(agent_name, project_name)
+        if bounds:
+            # Window is already visible and accessible
             return True
-        else:
-            # If auto_focus is enabled, try to bring the window to focus
-            if auto_focus:
-                focus_success = bring_to_front_window(agent_name, project_name)
-                if focus_success:
-                    # Wait a moment for the window to come to focus
-                    time.sleep(1.5)
-                    
-                    # Check again if the window is now focused
-                    if check_window_focus():
-                        return True
-                    else:
-                        print(f"WARNING: Could not bring {ide_context.display_name} window for project '{project_name}' to focus")
-                        return False
-                else:
-                    print(f"ERROR: Failed to bring {ide_context.display_name} window for project '{project_name}' to focus")
-                    return False
+        
+        # If auto_focus is disabled, don't try to make it visible
+        if not auto_focus:
+            return False
+        
+        # Window is not visible - try to bring it to front (without stealing focus)
+        focus_success = bring_to_front_window(agent_name, project_name)
+        if focus_success:
+            # Wait a moment for the window to become visible
+            time.sleep(0.5)
+            
+            # Check again if the window is now visible/accessible
+            bounds = get_window_bounds(agent_name, project_name)
+            if bounds:
+                return True
             else:
+                print(f"WARNING: Could not make {ide_context.display_name} window for project '{project_name}' visible")
                 return False
+        else:
+            print(f"ERROR: Failed to bring {ide_context.display_name} window for project '{project_name}' to front")
+            return False
             
     except Exception as e:
         print(f"Error checking if {agent_name} project window is visible: {e}")

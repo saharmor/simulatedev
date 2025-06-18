@@ -156,11 +156,11 @@ Only analyze the right panel and provide nothing but valid JSON in your response
             subprocess.run(["osascript", "-e", activate_script], check=True)
             time.sleep(1)
             
-            # Use computer_use_utils to bring window to front
+            # Use computer_use_utils to activate window and steal focus for initial setup
             repo_name = os.path.basename(project_path)
             ide_open_success = bring_to_front_window(self.window_name, repo_name)
             if not ide_open_success:
-                print("Warning: Could not bring Cursor window to front, but continuing...")
+                print("Warning: Could not activate Cursor window, but continuing...")
                 
         except Exception as e:
             print(f"Warning: Could not open Cursor application: {str(e)}")

@@ -339,6 +339,11 @@ class CodingAgent(ABC):
 - All changes made
 - Explanations of what was done"""
             
+            # Ensure the window is focused before sending the save prompt
+            if self._current_project_name:
+                from utils.computer_use_utils import bring_to_front_window
+                bring_to_front_window(self.agent_name, self._current_project_name)
+            
             await self._send_prompt_to_interface(save_prompt)
             time.sleep(3)
 

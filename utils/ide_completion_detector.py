@@ -14,7 +14,7 @@ import subprocess
 from PIL import Image
 from dotenv import load_dotenv
 
-from utils.computer_use_utils import take_screenshot, LLMComputerUse, take_ide_window_screenshot
+from utils.computer_use_utils import get_window_bounds, take_screenshot, LLMComputerUse, take_ide_window_screenshot
 from utils.llm_client import analyze_ide_state_with_llm
 import pyautogui
 
@@ -252,20 +252,43 @@ def initialize_llm_client():
         print(f"Error initializing LLM client: {e}")
         return False
 
-def analyze_ide_state(image_input, interface_state_analysis_prompt, ide_name=None, project_name=None):
+def analyze_ide_state(interface_state_analysis_prompt, ide_name=None, project_name=None, save_debug_screenshot=False, screenshot_count=None):
     """
     Analyze a screenshot to determine if the IDE has finished processing.
+    This function handles screenshot capture internally and will try IDE window screenshot first,
+    falling back to full screen if the IDE window is not available.
     
     Args:
-        image_input: Either a path to screenshot image (str) or a BytesIO buffer from take_screenshot.
         interface_state_analysis_prompt (str): Prompt for IDE state analysis.
         ide_name (str, optional): Name of the IDE for enhanced visibility detection.
         project_name (str, optional): Name of the project for enhanced visibility detection.
+        save_debug_screenshot (bool, optional): Whether to save screenshot for debugging.
+        screenshot_count (int, optional): Counter for debug screenshot naming.
         
     Returns:
         tuple: (bool, str, str) - (Whether the IDE is done, State, Reasoning)
     """
     try:
+        # If we have IDE info, try to take an IDE window screenshot first
+        image_input = None
+        if ide_name and project_name:
+            # Try to capture IDE window screenshot
+            image_input = take_ide_window_screenshot(ide_name, project_name, verbose=False)
+            
+        # If IDE window screenshot failed or we don't have IDE info, use full screen
+        if image_input is None:
+            from utils.computer_use_utils import get_llm_target_dimensions
+            target_width, target_height = get_llm_target_dimensions()
+            image_input = take_screenshot(target_width, target_height)
+            
+            # If we tried IDE window but fell back to full screen, this likely means IDE is not visible
+            if ide_name and project_name:
+                print(f"Could not capture {ide_name} window screenshot, using full screen (IDE may not be visible)")
+        
+        # Save debug screenshot if requested
+        if save_debug_screenshot and screenshot_count is not None and ide_name and project_name:
+            save_image_to_file(image_input, ide_name, project_name, screenshot_count)
+        
         # Use the shared Claude client for IDE state analysis
         return analyze_ide_state_with_llm(image_input, interface_state_analysis_prompt, ide_name, project_name)
     except Exception as e:
@@ -374,13 +397,16 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
             print(f"Failed to initialize LLM API. Cannot monitor {ide_name} state.")
             return False
             
-        print("-" * 30)
-        print(f"Starting to monitor {ide_name} state...")
-        print(f"Will wait up to {timeout_in_seconds} seconds for completion")
+        print("\n" + "=" * 60)
+        print(f"STARTING IDE MONITORING")
+        print(f"IDE: {ide_name}")
+        print(f"Project: {project_name or 'N/A'}")
+        print(f"Timeout: {timeout_in_seconds} seconds")
+        print("=" * 60 + "\n")
         
         # Reset for this execution
         start_time = time.time()
-        check_interval = 40.0  # Start with 40 seconds
+        check_interval = 10.0  # Start with 40 seconds
         screenshot_count = 0
         last_state = None
         
@@ -395,73 +421,83 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
                 
             screenshot_count += 1
             
-            # Print that we're checking (every iteration)
-            print(f"Checking {ide_name} state... (check #{screenshot_count}, {int(remaining)}s remaining)")
+            # Print check header with clear separation
+            print(f"\n" + "-" * 50)
+            print(f"CHECK #{screenshot_count}")
+            print(f"Time remaining: {int(remaining)}s")
+            print(f"Analyzing {ide_name} state...")
+            print("-" * 50)
             
-            # Capture screenshot
-            # Always use full screen screenshot for better visibility detection
-            # The LLM will determine if the IDE is visible and analyze its state
-            from utils.computer_use_utils import get_llm_target_dimensions
-            target_width, target_height = get_llm_target_dimensions()
-            image = take_screenshot(target_width, target_height)
-
-            if save_screenshots_for_debug:
-                save_image_to_file(image, ide_name, project_name, screenshot_count)
-
-            # Analyze screenshot
-            is_done, state, reasoning = analyze_ide_state(image, interface_state_analysis_prompt, ide_name, project_name)
+            # Analyze IDE state (screenshot capture handled internally)
+            is_done, state, reasoning = analyze_ide_state(interface_state_analysis_prompt, ide_name, project_name, save_screenshots_for_debug, screenshot_count)
             
             # Handle IDE not visible state
             if state == "ide_not_visible":
-                print(f"IDE {ide_name} with project '{project_name}' is not visible. Attempting to bring to focus...")
+                print(f"\nIDE VISIBILITY ISSUE")
+                print(f"   IDE {ide_name} with project '{project_name}' is not visible")
+                print(f"   Attempting to bring window to focus...")
                 from utils.computer_use_utils import bring_to_front_window
                 
                 focus_success = bring_to_front_window(ide_name, project_name)
                 if focus_success:
-                    print(f"Successfully brought {ide_name} window to focus. Continuing monitoring...")
+                    print(f"   Successfully brought window to focus")
                     # Wait a moment for window to come to focus, then continue to next iteration
                     time.sleep(1.0)
                     continue
                 else:
-                    print(f"ERROR: Could not bring {ide_name} window for project '{project_name}' to focus.")
+                    print(f"   ERROR: Could not bring {ide_name} window to focus")
                     from utils.computer_use_utils import play_beep_sound
                     play_beep_sound()
                     # Sleep for a shorter interval before checking again
                     time.sleep(min(10.0, actual_sleep_time if 'actual_sleep_time' in locals() else 10.0))
                     continue
             
-            # Report state change
+            # Report state change with clear formatting
             if state != last_state:
-                print(f"{ide_name} state: {state}, reasoning: {reasoning}")
+                print(f"\nSTATE UPDATE")
+                print(f"   Current state: {state}")
+                print(f"   Reasoning: {reasoning}")
                 last_state = state
+            else:
+                print(f"   State unchanged: {state}")
                 
             # If IDE is done, return success
             if is_done:
                 if require_two_subsequent_done_states:
-                    print(f"Checking again if {ide_name} completed its task to make sure it was not a false positive")
-                    is_done, state, reasoning = analyze_ide_state(image, interface_state_analysis_prompt, ide_name, project_name)
+                    print(f"\nVERIFICATION CHECK")
+                    print(f"   Double-checking completion to avoid false positives...")
+                    is_done, state, reasoning = analyze_ide_state(interface_state_analysis_prompt, ide_name, project_name, save_screenshots_for_debug, screenshot_count)
                     if state == "done":
-                        print(f"SUCCESS: {ide_name} has completed its task! Reasoning: {reasoning}")
+                        print(f"\nSUCCESS: {ide_name} has completed its task!")
+                        print(f"   Final reasoning: {reasoning}")
+                        print("=" * 60)
                         return True
                     else:
-                        print(f"WARNING: {ide_name} didn't acutally finish its task. Continue waiting. Reasoning: {reasoning}")
+                        print(f"\nFALSE POSITIVE DETECTED")
+                        print(f"   {ide_name} didn't actually finish. Continuing to wait...")
+                        print(f"   Reasoning: {reasoning}")
                 else:
-                    print(f"SUCCESS: {ide_name} has completed its task!")
+                    print(f"\nSUCCESS: {ide_name} has completed its task!")
+                    print("=" * 60)
                     return True
             
             # Handle paused state for both Cursor and Windsurf
             if state == "paused_and_wanting_to_resume":
-                print(f"Detected {ide_name} is paused and wanting to resume. Attempting to resume...")
+                print(f"\nPAUSED STATE DETECTED")
+                print(f"   {ide_name} is paused and wanting to resume")
+                print(f"   Attempting to click resume button...")
                 if resume_button_prompt:
                     resume_success = await click_ide_resume_button(resume_button_prompt, ide_name, project_name)
                     if resume_success:
-                        print(f"Successfully resumed {ide_name}. Continuing to monitor...")
+                        print(f"   Successfully resumed {ide_name}")
+                        print(f"   Continuing to monitor...")
                         # Continue monitoring - don't reset the timeout, just continue
                         continue
                     else:
+                        print(f"   Failed to click resume button")
                         raise Exception(f"Failed to click the resume button in {ide_name}. The IDE will be stuck waiting for user interaction and cannot proceed automatically.")
                 else:
-                    print(f"Warning: {ide_name} is paused but no resume button prompt provided. Cannot auto-resume.")
+                    print(f"   No resume button prompt provided")
                     raise Exception(f"{ide_name} is paused and waiting for user action, but no resume button prompt was provided for automatic resumption.")
             
             # Recalculate remaining time for sleep decision
@@ -472,13 +508,18 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
             actual_sleep_time = min(check_interval, remaining_after_analysis)
             
             if actual_sleep_time <= 0:
-                print(f"No time remaining for sleep, checking timeout...")
+                print(f"\nNo time remaining for sleep, checking timeout...")
                 break
                 
+            # Sleep status with better formatting
             if screenshot_count % 5 == 0 or remaining_after_analysis < 30:
-                print(f"Still executing... {int(remaining_after_analysis)} seconds remaining (next check in {int(actual_sleep_time)} seconds)")
+                print(f"\nWAITING")
+                print(f"   Still executing... {int(remaining_after_analysis)}s remaining")
+                print(f"   Next check in {int(actual_sleep_time)}s")
             else:
-                print(f"Sleeping for {int(actual_sleep_time)} seconds before next check...")
+                print(f"\nSleeping for {int(actual_sleep_time)}s before next check...")
+            
+            print("." * 50 + " END CYCLE " + "." * 50)
             
             # Wait before next check (but don't sleep longer than remaining time)
             time.sleep(actual_sleep_time)
@@ -488,14 +529,20 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
             
         # If we get here, we timed out
         final_elapsed = time.time() - start_time
-        print(f"TIMEOUT: {ide_name} did not finish within {timeout_in_seconds} seconds (actual elapsed: {int(final_elapsed)}s)")
-        print("-" * 30)
+        print(f"\nTIMEOUT REACHED")
+        print(f"   {ide_name} did not finish within {timeout_in_seconds} seconds")
+        print(f"   Actual elapsed time: {int(final_elapsed)}s")
+        print("=" * 60)
         return False
     except KeyboardInterrupt:
-        print("\nMonitoring stopped by user.")
+        print(f"\nMONITORING INTERRUPTED")
+        print(f"   Monitoring stopped by user")
+        print("=" * 60)
         return False
     except Exception as e:
-        print(f"Error while waiting for IDE to finish: {e}")
+        print(f"\nERROR OCCURRED")
+        print(f"   Error while waiting for IDE to finish: {e}")
+        print("=" * 60)
         return False
     finally:
         # Clean up temporary files
