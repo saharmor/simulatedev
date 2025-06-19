@@ -104,6 +104,20 @@ Before coding, study existing files to understand:
 
 **REQUIREMENT**: Your code MUST match the existing repository's style and conventions exactly.
 
+## SMART TESTING & DEPENDENCY GUIDELINES
+**PREFERRED**: Lightweight dependencies, mock external services, in-memory solutions, static analysis
+**AVOID**: Docker requirements, heavy frameworks, external service dependencies, system installations
+
+**TESTING TRANSPARENCY REQUIRED**:
+1. **Add comments in code**:
+   ```python
+   # NOTE: Not fully tested with Docker/[requirement] due to automated environment limits
+   # Manual testing recommended for: Docker, databases, external APIs
+   ```
+
+2. **Document in README**: What was tested vs. needs manual verification
+3. **Highlight review areas**: Code sections needing careful review due to limited testing
+
 ## IMPLEMENTATION STEPS
 1. **ANALYZE** existing codebase for style and patterns
 2. **CREATE** working code files that match repository style
@@ -120,7 +134,7 @@ Before coding, study existing files to understand:
 
 Create production-ready code that feels like a natural extension of the existing codebase.
 """
-        return prompt
+        return self.append_file_management_guidelines(prompt)
     
     def create_prompt_with_workflow(self, task: str, context: AgentContext, 
                                   agent_definition: AgentDefinition, 
@@ -218,6 +232,20 @@ Before coding, study existing files to understand:
 
 **REQUIREMENT**: Your code MUST match the existing repository's style and conventions exactly.
 
+## SMART TESTING & DEPENDENCY GUIDELINES
+**PREFERRED**: Lightweight dependencies, mock external services, in-memory solutions, static analysis
+**AVOID**: Docker requirements, heavy frameworks, external service dependencies, system installations
+
+**TESTING TRANSPARENCY REQUIRED**:
+1. **Add comments in code**:
+   ```python
+   # NOTE: Not fully tested with Docker/[requirement] due to automated environment limits
+   # Manual testing recommended for: Docker, databases, external APIs
+   ```
+
+2. **Document in README**: What was tested vs. needs manual verification
+3. **Highlight review areas**: Code sections needing careful review due to limited testing
+
 ## IMPLEMENTATION STEPS
 1. **ANALYZE** existing codebase for style and patterns
 2. **CREATE** working code files that match repository style
@@ -236,40 +264,26 @@ Create production-ready code that feels like a natural extension of the existing
 """
         
         prompt_parts.append(role_prompt)
-        return '\n\n'.join(prompt_parts)
+        combined_prompt = '\n\n'.join(prompt_parts)
+        return self.append_file_management_guidelines(combined_prompt)
     
     def _get_coder_workflow_context(self, workflow_type: str) -> str:
         """Get coder-specific workflow context"""
         workflow_contexts = {
             "bug_hunting": """
 ## WORKFLOW FOCUS: BUG HUNTING & SECURITY
-As a coder in a bug hunting workflow, prioritize:
-- **Security vulnerabilities**: SQL injection, XSS, CSRF, authentication bypasses
-- **Memory safety**: Buffer overflows, null pointer dereferences, memory leaks
-- **Input validation**: Sanitize all user inputs, validate data types and ranges
-- **Error handling**: Proper exception handling, avoid information disclosure
-- **Access controls**: Verify permissions, implement proper authorization
-- **Dependency security**: Check for vulnerable dependencies and update them
+Prioritize: Security vulnerabilities, input validation, access controls, error handling
+Testing: Document security testing limitations in automated environment
 """,
             "code_optimization": """
 ## WORKFLOW FOCUS: PERFORMANCE OPTIMIZATION
-As a coder in an optimization workflow, prioritize:
-- **Algorithm efficiency**: Use optimal data structures and algorithms (O(n) vs O(n²))
-- **Memory optimization**: Reduce memory footprint, avoid memory leaks
-- **Database optimization**: Efficient queries, proper indexing, connection pooling
-- **Caching strategies**: Implement appropriate caching layers
-- **Code complexity**: Reduce cyclomatic complexity, eliminate dead code
-- **Resource management**: Optimize I/O operations, minimize network calls
+Prioritize: Algorithm efficiency, memory optimization, database performance, code complexity reduction
+Testing: Document performance testing limitations in automated environment
 """,
             "custom_coding": """
 ## WORKFLOW FOCUS: CLEAN IMPLEMENTATION
-As a coder in a custom coding workflow, prioritize:
-- **Code quality**: Clean, readable, and maintainable code
-- **Best practices**: Follow language-specific conventions and patterns
-- **Documentation**: Clear comments and documentation
-- **Testing**: Write testable code with proper error handling
-- **Modularity**: Create reusable, well-structured components
-- **Standards compliance**: Follow project coding standards and style guides
+Prioritize: Code quality, best practices, documentation, modularity
+Testing: Lightweight testing approaches, document complex setup limitations
 """
         }
         

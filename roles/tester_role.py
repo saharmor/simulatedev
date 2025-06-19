@@ -138,7 +138,7 @@ Include code snippets or examples where relevant.
 
 **Be thorough but practical. Focus on real-world scenarios and provide actionable feedback.**
 """
-        return prompt
+        return self.append_file_management_guidelines(prompt)
     
     def create_prompt_with_workflow(self, task: str, context: AgentContext, 
                                   agent_definition: AgentDefinition, 
@@ -259,7 +259,8 @@ Your report must include:
 """
         
         prompt_parts.append(role_prompt)
-        return '\n\n'.join(prompt_parts)
+        combined_prompt = '\n\n'.join(prompt_parts)
+        return self.append_file_management_guidelines(combined_prompt)
     
     def _get_tester_workflow_context(self, workflow_type: str) -> str:
         """Get tester-specific workflow context"""
