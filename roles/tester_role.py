@@ -93,76 +93,35 @@ Please investigate why no implementation was created.
             prompt += "\nPlease build upon previous testing efforts and address any remaining issues."
         
         prompt += """
-## COMPREHENSIVE TESTING REQUIREMENTS
+## SMART TESTING APPROACH
+**ANALYZE FIRST**: Read README, check dependencies, assess what's feasible in automated environment
 
-### 1. FUNCTIONALITY TESTING
-- **Verify Core Features**: Test all main functionality described in the original task
-- **Input Validation**: Test with various inputs (valid, invalid, edge cases)
-- **Output Verification**: Ensure outputs match expected results
-- **Error Handling**: Test error conditions and exception handling
-- **Integration Testing**: Verify components work together correctly
+**FEASIBLE STRATEGIES**: Unit tests, static analysis, mock testing, code review
+**AVOID**: Docker, database installs, external services, heavy infrastructure, GUI tools
 
-### 2. CODE QUALITY ASSESSMENT
-- **Code Structure**: Evaluate organization, modularity, and architecture
-- **Best Practices**: Check adherence to coding standards and conventions
-- **Documentation**: Verify comments, docstrings, and README quality
-- **Security**: Look for potential security vulnerabilities
-- **Performance**: Assess efficiency and resource usage
+**TESTING TRANSPARENCY REQUIRED**:
+Your report must include:
+1. **Coverage Summary**: What was tested automatically vs. code review vs. needs manual testing
+2. **Limitations Section**: 
+   ```
+   ## Testing Limitations
+   Due to automated environment constraints:
+   - Docker functionality requires manual verification
+   - Database connections need manual testing
+   - External APIs require manual validation
+   ```
+3. **Review Focus**: Highlight code areas needing careful review due to limited automated testing
 
-### 3. ENVIRONMENT TESTING
-- **Setup Process**: Test installation and setup instructions
-- **Dependencies**: Verify all required dependencies are properly specified
-- **Cross-platform**: Consider compatibility across different environments
-- **File Structure**: Ensure all necessary files are present and correctly organized
+## TESTING FOCUS AREAS
+**FUNCTIONALITY**: Core features, input validation, error handling, component integration
+**CODE QUALITY**: Structure, standards compliance, documentation, security, performance  
+**SETUP**: Installation process, dependencies, file organization
 
-### 4. USER EXPERIENCE TESTING
-- **Usability**: Evaluate ease of use and user interface (if applicable)
-- **Documentation Quality**: Test clarity of usage instructions
-- **Error Messages**: Verify error messages are helpful and informative
-- **Examples**: Test provided examples and demonstrations
-
-## TESTING METHODOLOGY
-1. **Static Analysis**: Review code without executing it
-2. **Unit Testing**: Test individual components/functions
-3. **Integration Testing**: Test component interactions
-4. **System Testing**: Test the complete system end-to-end
-5. **User Acceptance Testing**: Verify requirements are met
-6. **Regression Testing**: Ensure changes don't break existing functionality
-
-## TEST DELIVERABLES
-Please provide a comprehensive report with:
-
-### 1. EXECUTIVE SUMMARY
-- Overall assessment (Pass/Fail with confidence level)
-- Key findings and recommendations
-- Critical issues that must be addressed
-
-### 2. DETAILED TEST RESULTS
-- **Functionality Tests**: What was tested and results
-- **Code Quality Assessment**: Strengths and weaknesses
-- **Setup and Installation**: Step-by-step verification
-- **Performance Evaluation**: Speed, memory usage, scalability
-
-### 3. BUG REPORT
-- **Critical Issues**: Bugs that prevent basic functionality
-- **Major Issues**: Significant problems affecting usability
-- **Minor Issues**: Small improvements and optimizations
-- **Enhancement Suggestions**: Ideas for future improvements
-
-### 4. VERIFICATION CHECKLIST
-□ All core functionality works as expected
-□ Error handling is robust and informative
-□ Code follows best practices and standards
-□ Documentation is clear and complete
-□ Setup instructions work correctly
-□ Dependencies are properly specified
-□ No critical security vulnerabilities found
-□ Performance is acceptable for intended use
-
-### 5. RECOMMENDATIONS
-- **Immediate Actions**: Critical fixes needed before deployment
-- **Short-term Improvements**: Enhancements for next iteration
-- **Long-term Considerations**: Strategic improvements for future
+## REPORT STRUCTURE
+1. **Executive Summary**: Overall Pass/Fail assessment with key findings
+2. **Test Results**: What was tested and outcomes
+3. **Issues Found**: Critical/Major/Minor issues with specific examples
+4. **Recommendations**: Immediate actions needed and future improvements
 
 ## OUTPUT FORMAT
 Structure your response with clear sections and use bullet points for readability.
@@ -177,7 +136,7 @@ Include code snippets or examples where relevant.
 - Consider the end user's perspective
 - Balance perfectionism with practicality
 
-Remember: Your goal is to ensure the implementation is reliable, usable, and meets the original requirements.
+**Be thorough but practical. Focus on real-world scenarios and provide actionable feedback.**
 """
         return prompt
     
@@ -266,91 +225,37 @@ Please investigate why no implementation was created.
             role_prompt += "\nPlease build upon previous testing efforts and address any remaining issues."
         
         role_prompt += """
-## COMPREHENSIVE TESTING REQUIREMENTS
+## SMART TESTING APPROACH
+**ANALYZE FIRST**: Read README, check dependencies, assess what's feasible in automated environment
 
-### 1. FUNCTIONALITY TESTING
-- **Verify Core Features**: Test all main functionality described in the original task
-- **Input Validation**: Test with various inputs (valid, invalid, edge cases)
-- **Output Verification**: Ensure outputs match expected results
-- **Error Handling**: Test error conditions and exception handling
-- **Integration Testing**: Verify components work together correctly
+**FEASIBLE STRATEGIES**: Unit tests, static analysis, mock testing, code review
+**AVOID**: Docker, database installs, external services, heavy infrastructure, GUI tools
 
-### 2. CODE QUALITY ASSESSMENT
-- **Code Structure**: Evaluate organization, modularity, and architecture
-- **Best Practices**: Check adherence to coding standards and conventions
-- **Documentation**: Verify comments, docstrings, and README quality
-- **Security**: Look for potential security vulnerabilities
-- **Performance**: Assess efficiency and resource usage
+**TESTING TRANSPARENCY REQUIRED**:
+Your report must include:
+1. **Coverage Summary**: What was tested automatically vs. code review vs. needs manual testing
+2. **Limitations Section**: 
+   ```
+   ## Testing Limitations
+   Due to automated environment constraints:
+   - Docker functionality requires manual verification
+   - Database connections need manual testing
+   - External APIs require manual validation
+   ```
+3. **Review Focus**: Highlight code areas needing careful review due to limited automated testing
 
-### 3. ENVIRONMENT TESTING
-- **Setup Process**: Test installation and setup instructions
-- **Dependencies**: Verify all required dependencies are properly specified
-- **Cross-platform**: Consider compatibility across different environments
-- **File Structure**: Ensure all necessary files are present and correctly organized
+## TESTING FOCUS AREAS
+**FUNCTIONALITY**: Core features, input validation, error handling, component integration
+**CODE QUALITY**: Structure, standards compliance, documentation, security, performance  
+**SETUP**: Installation process, dependencies, file organization
 
-### 4. USER EXPERIENCE TESTING
-- **Usability**: Evaluate ease of use and user interface (if applicable)
-- **Documentation Quality**: Test clarity of usage instructions
-- **Error Messages**: Verify error messages are helpful and informative
-- **Examples**: Test provided examples and demonstrations
+## REPORT STRUCTURE
+1. **Executive Summary**: Overall Pass/Fail assessment with key findings
+2. **Test Results**: What was tested and outcomes
+3. **Issues Found**: Critical/Major/Minor issues with specific examples
+4. **Recommendations**: Immediate actions needed and future improvements
 
-## TESTING METHODOLOGY
-1. **Static Analysis**: Review code without executing it
-2. **Unit Testing**: Test individual components/functions
-3. **Integration Testing**: Test component interactions
-4. **System Testing**: Test the complete system end-to-end
-5. **User Acceptance Testing**: Verify requirements are met
-6. **Regression Testing**: Ensure changes don't break existing functionality
-
-## TEST DELIVERABLES
-Please provide a comprehensive report with:
-
-### 1. EXECUTIVE SUMMARY
-- Overall assessment (Pass/Fail with confidence level)
-- Key findings and recommendations
-- Critical issues that must be addressed
-
-### 2. DETAILED TEST RESULTS
-- **Functionality Tests**: What was tested and results
-- **Code Quality Assessment**: Strengths and weaknesses
-- **Setup and Installation**: Step-by-step verification
-- **Performance Evaluation**: Speed, memory usage, scalability
-
-### 3. BUG REPORT
-- **Critical Issues**: Bugs that prevent basic functionality
-- **Major Issues**: Significant problems affecting usability
-- **Minor Issues**: Small improvements and optimizations
-- **Enhancement Suggestions**: Ideas for future improvements
-
-### 4. VERIFICATION CHECKLIST
-□ All core functionality works as expected
-□ Error handling is robust and informative
-□ Code follows best practices and standards
-□ Documentation is clear and complete
-□ Setup instructions work correctly
-□ Dependencies are properly specified
-□ No critical security vulnerabilities found
-□ Performance is acceptable for intended use
-
-### 5. RECOMMENDATIONS
-- **Immediate Actions**: Critical fixes needed before deployment
-- **Short-term Improvements**: Enhancements for next iteration
-- **Long-term Considerations**: Strategic improvements for future
-
-## OUTPUT FORMAT
-Structure your response with clear sections and use bullet points for readability.
-Be specific about what you tested, how you tested it, and what the results were.
-Include code snippets or examples where relevant.
-
-## TESTING PRINCIPLES
-- Be thorough but practical
-- Focus on real-world usage scenarios
-- Document everything clearly
-- Provide actionable feedback
-- Consider the end user's perspective
-- Balance perfectionism with practicality
-
-Remember: Your goal is to ensure the implementation is reliable, usable, and meets the original requirements.
+**Be thorough but practical. Focus on real-world scenarios and provide actionable feedback.**
 """
         
         prompt_parts.append(role_prompt)
@@ -361,36 +266,18 @@ Remember: Your goal is to ensure the implementation is reliable, usable, and mee
         workflow_contexts = {
             "bug_hunting": """
 ## WORKFLOW FOCUS: SECURITY & VULNERABILITY TESTING
-As a tester in a bug hunting workflow, prioritize these testing areas:
-- **Security vulnerability testing**: SQL injection, XSS, CSRF, authentication bypasses
-- **Input validation testing**: Boundary testing, malformed inputs, injection attacks
-- **Access control testing**: Authorization, privilege escalation, data exposure
-- **Error handling security**: Information disclosure through error messages
-- **Dependency security**: Known vulnerabilities in third-party libraries
-- **Static security analysis**: Code patterns that indicate security issues
-- **Penetration testing**: Simulated attacks to find exploitable vulnerabilities
+Prioritize: Security vulnerabilities, input validation, access controls, dependency security
+Testing: Lightweight security tools, acknowledge penetration testing limitations
 """,
             "code_optimization": """
 ## WORKFLOW FOCUS: PERFORMANCE & EFFICIENCY TESTING
-As a tester in a code optimization workflow, prioritize these testing areas:
-- **Performance benchmarking**: Before/after performance comparisons
-- **Load testing**: System behavior under high load conditions
-- **Memory profiling**: Memory usage, leaks, and optimization effectiveness
-- **Algorithm efficiency**: Big O complexity verification and timing tests
-- **Database performance**: Query optimization, indexing effectiveness
-- **Resource utilization**: CPU, memory, I/O, and network usage
-- **Scalability testing**: Performance under increasing data/user loads
+Prioritize: Performance benchmarking, memory profiling, algorithm efficiency, database performance
+Testing: Simple timing tests and profiling, acknowledge load testing limitations
 """,
             "custom_coding": """
 ## WORKFLOW FOCUS: COMPREHENSIVE QUALITY TESTING
-As a tester in a custom coding workflow, prioritize these testing areas:
-- **Functional testing**: Core features work as specified
-- **Unit testing**: Individual components function correctly
-- **Integration testing**: Components work together properly
-- **User acceptance testing**: Meets original requirements
-- **Code quality assessment**: Maintainability, readability, best practices
-- **Documentation testing**: Accuracy and completeness of documentation
-- **Regression testing**: New changes don't break existing functionality
+Prioritize: Functional testing, unit testing, code quality assessment, documentation testing
+Testing: Lightweight approaches, document limitations for complex scenarios
 """
         }
         

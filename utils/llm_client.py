@@ -650,6 +650,8 @@ Guidelines for PR content:
 - Keep it professional and technical but accessible
 - Focus on what was accomplished, not just what was requested
 - If coding IDE information is provided, include a brief mention of the tools/models used
+- IMPORTANT: If there are testing limitations mentioned in the agent report (Docker, databases, external services), acknowledge these in the description
+- Include a note about automated testing constraints when applicable
 
 Guidelines for branch name:
 - Use kebab-case (lowercase with hyphens)
