@@ -12,3 +12,4 @@ pygetwindow==0.0.9
 pymsgbox==1.0.9 
 requests>=2.31.0
 mss>=9.0.1
+tenacity>=8.2.3

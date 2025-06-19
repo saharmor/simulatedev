@@ -3,6 +3,11 @@ Run cutting-edge AI coding IDEs such as Cursor, Devin, and Claude Code via code.
 
 SimulateDev is an automation tool that runs AI coding agents (Cursor, Devin, Claude Code) on any GitHub repository with custom prompts and automatically creates pull requests with the changes. It supports both **single-agent** and **multi-agent collaborative workflows**.
 
+## ⚠️ Important Notes
+
+- **SimulateDev will periodically bring the IDE to the front** to monitor coding agent's progress and state. Ideally: you take your coffee break and let it work :)
+- **For Windsurf users**: Turn on **Turbo mode** for terminal auto-execution to ensure commands run automatically.
+
 
 ## Features
 
@@ -47,11 +52,10 @@ graph LR
 
 SimulateDev runs **entirely on your local machine** and leverages your existing AI coding IDEs (Cursor, Windsurf, Claude Code) to execute both single-agent and multi-agent collaborative workflows. Here's how it works under the hood:
 
-- **Local Execution**: All operations happen on your Mac using your locally installed IDEs
 - **Multi-Agent Orchestration**: Supports collaborative workflows where specialized agents (Planner → Coder → Tester) work together sequentially on complex tasks
 - **IDE Integration**: SimulateDev programmatically opens and controls your installed coding IDEs through:
   - **GUI Automation**: Uses keyboard shortcuts and UI interaction for Cursor and Windsurf
-- **Screen Analysis**: Uses Claude's vision capabilities to analyze IDE screenshots and detect task completion, progress, and UI states
+- **Screen Analysis**: Uses vision models (e.g. Claude) to analyze IDE screenshots and detect task completion, progress, and UI states
 - **Intelligent Monitoring**: Continuously monitors IDE interfaces with adaptive check intervals, automatic resume detection, and timeout management
 - **Window Focus Management**: For GUI-based IDEs like Cursor, the window must be **visible and focused**. SimulateDev will play a beep sound and pause execution if the IDE window loses focus
 

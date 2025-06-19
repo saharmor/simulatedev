@@ -65,7 +65,6 @@ Only analyze the right panel and provide nothing but valid JSON in your response
             # Then check if the input field is available
             input_coords = await self.get_input_field_coordinates()
             if input_coords:
-                print(f"INFO: {self.agent_name} interface is already open and input field coordinates are available")
                 return True
             else:
                 print(f"INFO: {self.agent_name} interface not detected")
