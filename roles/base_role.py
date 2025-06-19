@@ -58,6 +58,9 @@ class BaseRole(ABC):
             if workflow_context:
                 base_prompt = f"{workflow_context}\n\n{base_prompt}"
         
+        # Always append file management guidelines
+        base_prompt = self.append_file_management_guidelines(base_prompt)
+        
         return base_prompt
     
     def _get_workflow_context(self, workflow_type: str) -> str:
@@ -85,11 +88,75 @@ Follow best practices and ensure the solution meets the specified requirements.
         
         return workflow_contexts.get(workflow_type, "")
     
+    def _get_file_management_guidelines(self) -> str:
+        """Get file management guidelines to prevent unwanted commits"""
+        return """
+## FILE MANAGEMENT RULES
+
+**DO NOT CREATE:**
+- Summary markdown files (CHANGES.md, SUMMARY.md, IMPLEMENTATION.md, etc.)
+- Temporary files (test_temp.py, debug.log, temp_*, *_temp.*, scratch_*)
+- Exception: Only if explicitly required as deliverables
+
+**CREATE ONLY:**
+- Source code files (.py, .js, .html, .css, etc.)
+- Config files (requirements.txt, package.json, etc.)
+- Documentation only if explicitly requested
+- Test files only if required as deliverables
+
+**COMMIT HYGIENE:** Review staged files - include only necessary files for functionality.
+"""
+    
     def get_role_description(self) -> str:
         """Get a human-readable description of this role"""
         return f"{self.role.value.title()} Role"
     
-
+    def append_file_management_guidelines(self, prompt: str) -> str:
+        """
+        Append file management guidelines to any prompt.
+        This should be called by all role implementations.
+        
+        Args:
+            prompt: The base prompt to append guidelines to
+            
+        Returns:
+            str: The prompt with file management guidelines appended
+        """
+        file_guidelines = self._get_file_management_guidelines()
+        return f"{prompt}\n\n{file_guidelines}"
+    
+    def get_gitignore_patterns_for_unwanted_files(self) -> list:
+        """
+        Get .gitignore patterns for files that should not be committed.
+        
+        Returns:
+            list: List of gitignore patterns
+        """
+        return [
+            # Markdown summary files
+            "*SUMMARY*.md",
+            "*CHANGES*.md", 
+            "*IMPLEMENTATION*.md",
+            "*summary*.md",
+            "*changes*.md",
+            "*implementation*.md",
+            
+            # Temporary testing files
+            "test_temp*",
+            "temp_test*",
+            "*_temp.*",
+            "*_temporary.*",
+            "debug_*",
+            "scratch_*",
+            "temp.*",
+            "*.tmp",
+            
+            # Log files that might be created during testing
+            "debug.log",
+            "test.log",
+            "temp.log",
+            "scratch.log"
+        ]
     
     def post_execution_hook(self, result: Dict[str, Any], 
                           context: AgentContext) -> Dict[str, Any]:

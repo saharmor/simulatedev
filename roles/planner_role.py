@@ -40,9 +40,20 @@ Please provide:
 1. **Executive Summary**: Brief overview of the solution approach
 2. **Step-by-Step Plan**: Detailed implementation steps with clear descriptions
 3. **File Structure**: List of files that need to be created/modified
-4. **Dependencies**: Any external libraries or tools needed
-5. **Testing Strategy**: How the solution should be tested
+4. **Dependencies**: Any external libraries or tools needed (prioritize lightweight options)
+5. **Testing Strategy**: How the solution should be tested (see testing guidelines below)
 6. **Potential Issues**: Challenges that might arise and how to address them
+
+## TESTING STRATEGY GUIDELINES
+Consider feasibility for automated environments:
+
+**PREFERRED**: Unit tests, static analysis, mocks, lightweight validation scripts
+**AVOID**: Docker, database installs, external services, heavy frameworks, GUI tools
+
+**TRANSPARENCY REQUIRED**:
+- State what cannot be tested in automated environment
+- Provide manual testing notes for reviewers
+- Suggest code review focus areas when full testing isn't possible
 
 ## CONTEXT INFORMATION
 - Work Directory: {context.work_directory}
@@ -78,7 +89,7 @@ The coding agents that follow will implement your plan, so make it detailed and 
 
 Remember: You are planning, not implementing. Create a roadmap that others can follow successfully.
 """
-        return prompt
+        return self.append_file_management_guidelines(prompt)
     
     def create_prompt_with_workflow(self, task: str, context: AgentContext, 
                                   agent_definition: AgentDefinition, 
@@ -112,9 +123,20 @@ Please provide:
 1. **Executive Summary**: Brief overview of the solution approach
 2. **Step-by-Step Plan**: Detailed implementation steps with clear descriptions
 3. **File Structure**: List of files that need to be created/modified
-4. **Dependencies**: Any external libraries or tools needed
-5. **Testing Strategy**: How the solution should be tested
+4. **Dependencies**: Any external libraries or tools needed (prioritize lightweight options)
+5. **Testing Strategy**: How the solution should be tested (see testing guidelines below)
 6. **Potential Issues**: Challenges that might arise and how to address them
+
+## TESTING STRATEGY GUIDELINES
+Consider feasibility for automated environments:
+
+**PREFERRED**: Unit tests, static analysis, mocks, lightweight validation scripts
+**AVOID**: Docker, database installs, external services, heavy frameworks, GUI tools
+
+**TRANSPARENCY REQUIRED**:
+- State what cannot be tested in automated environment
+- Provide manual testing notes for reviewers
+- Suggest code review focus areas when full testing isn't possible
 
 ## CONTEXT INFORMATION
 - Work Directory: {context.work_directory}
@@ -152,40 +174,26 @@ Remember: You are planning, not implementing. Create a roadmap that others can f
 """
         
         prompt_parts.append(role_prompt)
-        return '\n\n'.join(prompt_parts)
+        combined_prompt = '\n\n'.join(prompt_parts)
+        return self.append_file_management_guidelines(combined_prompt)
     
     def _get_planner_workflow_context(self, workflow_type: str) -> str:
         """Get planner-specific workflow context"""
         workflow_contexts = {
             "bug_hunting": """
-## WORKFLOW FOCUS: BUG HUNTING & SECURITY ANALYSIS
-As a planner in a bug hunting workflow, your plan should prioritize:
-- **Security audit strategy**: Systematic approach to finding vulnerabilities
-- **Code review methodology**: Focus areas for security-critical code sections
-- **Testing approach**: Security testing, penetration testing, static analysis tools
-- **Risk assessment**: Prioritize high-risk areas (authentication, data handling, APIs)
-- **Remediation planning**: How to fix identified vulnerabilities safely
-- **Compliance considerations**: Security standards and best practices to follow
+## WORKFLOW FOCUS: BUG HUNTING & SECURITY
+Prioritize: Security vulnerabilities, input validation, access controls, error handling security
+Testing: Use lightweight security tools, acknowledge penetration testing limitations
 """,
             "code_optimization": """
-## WORKFLOW FOCUS: PERFORMANCE OPTIMIZATION STRATEGY
-As a planner in a code optimization workflow, your plan should prioritize:
-- **Performance profiling strategy**: How to identify bottlenecks and performance issues
-- **Optimization targets**: Database queries, algorithms, memory usage, I/O operations
-- **Measurement approach**: Benchmarking, metrics collection, before/after comparisons
-- **Risk mitigation**: How to optimize without breaking existing functionality
-- **Testing strategy**: Performance testing, load testing, regression testing
-- **Monitoring plan**: How to track performance improvements over time
+## WORKFLOW FOCUS: PERFORMANCE OPTIMIZATION
+Prioritize: Algorithm efficiency, memory optimization, database performance, code complexity reduction
+Testing: Simple benchmarks and profiling, acknowledge load testing limitations
 """,
             "custom_coding": """
-## WORKFLOW FOCUS: CLEAN DEVELOPMENT STRATEGY
-As a planner in a custom coding workflow, your plan should prioritize:
-- **Architecture design**: Clean, maintainable, and scalable code structure
-- **Development methodology**: Best practices, coding standards, design patterns
-- **Quality assurance**: Code review process, testing strategy, documentation
-- **Integration approach**: How new code integrates with existing systems
-- **Deployment strategy**: How to safely deploy and rollback changes
-- **Maintenance considerations**: Long-term maintainability and extensibility
+## WORKFLOW FOCUS: CLEAN DEVELOPMENT
+Prioritize: Clean architecture, best practices, documentation, modularity
+Testing: Lightweight testing approaches, acknowledge complex setup limitations
 """
         }
         
