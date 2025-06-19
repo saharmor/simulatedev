@@ -406,7 +406,7 @@ async def wait_until_ide_finishes(ide_name, interface_state_analysis_prompt, tim
         
         # Reset for this execution
         start_time = time.time()
-        check_interval = 10.0  # Start with 40 seconds
+        check_interval = 30.0  # Start with 30 seconds
         screenshot_count = 0
         last_state = None
         

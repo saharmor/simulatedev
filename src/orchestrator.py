@@ -482,8 +482,7 @@ class Orchestrator:
                         original_repo_url=request.repo_url,
                         workflow_name=f"{execution_type}",
                         agent_execution_report_summary=final_output[:1000] + "..." if len(final_output) > 1000 else final_output,
-                        coding_ides_info=coding_ides_info,
-                        task_description=request.task_description
+                        coding_ides_info=coding_ides_info
                     )
                     
                     if pr_url:

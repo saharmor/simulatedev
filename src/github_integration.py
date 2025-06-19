@@ -92,10 +92,26 @@ class GitHubIntegration:
                 if not primary_email and emails:
                     primary_email = emails[0].get("email")
             
+            # Get the name, but be smart about fallbacks
+            github_name = user_data.get("name")
+            github_login = user_data.get("login")
+            
+            # Use login (username) if:
+            # 1. No name is set (None or empty string)
+            # 2. Name is a generic placeholder like "Your Name"
+            # 3. Name is the same as login (redundant)
+            if (not github_name or 
+                github_name.strip() == "" or 
+                github_name.lower() in ["your name", "user", "username"] or
+                github_name == github_login):
+                display_name = github_login
+            else:
+                display_name = github_name
+            
             return {
-                "login": user_data.get("login"),
-                "name": user_data.get("name") or user_data.get("login"),  # Fallback to username if no name set
-                "email": primary_email or f"{user_data.get('login')}@users.noreply.github.com"  # Fallback to GitHub noreply email
+                "login": github_login,
+                "name": display_name,
+                "email": primary_email or f"{github_login}@users.noreply.github.com"
             }
             
         except Exception as e:
@@ -589,7 +605,7 @@ class GitHubIntegration:
             "branch_name": default_branch_name
         }
 
-    def generate_pr_description(self, workflow_name: str, pr_title: str, pr_description: str, pr_changes_summary: str, coding_ides_info: Optional[str] = None, task_description: Optional[str] = None) -> tuple[str, str]:
+    def generate_pr_description(self, workflow_name: str, pr_title: str, pr_description: str, pr_changes_summary: str, coding_ides_info: Optional[str] = None, concise_task_description: Optional[str] = None) -> tuple[str, str]:
         """
         Generate formatted PR title and description
         
@@ -612,8 +628,8 @@ class GitHubIntegration:
         
         # Add task description as subheader
         description_parts.append("### Task")
-        if task_description:
-            description_parts.append(task_description)
+        if concise_task_description:
+            description_parts.append(concise_task_description)
         else:
             description_parts.append(workflow_name)
         
@@ -657,7 +673,6 @@ class GitHubIntegration:
         workflow_name: str,
         agent_execution_report_summary: Optional[str] = None,
         coding_ides_info: Optional[str] = None,
-        task_description: Optional[str] = None
     ) -> Optional[str]:
         """
         Complete workflow: create branch, commit changes, push, and create PR
@@ -684,7 +699,7 @@ class GitHubIntegration:
                 content["pr_description"],
                 content["pr_changes_summary"],
                 coding_ides_info,
-                task_description
+                content['concise_task_description']
             )
         else:
             # Use default formats when no agent output is provided
@@ -697,7 +712,7 @@ class GitHubIntegration:
                 default_content["pr_description"],
                 default_content["pr_changes_summary"],
                 coding_ides_info,
-                task_description
+                default_content['concise_task_description']
             )
         
         # Create branch
@@ -734,7 +749,6 @@ class GitHubIntegration:
         workflow_name: str,
         agent_execution_report_summary: Optional[str] = None,
         coding_ides_info: Optional[str] = None,
-        task_description: Optional[str] = None
     ) -> Optional[str]:
         """
         Smart workflow that handles permissions automatically:
@@ -749,10 +763,10 @@ class GitHubIntegration:
         
         if has_push_permissions:
             print("SUCCESS: Have push permissions, working directly on original repository")
-            return self.full_workflow(repo_path, original_repo_url, workflow_name, agent_execution_report_summary, coding_ides_info, task_description)
+            return self.full_workflow(repo_path, original_repo_url, workflow_name, agent_execution_report_summary, coding_ides_info)
         else:
             print("INFO: No push permissions, using fork workflow...")
-            return self.fork_workflow(repo_path, original_repo_url, workflow_name, agent_execution_report_summary, coding_ides_info, task_description)
+            return self.fork_workflow(repo_path, original_repo_url, workflow_name, agent_execution_report_summary, coding_ides_info)
     
     def fork_workflow(
         self,
@@ -761,7 +775,6 @@ class GitHubIntegration:
         workflow_name: str,
         agent_execution_report_summary: Optional[str] = None,
         coding_ides_info: Optional[str] = None,
-        task_description: Optional[str] = None
     ) -> Optional[str]:
         """
         Fork-based workflow for repositories where we don't have push permissions
@@ -798,7 +811,7 @@ class GitHubIntegration:
                 content["pr_description"],
                 content["pr_changes_summary"],
                 coding_ides_info,
-                task_description
+                content['concise_task_description']
             )
         else:
             # Use default formats when no agent output is provided
@@ -811,7 +824,7 @@ class GitHubIntegration:
                 default_content["pr_description"],
                 default_content["pr_changes_summary"],
                 coding_ides_info,
-                task_description
+                default_content['concise_task_description']
             )
         
         # Step 5: Create branch
