@@ -5,8 +5,17 @@ SimulateDev is an automation tool that runs AI coding agents (Cursor, Devin, Cla
 
 ## ⚠️ Important Notes
 
-- **SimulateDev will periodically bring the IDE to the front** to monitor coding agent's progress and state. Ideally: you take your coffee break and let it work :)
-- **For Windsurf users**: Turn on **Turbo mode** for terminal auto-execution to ensure commands run automatically.
+- Ensure your coding IDEs (Cursor, Windsurf, Claude Code) are already installed and ready to use - SimulateDev doesn't handle IDE setup or installation (for now)
+- For Windsurf users: Turn on **Turbo mode** for terminal auto-execution to ensure commands run automatically. [Learn more](https://www.reddit.com/r/windsurf/comments/1kksxgh/comment/mrx2el2/)
+- SimulateDev will periodically bring the IDE to the front to monitor coding agent's progress and state. Ideally: you take your coffee break and let it work :)
+
+## Run SimulateDev in <1 min
+Clone this repo → Create virtual environment → Install requirements.txt → Run the following command (replace to your coding IDE of choice and GitHub repo url):
+```bash
+python simulatedev.py --workflow bugs --repo https://github.com/saharmor/gemini-multimodal-playground --agent cursor
+```
+
+
 
 
 ## Features

@@ -529,10 +529,8 @@ def bring_to_front_window(app_name: str, project_name: str) -> bool:
         
         # Parse the result and provide appropriate feedback
         if result == "success":
-            print(f"Successfully brought {ide_context.display_name} window to front")
             return True
         elif result == "success_fallback":
-            print(f"Successfully brought {ide_context.display_name} window to front using System Events fallback")
             return True
         elif result == "window_not_found" or result == "fallback_window_not_found":
             print(f"Could not find window containing '{project_name}' in {ide_context.display_name}")

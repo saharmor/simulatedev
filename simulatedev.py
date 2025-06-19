@@ -326,10 +326,10 @@ async def execute_task(args) -> bool:
         print_task_summary(task_request, args.workflow)
         
         # Confirm execution
-        confirm = input("\nExecute this task? (y/N): ").strip().lower()
-        if confirm not in ['y', 'yes']:
-            print("Task execution cancelled")
-            return False
+        # confirm = input("\nExecute this task? (y/N): ").strip().lower()
+        # if confirm not in ['y', 'yes']:
+        #     print("Task execution cancelled")
+        #     return False
         
         # Execute
         print(f"\nSTARTING: {args.workflow} workflow...")
@@ -339,10 +339,8 @@ async def execute_task(args) -> bool:
         if response.success:
             print(f"\nCOMPLETED: {args.workflow.title()} workflow completed successfully!")
             
-            # Open PR in browser if created
+            # Show PR URL if created (but don't open it - orchestrator already did)
             if hasattr(response, 'pr_url') and response.pr_url:
-                print("Opening pull request in your default browser...")
-                webbrowser.open(response.pr_url)
                 print(f"\nREVIEW: You can review the changes at: {response.pr_url}")
         else:
             print(f"\nFAILED: {args.workflow.title()} workflow did not complete successfully.")
