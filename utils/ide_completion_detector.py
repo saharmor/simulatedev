@@ -8,13 +8,12 @@ workflows that depend on IDE operations completing.
 """
 import os
 import sys
-import json
 import time
 import subprocess
 from PIL import Image
 from dotenv import load_dotenv
 
-from utils.computer_use_utils import get_window_bounds, take_screenshot, LLMComputerUse, take_ide_window_screenshot
+from utils.computer_use_utils import take_screenshot, LLMComputerUse, take_ide_window_screenshot
 from utils.llm_client import analyze_ide_state_with_llm
 import pyautogui
 

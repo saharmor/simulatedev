@@ -259,7 +259,7 @@ Choose the SINGLE most critical bug that maximizes security/reliability impact w
         """Save batch results to a JSON file"""
         if not output_file:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_file = f"batch_simulatedev_results_{timestamp}.json"
+            output_file = f"{timestamp}_batch_simulatedev_results.json"
         
         # Convert results to dictionaries for JSON serialization
         results_data = {

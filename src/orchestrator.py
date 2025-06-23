@@ -348,7 +348,7 @@ class Orchestrator:
             date_str = now.strftime("%Y%m%d")
             time_str = now.strftime("%H%M")
             
-            filename = f"{repo_name}_{date_str}_{time_str}.txt"
+            filename = f"{date_str}_{time_str}_{repo_name}.txt"
             filepath = os.path.join(self.responses_dir, filename)
             
             # Save response to file
@@ -510,8 +510,6 @@ class Orchestrator:
                 minutes = int(execution_time_seconds // 60)
                 seconds = execution_time_seconds % 60
                 execution_time_str = f"{minutes}m {seconds:.1f}s"
-            
-            response.execution_time_seconds = execution_time_seconds
 
             print(f"\n{'='*60}")
             print(f"{execution_type.upper()} EXECUTION COMPLETE")

@@ -23,6 +23,6 @@ The integration tests validate the core functionality of SimulateDev with both s
 ### Test Results
 
 Test results are saved to:
-- `execution_output/integration_test_report.json` - Detailed JSON report
+- `execution_output/{timestamp}_integration_test_report.json` - Detailed JSON report
 
 For more information, see `INTEGRATION_TESTS.md`. 

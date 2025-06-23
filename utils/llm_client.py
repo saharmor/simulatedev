@@ -712,7 +712,6 @@ Guidelines for branch name:
         )
         
         if result:
-            print(f"SUCCESS: Generated commit message and PR content using {llm_client.provider.upper()}")
             return {
                 "commit_message": result.commit_message,
                 "pr_title": result.pr_title,

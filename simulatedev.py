@@ -354,8 +354,19 @@ async def execute_task(args) -> bool:
                 # If user specified a custom output path, use it as-is
                 output_file = args.output
             else:
-                # Use the configured execution output directory
-                output_filename = f"{args.workflow}_execution_report.json"
+                # Use the configured execution output directory with timestamp prefix
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+                
+                # Extract repo name from URL for better filename
+                if args.repo:
+                    parsed_path = urlparse(args.repo).path.rstrip('/')
+                    repo_name = os.path.splitext(os.path.basename(parsed_path))[0]
+                    if repo_name.endswith('.git'):
+                        repo_name = repo_name[:-4]
+                    output_filename = f"{timestamp}_{repo_name}_{args.workflow}_execution_report.json"
+                else:
+                    output_filename = f"{timestamp}_{args.workflow}_execution_report.json"
                 output_file = os.path.join(config.execution_output_path, output_filename)
             orchestrator.save_execution_report(response, output_file)
             print(f"Execution report saved to: {output_file}")

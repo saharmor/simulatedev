@@ -208,9 +208,14 @@ class IntegrationTestRunner:
             self.log_test_result("Multi-Agent Scenario", False, details)
             return False
     
-    def save_test_report(self, filename: str = "integration_test_report.json"):
+    def save_test_report(self, filename: str = None):
         """Save test results to JSON file"""
         from common.config import config
+        
+        # Generate timestamped filename if not provided
+        if not filename:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{timestamp}_integration_test_report.json"
         
         report = {
             "test_run_timestamp": datetime.now().isoformat(),
@@ -252,7 +257,7 @@ class IntegrationTestRunner:
                 if not result["success"]:
                     print(f"  - {result['scenario']}: {result['details'].get('error', 'Unknown error')}")
         
-        print("\nDetailed results saved in integration_test_report.json")
+        print("\nDetailed results saved in timestamped integration test report")
     
     async def run_all_tests(self):
         """Run all integration test scenarios"""

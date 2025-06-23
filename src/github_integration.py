@@ -7,6 +7,7 @@ This module handles GitHub API operations including:
 - Pushing changes to branches
 - Managing repository operations
 - Checking permissions and forking when needed
+- Processing GitHub PRs and issues
 """
 
 import os
@@ -17,6 +18,493 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+class GitHubPRProcessor:
+    """Processes GitHub pull requests and converts them to SimulateDev tasks"""
+    
+    def __init__(self, github_token: Optional[str] = None):
+        self.github_token = github_token or os.getenv("GITHUB_TOKEN")
+        if not self.github_token:
+            print("WARNING: No GitHub token found. PR fetching may be limited.")
+        
+        self.headers = {
+            "Authorization": f"Bearer {self.github_token}",
+            "Accept": "application/vnd.github.v3+json",
+            "X-GitHub-Api-Version": "2022-11-28"
+        } if self.github_token else {}
+        
+        self.github_integration = GitHubIntegration(self.github_token)
+    
+    def parse_pr_url(self, pr_url: str) -> Dict[str, Any]:
+        """Parse GitHub PR URL to extract owner, repo, and PR number"""
+        # Handle different URL formats
+        # https://github.com/owner/repo/pull/123
+        # github.com/owner/repo/pull/123
+        
+        # Clean up the URL
+        if not pr_url.startswith(('http://', 'https://')):
+            pr_url = 'https://' + pr_url
+        
+        parsed = urlparse(pr_url)
+        if parsed.netloc != 'github.com':
+            raise ValueError(f"Invalid GitHub URL: {pr_url}")
+        
+        # Parse path: /owner/repo/pull/123
+        path_parts = parsed.path.strip('/').split('/')
+        if len(path_parts) != 4 or path_parts[2] != 'pull':
+            raise ValueError(f"Invalid GitHub PR URL format: {pr_url}")
+        
+        try:
+            pr_number = int(path_parts[3])
+        except ValueError:
+            raise ValueError(f"Invalid PR number in URL: {pr_url}")
+        
+        return {
+            'owner': path_parts[0],
+            'repo': path_parts[1],
+            'pr_number': pr_number,
+            'repo_url': f"https://github.com/{path_parts[0]}/{path_parts[1]}"
+        }
+    
+    def fetch_pr_data(self, owner: str, repo: str, pr_number: int) -> Dict[str, Any]:
+        """Fetch PR data from GitHub API"""
+        api_url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}"
+        
+        try:
+            response = requests.get(api_url, headers=self.headers)
+            
+            if response.status_code == 404:
+                raise ValueError(f"PR #{pr_number} not found in {owner}/{repo}")
+            elif response.status_code != 200:
+                raise ValueError(f"Failed to fetch PR: HTTP {response.status_code}")
+            
+            pr_data = response.json()
+            
+            # Also fetch PR comments
+            comments_url = pr_data.get('comments_url', '')
+            comments = []
+            if comments_url:
+                comments_response = requests.get(comments_url, headers=self.headers)
+                if comments_response.status_code == 200:
+                    comments = comments_response.json()
+            
+            # Fetch review comments
+            review_comments_url = pr_data.get('review_comments_url', '')
+            review_comments = []
+            if review_comments_url:
+                review_comments_response = requests.get(review_comments_url, headers=self.headers)
+                if review_comments_response.status_code == 200:
+                    review_comments = review_comments_response.json()
+            
+            # Fetch PR reviews
+            reviews_url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/reviews"
+            reviews = []
+            if self.headers:
+                reviews_response = requests.get(reviews_url, headers=self.headers)
+                if reviews_response.status_code == 200:
+                    reviews = reviews_response.json()
+            
+            pr_data['comments_data'] = comments
+            pr_data['review_comments_data'] = review_comments
+            pr_data['reviews_data'] = reviews
+            return pr_data
+            
+        except requests.RequestException as e:
+            raise ValueError(f"Error fetching PR data: {str(e)}")
+    
+    def get_pr_diff(self, owner: str, repo: str, pr_number: int) -> str:
+        """Fetch the PR diff"""
+        diff_url = f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}"
+        
+        try:
+            # Request diff format
+            headers = self.headers.copy() if self.headers else {}
+            headers['Accept'] = 'application/vnd.github.v3.diff'
+            
+            response = requests.get(diff_url, headers=headers)
+            
+            if response.status_code == 200:
+                return response.text
+            else:
+                print(f"WARNING: Could not fetch PR diff: HTTP {response.status_code}")
+                return ""
+                
+        except requests.RequestException as e:
+            print(f"WARNING: Error fetching PR diff: {str(e)}")
+            return ""
+    
+    def synthesize_pr_task_prompt(self, pr_data: Dict[str, Any], repo_info: Dict[str, Any], 
+                                  custom_task: str, pr_diff: str = "") -> str:
+        """Convert GitHub PR data and custom task into a SimulateDev task prompt"""
+        
+        title = pr_data.get('title', 'Untitled PR')
+        body = pr_data.get('body', '')
+        pr_number = pr_data.get('number', 'Unknown')
+        pr_url = pr_data.get('html_url', '')
+        state = pr_data.get('state', 'unknown')
+        head_branch = pr_data.get('head', {}).get('ref', 'unknown')
+        base_branch = pr_data.get('base', {}).get('ref', 'main')
+        
+        # Process comments
+        comments = pr_data.get('comments_data', [])
+        review_comments = pr_data.get('review_comments_data', [])
+        reviews = pr_data.get('reviews_data', [])
+        
+        discussion_text = ""
+        if comments or review_comments or reviews:
+            discussion_text = "\n\n## PR Discussion:\n"
+            
+            # Regular comments
+            if comments:
+                discussion_text += "\n### General Comments:\n"
+                for i, comment in enumerate(comments[:10], 1):  # Limit to first 10 comments
+                    author = comment.get('user', {}).get('login', 'Unknown')
+                    comment_body = comment.get('body', '')
+                    if comment_body.strip():
+                        discussion_text += f"\n**Comment {i} by @{author}:**\n{comment_body}\n"
+            
+            # Review comments (inline code comments)
+            if review_comments:
+                discussion_text += "\n### Code Review Comments:\n"
+                for i, comment in enumerate(review_comments[:10], 1):
+                    author = comment.get('user', {}).get('login', 'Unknown')
+                    comment_body = comment.get('body', '')
+                    file_path = comment.get('path', 'unknown file')
+                    if comment_body.strip():
+                        discussion_text += f"\n**Review Comment {i} by @{author} on {file_path}:**\n{comment_body}\n"
+            
+            # PR reviews
+            if reviews:
+                discussion_text += "\n### PR Reviews:\n"
+                for i, review in enumerate(reviews[:5], 1):
+                    author = review.get('user', {}).get('login', 'Unknown')
+                    review_state = review.get('state', 'COMMENTED')
+                    review_body = review.get('body', '')
+                    if review_body and review_body.strip():
+                        discussion_text += f"\n**Review {i} by @{author} ({review_state}):**\n{review_body}\n"
+        
+        # Include diff if available (truncated for readability)
+        diff_section = ""
+        if pr_diff:
+            # Truncate diff if too long
+            max_diff_length = 5000
+            if len(pr_diff) > max_diff_length:
+                diff_section = f"\n\n## PR Changes (Diff - First {max_diff_length} characters):\n```diff\n{pr_diff[:max_diff_length]}\n... (truncated)\n```"
+            else:
+                diff_section = f"\n\n## PR Changes (Diff):\n```diff\n{pr_diff}\n```"
+        
+        task_prompt = f"""# GitHub Pull Request Task
+
+## PR Information
+- **Repository**: {repo_info['repo_url']}
+- **PR**: #{pr_number} - {title}
+- **URL**: {pr_url}
+- **State**: {state}
+- **Head Branch**: {head_branch}
+- **Base Branch**: {base_branch}
+
+## PR Description
+{body}
+{discussion_text}
+{diff_section}
+
+## Custom Task
+{custom_task}
+
+## Task Instructions
+
+Based on the pull request above and the custom task, please:
+
+1. **Understand the PR Context**: Review the PR description, changes, and any discussion to understand what this PR is trying to accomplish.
+
+2. **Analyze Current Changes**: Examine the diff and current implementation to understand what has been done so far.
+
+3. **Execute Custom Task**: Focus on the specific task requested:
+   {custom_task}
+
+4. **Implement Improvements**: 
+   - Make the requested changes or improvements
+   - Follow the project's coding standards and patterns
+   - Ensure your changes work well with the existing PR changes
+   - Add appropriate error handling where needed
+
+5. **Test Your Changes**: 
+   - Verify that your modifications work as expected
+   - Test interaction with existing PR changes
+   - Ensure no existing functionality is broken
+
+6. **Document Your Work**:
+   - Add or update comments in the code where necessary
+   - Update documentation if your changes affect user-facing functionality
+   - Provide clear explanation of what was changed and why
+
+## Success Criteria
+- The custom task is completed successfully
+- Changes integrate well with the existing PR
+- No existing functionality is broken
+- Code follows project conventions
+- Changes are well-tested and documented
+
+## Working Branch
+You are working on branch `{head_branch}`. Any changes you make will be committed to this branch.
+
+Please implement the requested changes while respecting the existing work in this pull request.
+"""
+        
+        return task_prompt
+    
+    def clone_pr_branch(self, repo_url: str, head_branch: str, target_dir: str) -> str:
+        """Clone the repository and checkout the PR branch"""
+        try:
+            # Parse repo info for cloning
+            repo_info = self.github_integration.parse_repo_info(repo_url)
+            
+            print(f"Cloning repository and checking out branch '{head_branch}'...")
+            
+            # Clone the repository
+            subprocess.run([
+                "git", "clone", repo_url, target_dir
+            ], check=True, capture_output=True)
+            
+            # Checkout the PR branch
+            subprocess.run([
+                "git", "checkout", head_branch
+            ], cwd=target_dir, check=True, capture_output=True)
+            
+            print(f"Successfully cloned and checked out branch '{head_branch}'")
+            return target_dir
+            
+        except subprocess.CalledProcessError as e:
+            raise ValueError(f"Failed to clone repository or checkout branch: {e}")
+    
+    def check_for_changes(self, repo_path: str) -> bool:
+        """Check if there are any uncommitted changes in the repository"""
+        try:
+            result = subprocess.run([
+                "git", "status", "--porcelain"
+            ], cwd=repo_path, capture_output=True, text=True, check=True)
+            
+            # If there's any output, there are changes
+            return bool(result.stdout.strip())
+            
+        except subprocess.CalledProcessError:
+            return False
+    
+    def commit_and_push_changes(self, repo_path: str, branch_name: str, task_description: str) -> bool:
+        """Commit and push changes to the PR branch"""
+        try:
+            # Configure git user if needed
+            self.github_integration.setup_git_config(repo_path)
+            
+            # Add all changes
+            subprocess.run([
+                "git", "add", "."
+            ], cwd=repo_path, check=True)
+            
+            # Create commit message
+            commit_message = f"SimulateDev: {task_description[:100]}{'...' if len(task_description) > 100 else ''}"
+            
+            # Commit changes
+            subprocess.run([
+                "git", "commit", "-m", commit_message
+            ], cwd=repo_path, check=True)
+            
+            # Push to the branch
+            subprocess.run([
+                "git", "push", "origin", branch_name
+            ], cwd=repo_path, check=True)
+            
+            print(f"✅ Changes committed and pushed to branch '{branch_name}'")
+            return True
+            
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Failed to commit and push changes: {e}")
+            return False
+
+    def analyze_pr_comments_and_generate_task(self, pr_data: Dict[str, Any]) -> str:
+        """Analyze PR comments and generate a comprehensive task to address them"""
+        
+        comments = pr_data.get('comments_data', [])
+        review_comments = pr_data.get('review_comments_data', [])
+        reviews = pr_data.get('reviews_data', [])
+        
+        if not comments and not review_comments and not reviews:
+            return "No comments or reviews found on this PR to address."
+        
+        # Categorize and analyze comments
+        actionable_comments = []
+        code_review_comments = []
+        general_feedback = []
+        
+        # Process general comments
+        for comment in comments:
+            comment_body = comment.get('body', '').strip()
+            author = comment.get('user', {}).get('login', 'Unknown')
+            if comment_body and not comment_body.lower().startswith(('lgtm', 'looks good', '👍', ':+1:')):
+                general_feedback.append({
+                    'author': author,
+                    'body': comment_body,
+                    'type': 'general'
+                })
+        
+        # Process review comments (inline code comments)
+        for comment in review_comments:
+            comment_body = comment.get('body', '').strip()
+            author = comment.get('user', {}).get('login', 'Unknown')
+            file_path = comment.get('path', 'unknown file')
+            line_number = comment.get('line') or comment.get('original_line')
+            
+            if comment_body:
+                code_review_comments.append({
+                    'author': author,
+                    'body': comment_body,
+                    'file': file_path,
+                    'line': line_number,
+                    'type': 'code_review'
+                })
+        
+        # Process PR reviews
+        for review in reviews:
+            review_body = review.get('body', '').strip()
+            author = review.get('user', {}).get('login', 'Unknown')
+            review_state = review.get('state', 'COMMENTED')
+            
+            if review_body and review_state in ['CHANGES_REQUESTED', 'COMMENTED']:
+                actionable_comments.append({
+                    'author': author,
+                    'body': review_body,
+                    'state': review_state,
+                    'type': 'review'
+                })
+        
+        # Generate comprehensive task
+        task_parts = []
+        
+        task_parts.append("# PR Review Comments Analysis and Resolution")
+        task_parts.append("\nThis task involves addressing all the feedback and comments received on this pull request.")
+        
+        if actionable_comments:
+            task_parts.append("\n## PR Reviews to Address:")
+            for i, comment in enumerate(actionable_comments, 1):
+                state_emoji = "🔴" if comment['state'] == 'CHANGES_REQUESTED' else "💬"
+                task_parts.append(f"\n### {state_emoji} Review {i} by @{comment['author']} ({comment['state']}):")
+                task_parts.append(f"{comment['body']}")
+        
+        if code_review_comments:
+            task_parts.append("\n## Code Review Comments to Address:")
+            for i, comment in enumerate(code_review_comments, 1):
+                line_info = f" (line {comment['line']})" if comment['line'] else ""
+                task_parts.append(f"\n### 📝 Comment {i} by @{comment['author']} on `{comment['file']}`{line_info}:")
+                task_parts.append(f"{comment['body']}")
+        
+        if general_feedback:
+            task_parts.append("\n## General Feedback to Consider:")
+            for i, comment in enumerate(general_feedback, 1):
+                task_parts.append(f"\n### 💡 Feedback {i} by @{comment['author']}:")
+                task_parts.append(f"{comment['body']}")
+        
+        # Add implementation instructions
+        task_parts.append("\n## Implementation Instructions:")
+        task_parts.append("\nPlease address each of the above comments and feedback by:")
+        task_parts.append("\n1. **Carefully reading and understanding each comment**")
+        task_parts.append("   - Identify what changes are being requested")
+        task_parts.append("   - Understand the reasoning behind each suggestion")
+        task_parts.append("   - Prioritize changes requested vs. suggestions")
+        
+        task_parts.append("\n2. **Implementing the requested changes**")
+        task_parts.append("   - Make code modifications as requested in review comments")
+        task_parts.append("   - Address any bugs or issues pointed out")
+        task_parts.append("   - Improve code quality based on feedback")
+        task_parts.append("   - Add missing functionality or tests as requested")
+        
+        task_parts.append("\n3. **Following best practices**")
+        task_parts.append("   - Maintain consistent code style with the project")
+        task_parts.append("   - Add appropriate error handling where suggested")
+        task_parts.append("   - Update documentation if changes affect public APIs")
+        task_parts.append("   - Ensure backward compatibility unless breaking changes are explicitly requested")
+        
+        task_parts.append("\n4. **Testing your changes**")
+        task_parts.append("   - Verify that all requested changes work as expected")
+        task_parts.append("   - Test edge cases mentioned in the reviews")
+        task_parts.append("   - Ensure existing functionality still works")
+        
+        task_parts.append("\n## Success Criteria:")
+        task_parts.append("- All review comments have been addressed appropriately")
+        task_parts.append("- Code changes resolve the issues raised without introducing new problems")
+        task_parts.append("- The implementation follows the project's coding standards")
+        task_parts.append("- Changes are well-tested and documented")
+        
+        # Count total items to address
+        total_items = len(actionable_comments) + len(code_review_comments) + len(general_feedback)
+        task_parts.append(f"\n**Total items to address: {total_items}**")
+        
+        return "\n".join(task_parts)
+
+    def generate_review_response_commit_message(self, pr_data: Dict[str, Any]) -> str:
+        """Generate a descriptive commit message for addressing PR review comments"""
+        
+        comments = pr_data.get('comments_data', [])
+        review_comments = pr_data.get('review_comments_data', [])
+        reviews = pr_data.get('reviews_data', [])
+        
+        # Count different types of feedback
+        review_count = len([r for r in reviews if r.get('body', '').strip()])
+        code_comment_count = len(review_comments)
+        general_comment_count = len([c for c in comments if c.get('body', '').strip()])
+        
+        total_items = review_count + code_comment_count + general_comment_count
+        
+        # Generate descriptive message
+        if total_items == 0:
+            return "Address PR feedback"
+        
+        message_parts = []
+        if review_count > 0:
+            message_parts.append(f"{review_count} review{'s' if review_count != 1 else ''}")
+        if code_comment_count > 0:
+            message_parts.append(f"{code_comment_count} code comment{'s' if code_comment_count != 1 else ''}")
+        if general_comment_count > 0:
+            message_parts.append(f"{general_comment_count} general comment{'s' if general_comment_count != 1 else ''}")
+        
+        if len(message_parts) == 1:
+            return f"Address {message_parts[0]} from PR review"
+        elif len(message_parts) == 2:
+            return f"Address {message_parts[0]} and {message_parts[1]} from PR review"
+        else:
+            return f"Address {', '.join(message_parts[:-1])}, and {message_parts[-1]} from PR review"
+
+    def commit_and_push_review_changes(self, repo_path: str, branch_name: str, pr_data: Dict[str, Any]) -> bool:
+        """Commit and push changes specifically for addressing PR review comments"""
+        try:
+            # Configure git user if needed
+            self.github_integration.setup_git_config(repo_path)
+            
+            # Add all changes
+            subprocess.run([
+                "git", "add", "."
+            ], cwd=repo_path, check=True)
+            
+            # Generate descriptive commit message
+            commit_message = self.generate_review_response_commit_message(pr_data)
+            
+            # Commit changes
+            subprocess.run([
+                "git", "commit", "-m", commit_message
+            ], cwd=repo_path, check=True)
+            
+            # Push to the branch
+            subprocess.run([
+                "git", "push", "origin", branch_name
+            ], cwd=repo_path, check=True)
+            
+            print(f"✅ Changes committed and pushed to branch '{branch_name}'")
+            print(f"📝 Commit message: {commit_message}")
+            return True
+            
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Failed to commit and push changes: {e}")
+            return False
 
 
 class GitHubIntegration:
@@ -280,7 +768,6 @@ class GitHubIntegration:
                 check=True,
                 capture_output=True
             )
-            print(f"SUCCESS: Created and checked out branch: {branch_name}")
             return True
         except subprocess.CalledProcessError as e:
             print(f"ERROR: Failed to create branch {branch_name}: {e.stderr.decode()}")

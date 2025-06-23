@@ -414,8 +414,7 @@ class CodingAgent(ABC):
             play_beep_sound()
             raise Exception(f"Could not locate {self.agent_name} input field")
         
-        # Click the input field
-        print(f"Moving to {self.agent_name} input field...")
+        # Focus on the input field
         pyautogui.moveTo(input_coords.coordinates.x, input_coords.coordinates.y, duration=0.5)
         time.sleep(0.5)
         pyautogui.click(input_coords.coordinates.x, input_coords.coordinates.y)

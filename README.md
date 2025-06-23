@@ -1,7 +1,9 @@
 # SimulateDev
 Run cutting-edge AI coding IDEs such as Cursor, Devin, and Claude Code via code.
 
-SimulateDev is an automation tool that runs AI coding agents (Cursor, Devin, Claude Code) on any GitHub repository with custom prompts and automatically creates pull requests with the changes. It supports both **single-agent** and **multi-agent collaborative workflows**.
+SimulateDev is an automation tool that runs AI coding agents (Cursor, Devin, Claude Code) on any GitHub repository with custom prompts and automatically creates pull requests with the changes. It supports both **single-agent** and **multi-agent collaborative workflows**. SimulateDev can also help you automatically address reviewer comments on existing PRs or completely resolve open GitHub issues.
+
+For additional scripts and utilities, see the [scripts directory](scripts/README.md).
 
 ## ⚠️ Important Notes
 
@@ -232,6 +234,32 @@ python simulatedev.py --workflow bugs --repo https://github.com/user/repo --agen
 # Keep existing repository directory (don't delete before cloning)
 python simulatedev.py --workflow bugs --repo https://github.com/user/repo --agent cursor --no-delete-existing-repo-env
 ```
+
+## Scripts
+
+SimulateDev includes specialized scripts for GitHub workflow automation:
+
+### Issue to Task (`scripts/issue_to_task.py`)
+Automatically converts GitHub issues into pull requests with fixes. Analyzes issue content, comments, and labels to generate comprehensive solutions.
+
+```bash
+# Address a GitHub issue automatically
+python scripts/issue_to_task.py --issue-url https://github.com/owner/repo/issues/123 --agent cursor
+
+# Multi-agent issue resolution
+python scripts/issue_to_task.py --issue-url https://github.com/owner/repo/issues/123 \
+  --coding-agents '[{"coding_ide":"cursor","model":"Claude Sonnet 3.5","role":"Planner"},{"coding_ide":"windsurf","model":"Claude Sonnet 3.5","role":"Coder"}]'
+```
+
+### PR to Task (`scripts/pr_to_task.py`)
+Processes existing pull requests to automatically addresses all reviewer comments and feedback.
+
+```bash
+# Address all PR review comments automatically
+python scripts/pr_to_task.py --pr-url https://github.com/owner/repo/pull/456 --review-comments --agent cursor
+```
+
+Both scripts support all SimulateDev agents and can work with private repositories when properly configured with GitHub tokens.
 
 ## Configuration
 
