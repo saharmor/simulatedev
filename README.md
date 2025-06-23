@@ -5,6 +5,7 @@ SimulateDev is an automation tool that runs AI coding agents (Cursor, Devin, Cla
 
 ## ⚠️ Important Notes
 
+- macOS only: SimulateDev currently only works on macOS. Windows and Linux support are planned for future releases.
 - Ensure your coding IDEs (Cursor, Windsurf, Claude Code) are already installed and ready to use - SimulateDev doesn't handle IDE setup or installation (for now)
 - For Windsurf users: Turn on **Turbo mode** for terminal auto-execution to ensure commands run automatically. [Learn more](https://www.reddit.com/r/windsurf/comments/1kksxgh/comment/mrx2el2/)
 - SimulateDev will periodically bring the IDE to the front to monitor coding agent's progress and state. Ideally: you take your coffee break and let it work :)
