@@ -11,12 +11,10 @@ SimulateDev is an automation tool that runs AI coding agents (Cursor, Devin, Cla
 - SimulateDev will periodically bring the IDE to the front to monitor coding agent's progress and state. Ideally: you take your coffee break and let it work :)
 
 ## Run SimulateDev in <1 min
-Clone this repo → Create virtual environment → Install requirements.txt → Run the following command (replace to your coding IDE of choice and GitHub repo url):
+Clone this repo → Create virtual environment → Install requirements.txt → Copy .env.example into .env and replace API keys → Run the following command (replace to your coding IDE of choice and GitHub repo url):
 ```bash
 python simulatedev.py --workflow bugs --repo https://github.com/saharmor/gemini-multimodal-playground --agent cursor
 ```
-
-
 
 
 ## Features

@@ -496,7 +496,6 @@ class Orchestrator:
                     )
                     
                     if pr_url:
-                        response.pr_url = pr_url
                         print(f"SUCCESS: Pull request created: {pr_url}")
                         print("Opening pull request in your default browser...")
                         webbrowser.open(pr_url)
@@ -527,7 +526,9 @@ class Orchestrator:
                 success=overall_success,
                 final_output=final_output,
                 execution_log=self.execution_log,
-                test_results=test_results
+                test_results=test_results,
+                pr_url=pr_url,
+                execution_time_seconds=execution_time_seconds
             )
             
             return response

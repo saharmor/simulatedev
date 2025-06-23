@@ -70,7 +70,7 @@ Provide nothing but valid JSON in your response."""
                 f.write(f"**Prompt:** {prompt}\n\n")
                 f.write(f"**Analysis Date:** {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
                 f.write("---\n\n")
-                f.write("IMPORTANT: Do NOT create or update any documentation files (such as README.md or docs/*) unless you are explicitly asked to do so in the original prompt. If you believe that creating a documentation file would help you better implement the required coding task, you may create it, but you must delete it once you are finished and before you finish the task.\n\n")
+                f.write("IMPORTANT: Do NOT create or update any documentation files (such as README.md or docs/*) unless you are explicitly asked to do so in the original prompt. If you believe that creating a documentation file would help you better implement the required coding task, you may create it, but you must delete it once you are finished and before you finish the task.")
                 f.write(results)
             
             print("Test Agent: Analysis complete, results saved to file")
