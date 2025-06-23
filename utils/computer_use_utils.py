@@ -303,6 +303,12 @@ class LLMComputerUse:
                 print("Error: LLM client not available")
                 return None
             
+            # If IDE info is provided, ensure the window is visible (but not focused)
+            # This uses the same visibility checking as _send_prompt_to_interface
+            if ide_name and project_name:
+                if not is_project_window_visible(ide_name, project_name, auto_focus=True):
+                    print(f"WARNING: Could not make {ide_name} window for project '{project_name}' visible, continuing with full screen screenshot")
+            
             # Always take a full screen screenshot for coordinate detection
             # This ensures coordinates are relative to the entire screen for accurate clicking
             base64_image_data = take_screenshot(self.target_width, self.target_height, encode_base64=True)

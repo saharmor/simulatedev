@@ -9,7 +9,7 @@ from typing import Optional
 from .base import CodingAgent
 import os
 
-from utils.computer_use_utils import bring_to_front_window, close_ide_window_for_project
+from utils.computer_use_utils import bring_to_front_window, close_ide_window_for_project, is_ide_open_with_project
 
 class CursorAgent(CodingAgent):
     """Cursor AI coding agent implementation"""
@@ -139,6 +139,13 @@ Only analyze the right panel and provide nothing but valid JSON in your response
         try:
             # Get current project path
             project_path = os.getcwd()
+            repo_name = os.path.basename(project_path)
+            
+            # First, check if Cursor is already open with this project and close it
+            if is_ide_open_with_project(self.window_name, repo_name, verbose=False):
+                close_success = close_ide_window_for_project(self.window_name, repo_name)
+                if close_success:
+                    time.sleep(2)  # Wait for window to close completely
             
             # Open Cursor with the current project
             print(f"Opening Cursor application with project: {project_path}")
@@ -156,7 +163,6 @@ Only analyze the right panel and provide nothing but valid JSON in your response
             time.sleep(1)
             
             # Use computer_use_utils to activate window and steal focus for initial setup
-            repo_name = os.path.basename(project_path)
             ide_open_success = bring_to_front_window(self.window_name, repo_name)
             if not ide_open_success:
                 print("Warning: Could not activate Cursor window, but continuing...")
