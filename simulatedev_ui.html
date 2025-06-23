@@ -540,6 +540,10 @@
                     <button type="button" class="btn btn-primary" onclick="generateCommands()" style="margin-top: 30px; width: 100%;">
                         🚀 Generate Commands
                     </button>
+                    
+                    <button type="button" class="btn btn-secondary" onclick="startNewTask()" style="margin-top: 15px; width: 100%; display: none;" id="newTaskBtn">
+                        🔄 New Coding Task
+                    </button>
                 </form>
             </div>
 
@@ -713,8 +717,6 @@
         }
 
         function generateCommands() {
-            const generateBtn = document.querySelector('.btn-primary');
-            
             // Validate form
             const form = document.getElementById('simulatedevForm');
             if (!form.checkValidity()) {
@@ -737,11 +739,6 @@
                 return;
             }
 
-            // Show loading state
-            generateBtn.classList.add('generating');
-            generateBtn.textContent = '⚡ Generating...';
-            generateBtn.disabled = true;
-
             // Show the output section with animation
             showOutputSection();
 
@@ -753,21 +750,15 @@
             
             // Generate CLI command
             generateCliCommand();
-            
-            // Generate setup instructions
-            generateInstructions();
 
-            // Reset button state
-            setTimeout(() => {
-                generateBtn.classList.remove('generating');
-                generateBtn.textContent = '✅ Commands Generated';
-                generateBtn.disabled = false;
-                
-                // Reset button text after a delay
-                setTimeout(() => {
-                    generateBtn.textContent = '🚀 Generate Commands';
-                }, 2000);
-            }, 800);
+            // Show the "New Coding Task" button now that commands have been generated
+            const newTaskBtn = document.getElementById('newTaskBtn');
+            if (newTaskBtn) {
+                newTaskBtn.style.display = 'block';
+                console.log('New Task button should now be visible');
+            } else {
+                console.error('New Task button not found!');
+            }
 
             // Scroll to output section on mobile
             if (window.innerWidth <= 768) {
@@ -895,48 +886,7 @@ AGENT_TIMEOUT_SECONDS=1200`;
             document.getElementById('cliOutput').textContent = command;
         }
 
-        function generateInstructions() {
-            const workflow = document.getElementById('workflow').value;
-            const workflowName = workflow.charAt(0).toUpperCase() + workflow.slice(1);
-            
-            const instructions = `Setup Instructions:
 
-1. Save the .env content to a file named '.env' in your SimulateDev project root
-2. Make sure you have Python 3.8+ installed
-3. Install dependencies: pip install -r requirements.txt
-4. Install required system packages for GUI automation (pyautogui, etc.)
-5. Run the generated CLI command
-
-Prerequisites:
-- Python 3.8+ installed
-- Valid Anthropic API key with Claude access
-- GitHub token (optional, for PR creation)
-- Target repository must be accessible
-- System packages for GUI automation (varies by OS)
-
-Workflow Information:
-- Selected Workflow: ${workflowName}
-- ${workflowDescriptions[workflow] || 'Custom workflow with user-defined task'}
-
-Agent Roles:
-- Planner: Analyzes requirements and creates implementation plans
-- Coder: Implements the actual code changes
-- Tester: Creates and runs tests for the implemented features
-
-Note: Each role can only be assigned to one agent in multi-agent setups.
-
-Supported IDEs:
-- Cursor: Full integration with Claude Computer Use
-- Windsurf: Full integration with Claude Computer Use
-- Claude Code: Headless integration (no GUI automation needed)
-
-Timeout Configuration:
-- Default timeout: 20 minutes (1200 seconds)
-- Adjust AGENT_TIMEOUT_SECONDS in .env for longer/shorter tasks
-- Range: 30 seconds to 2 hours (7200 seconds)`;
-
-            document.getElementById('instructionsOutput').textContent = instructions;
-        }
 
         function generateActionList() {
             const workflow = document.getElementById('workflow').value;
@@ -1029,6 +979,62 @@ Timeout Configuration:
                 console.error('Could not copy text: ', err);
                 alert('Failed to copy to clipboard. Please copy manually.');
             });
+        }
+
+        function startNewTask() {
+            // Store environment variables before resetting
+            const anthropicKey = document.getElementById('anthropicKey').value;
+            const githubToken = document.getElementById('githubToken').value;
+
+            // Reset form fields but preserve environment variables
+            const form = document.getElementById('simulatedevForm');
+            form.reset();
+            
+            // Restore environment variables
+            document.getElementById('anthropicKey').value = anthropicKey;
+            document.getElementById('githubToken').value = githubToken;
+
+            // Hide output section
+            const mainContent = document.querySelector('.main-content');
+            const outputSection = document.querySelector('.output-section');
+            mainContent.classList.remove('show-output');
+            outputSection.classList.remove('visible');
+
+            // Reset agents container to default state
+            const agentsContainer = document.getElementById('agentsContainer');
+            agentsContainer.innerHTML = '';
+            agentCounter = 0;
+            addAgent(true); // Add default agent
+
+            // Reset workflow description
+            const workflowDescription = document.getElementById('workflowDescription');
+            const taskDescriptionGroup = document.getElementById('taskDescriptionGroup');
+            workflowDescription.style.display = 'none';
+            taskDescriptionGroup.style.display = 'none';
+
+            // Reset action list
+            document.getElementById('actionListContent').innerHTML = '';
+
+            // Reset .env output
+            document.getElementById('envOutput').textContent = 'Generate commands to see the .env file content...';
+            document.getElementById('envCopyMessage').style.display = 'none';
+
+            // Reset CLI output
+            document.getElementById('cliOutput').textContent = 'Generate commands to see the CLI command...';
+            document.getElementById('commandCopyMessage').style.display = 'none';
+
+            // Reset all copy buttons
+            document.querySelectorAll('.copy-btn').forEach(btn => {
+                btn.classList.remove('copied');
+                if (btn.textContent.includes('env')) {
+                    btn.textContent = 'Copy .env Content';
+                } else if (btn.textContent.includes('Command') || btn.textContent === 'Copied!') {
+                    btn.textContent = 'Copy Command';
+                }
+            });
+
+            // Hide the "New Coding Task" button again
+            document.getElementById('newTaskBtn').style.display = 'none';
         }
     </script>
 </body>
