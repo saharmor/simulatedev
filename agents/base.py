@@ -195,6 +195,7 @@ class MultiAgentResponse:
     execution_log: List[Dict[str, Any]]
     test_results: Optional[Dict[str, Any]] = None
     error_message: Optional[str] = None
+    execution_time_seconds: Optional[float] = None
 
 
 class CodingAgent(ABC):

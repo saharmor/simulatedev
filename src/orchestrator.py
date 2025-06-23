@@ -368,6 +368,9 @@ class Orchestrator:
 
     async def execute_task(self, request: TaskRequest) -> MultiAgentResponse:
         """Execute a task with one or more agents"""
+        # Record start time for timing measurement
+        start_time = time.time()
+        
         try:
             # Setup work directory
             work_directory = self._setup_work_directory(request)
@@ -466,6 +469,9 @@ class Orchestrator:
                 agent_name = primary_agent.coding_ide if primary_agent else "unknown"
                 self.save_agent_response(request.repo_url, agent_name, final_output)
             
+            # Calculate execution time before PR creation
+            execution_time_seconds = time.time() - start_time
+            
             # Create pull request if requested and we have a repo
             pr_url = None
             if request.create_pr and request.repo_url and overall_success:
@@ -482,7 +488,8 @@ class Orchestrator:
                         original_repo_url=request.repo_url,
                         workflow_name=f"{execution_type}",
                         agent_execution_report_summary=final_output[:1000] + "..." if len(final_output) > 1000 else final_output,
-                        coding_ides_info=coding_ides_info
+                        coding_ides_info=coding_ides_info,
+                        execution_time_seconds=execution_time_seconds
                     )
                     
                     if pr_url:
@@ -494,10 +501,18 @@ class Orchestrator:
                 except Exception as e:
                     print(f"WARNING: Pull request creation failed: {e}")
             
+            if execution_time_seconds < 60:
+                execution_time_str = f"{execution_time_seconds:.1f} seconds"
+            else:
+                minutes = int(execution_time_seconds // 60)
+                seconds = execution_time_seconds % 60
+                execution_time_str = f"{minutes}m {seconds:.1f}s"
+            
             print(f"\n{'='*60}")
             print(f"{execution_type.upper()} EXECUTION COMPLETE")
             print(f"Successful agents: {successful_executions}/{len(request.agents)}")
             print(f"Overall success: {overall_success}")
+            print(f"Total execution time: {execution_time_str}")
             if pr_url:
                 print(f"Pull Request: {pr_url}")
             print(f"{'='*60}")
@@ -509,22 +524,28 @@ class Orchestrator:
                 test_results=test_results
             )
             
-            # Add PR URL to response if available
+            # Add PR URL and execution time to response if available
             if pr_url:
                 response.pr_url = pr_url
+            response.execution_time_seconds = execution_time_seconds
             
             return response
             
         except Exception as e:
+            # Calculate execution time even for failed executions
+            execution_time_seconds = time.time() - start_time
             error_msg = f"Task execution failed: {str(e)}"
             print(f"{error_msg}")
             
-            return MultiAgentResponse(
+            response = MultiAgentResponse(
                 success=False,
                 final_output="",
                 execution_log=self.execution_log,
                 error_message=error_msg
             )
+            response.execution_time_seconds = execution_time_seconds
+            
+            return response
     
     def save_execution_report(self, response: MultiAgentResponse, 
                             output_file: str = "execution_report.json") -> str:
@@ -541,6 +562,10 @@ class Orchestrator:
         # Add PR URL if available
         if hasattr(response, 'pr_url') and response.pr_url:
             report["pr_url"] = response.pr_url
+        
+        # Add execution time if available
+        if hasattr(response, 'execution_time_seconds') and response.execution_time_seconds is not None:
+            report["execution_time_seconds"] = response.execution_time_seconds
         
         # If output_file is a relative path (no directory separator), 
         # save it in the execution output directory

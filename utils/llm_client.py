@@ -614,7 +614,8 @@ Analyze the image and provide your assessment in the required JSON format."""
 def generate_commit_and_pr_content_with_llm(
     agent_execution_report_summary: str,
     workflow_name: str,
-    coding_ides_info: Optional[str] = None
+    coding_ides_info: Optional[str] = None,
+    execution_time_seconds: Optional[float] = None
 ) -> Dict[str, Any]:
     """
     Use the configured LLM provider to generate both commit message and PR content using structured response
@@ -623,6 +624,7 @@ def generate_commit_and_pr_content_with_llm(
         agent_execution_report_summary: The summary/output from the coding agent
         workflow_name: Name of the workflow used (preset workflow name or task description for custom coding)
         coding_ides_info: Optional information about coding IDEs used (roles, models, etc.)
+        execution_time_seconds: Optional execution time in seconds
         
     Returns:
         Dict with 'commit_message', 'pr_title', 'pr_description', 'pr_changes_summary', and 'branch_name' keys
@@ -665,7 +667,7 @@ Guidelines for branch name:
 - Examples: "feature/user-auth", "fix/login-bug", "refactor/api-endpoints"
 - Avoid special characters except hyphens and forward slashes"""
 
-    # Build user message with optional IDE information
+    # Build user message with optional IDE information and execution time
     user_message_parts = [
         f"Workflow: {workflow_name}",
         "",
@@ -678,6 +680,20 @@ Guidelines for branch name:
             "",
             "Coding IDEs Information:",
             coding_ides_info
+        ])
+    
+    if execution_time_seconds is not None:
+        if execution_time_seconds < 60:
+            time_str = f"{execution_time_seconds:.1f} seconds"
+        else:
+            minutes = int(execution_time_seconds // 60)
+            seconds = execution_time_seconds % 60
+            time_str = f"{minutes}m {seconds:.1f}s"
+        
+        user_message_parts.extend([
+            "",
+            "Execution Time:",
+            f"The coding task took {time_str} to complete."
         ])
     
     user_message_parts.extend([
