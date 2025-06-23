@@ -9,7 +9,7 @@ from typing import Optional
 from .base import CodingAgent
 import os
 
-from utils.computer_use_utils import bring_to_front_window, close_ide_window_for_project, is_ide_open_with_project
+from utils.computer_use_utils import bring_to_front_window, close_ide_window_for_project
 
 class CursorAgent(CodingAgent):
     """Cursor AI coding agent implementation"""
@@ -54,24 +54,7 @@ Only analyze the right panel and provide nothing but valid JSON in your response
     def input_field_prompt(self) -> str:
         return 'Input box for the Cursor Agent which starts with \'Plan, search, build anything\'. Usually, it\'s in the right pane of the screen'
     
-    async def is_coding_agent_open(self) -> bool:
-        """Check if Cursor chat interface is currently open and ready"""
-        try:
-            # First check if we have the correct project open (if project name is set)
-            if self._current_project_name:
-                if not self.is_ide_open_with_correct_project():
-                    return False
-            
-            # Then check if the input field is available
-            input_coords = await self.get_input_field_coordinates()
-            if input_coords:
-                return True
-            else:
-                print(f"INFO: {self.agent_name} interface not detected")
-                return False
-        except Exception as e:
-            print(f"INFO: Could not detect {self.agent_name} interface: {str(e)}")
-            return False
+
     
     async def open_coding_interface(self) -> bool:
         """Open Cursor IDE and chat interface"""
@@ -99,37 +82,7 @@ Only analyze the right panel and provide nothing but valid JSON in your response
             print(f"WARNING: Could not verify {self.agent_name} interface opened with correct project")
             return False
     
-    async def close_coding_interface(self) -> bool:
-        """Close Cursor IDE window for the current project only"""
-        try:
-            if not self._current_project_name:
-                print(f"WARNING: No project name set for {self.agent_name}, cannot close project-specific window")
-                return True  # Return True since we can't identify what to close
-            
-            # Check if Cursor is open with our project
-            if not self.is_ide_open_with_correct_project():
-                return True
-            
-            # Use utility function to close the specific Cursor window
-            close_success = close_ide_window_for_project(self.window_name, self._current_project_name)
-            
-            if close_success:
-                # Wait a moment for the window to close
-                time.sleep(2)
-                
-                # Verify the window was closed
-                if not self.is_ide_open_with_correct_project():
-                    print(f"SUCCESS: {self.agent_name} window for project '{self._current_project_name}' was closed")
-                    return True
-                else:
-                    print(f"WARNING: {self.agent_name} window for project '{self._current_project_name}' may still be open")
-                    return False
-            else:
-                return False
-                
-        except Exception as e:
-            print(f"ERROR: Failed to close {self.agent_name} interface: {str(e)}")
-            return False
+
     
     async def _ensure_cursor_app_open(self):
         """Ensure Cursor application is open"""
@@ -139,19 +92,11 @@ Only analyze the right panel and provide nothing but valid JSON in your response
         try:
             # Get current project path
             project_path = os.getcwd()
-            repo_name = os.path.basename(project_path)
-            
-            # First, check if Cursor is already open with this project and close it
-            if is_ide_open_with_project(self.window_name, repo_name, verbose=False):
-                close_success = close_ide_window_for_project(self.window_name, repo_name)
-                if close_success:
-                    time.sleep(2)  # Wait for window to close completely
             
             # Open Cursor with the current project
-            print(f"Opening Cursor application with project: {project_path}")
             subprocess.run(["open", "-a", self.window_name, project_path])
-            print("Waiting 5 seconds for app to start...")
-            time.sleep(5)  # wait for the app to start
+            print("Waiting 3 seconds for app to start...")
+            time.sleep(3)  # wait for the app to start
             
             # Activate the application
             activate_script = f'''
@@ -163,6 +108,7 @@ Only analyze the right panel and provide nothing but valid JSON in your response
             time.sleep(1)
             
             # Use computer_use_utils to activate window and steal focus for initial setup
+            repo_name = os.path.basename(project_path)
             ide_open_success = bring_to_front_window(self.window_name, repo_name)
             if not ide_open_success:
                 print("Warning: Could not activate Cursor window, but continuing...")

@@ -249,17 +249,22 @@ class CodingAgent(ABC):
         from utils.computer_use_utils import is_ide_open_with_project
         return is_ide_open_with_project(self.window_name, self._current_project_name, verbose=False)
     
-    @abstractmethod
     async def is_coding_agent_open(self) -> bool:
         """Check if the agent is currently running and ready to accept commands
         
-        Each agent should implement its own logic for checking if it's running.
-        This could involve checking for specific windows, processes, or interface elements.
+        Check if the agent is open and has the correct project loaded.
         
         Returns:
             bool: True if the agent is running and ready, False otherwise
         """
-        pass
+        try:
+            if not self._current_project_name or not self.is_ide_open_with_correct_project():
+                return False
+            
+            return True
+        except Exception as e:
+            print(f"INFO: Could not detect {self.agent_name} interface: {str(e)}")
+            return False
     
     async def is_coding_agent_open_with_project(self) -> bool:
         """Check if the agent is open AND has the correct project loaded
@@ -295,19 +300,47 @@ class CodingAgent(ABC):
         """
         pass
     
-    @abstractmethod
     async def close_coding_interface(self) -> bool:
         """Close the agent's coding interface for the current project
         
-        Each agent should implement its own logic for:
-        1. Checking if the interface is open with the current project
-        2. Closing only the interface/window for the current project
-        3. Leaving other projects/windows untouched
+        This default implementation handles GUI-based IDEs:
+        1. Checks if the interface is open with the current project
+        2. Closes only the interface/window for the current project
+        3. Leaves other projects/windows untouched
+        
+        Subclasses can override this for different behavior (e.g., headless agents).
         
         Returns:
             bool: True if interface was closed successfully or wasn't open, False on error
         """
-        pass
+        try:
+            if not self._current_project_name:
+                print(f"WARNING: No project name set for {self.agent_name}, cannot close project-specific window")
+                return True  # Return True since we can't identify what to close
+            
+            # Check if the IDE is open with our project
+            if not self.is_ide_open_with_correct_project():
+                return True # Nothing to close
+            
+            # Use utility function to close the specific IDE window
+            from utils.computer_use_utils import close_ide_window_for_project
+            close_success = close_ide_window_for_project(self.window_name, self._current_project_name)
+            
+            if close_success:
+                # Wait a moment for the window to close
+                time.sleep(1)
+                
+                # Verify the window was closed
+                if not self.is_ide_open_with_correct_project():
+                    return True # Window was closed
+                else:
+                    return False # Window was not closed
+            else:
+                return False
+                
+        except Exception as e:
+            print(f"ERROR: Failed to close {self.agent_name} interface: {str(e)}")
+            return False
     
     async def get_input_field_coordinates(self):
         """Get the coordinates of the input field using full screen screenshot with window context"""

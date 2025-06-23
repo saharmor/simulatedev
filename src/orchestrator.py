@@ -15,7 +15,7 @@ from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 from datetime import datetime
 
-from utils.computer_use_utils import LLMComputerUse
+from utils.computer_use_utils import LLMComputerUse, close_ide_window_for_project
 from agents import (
     AgentFactory, CodingAgentIdeType, AgentRole, MultiAgentTask, 
     AgentDefinition, AgentContext, MultiAgentResponse
@@ -275,9 +275,12 @@ class Orchestrator:
                 # Set current project for window title checking
                 agent.set_current_project(work_directory)
                 
-                # Check if agent interface is already open with correct project, if not open it
-                if not await agent.is_coding_agent_open_with_project():
-                    await agent.open_coding_interface()
+                # Always close any existing IDE window with this project first to ensure clean state
+                repo_name = os.path.basename(work_directory)
+                close_ide_window_for_project(agent.window_name, repo_name)
+                time.sleep(2)  # Wait for window to close completely
+                
+                await agent.open_coding_interface()
                 
                 response = await agent.execute_prompt(prompt)
                 
