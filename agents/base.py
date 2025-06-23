@@ -335,9 +335,7 @@ class CodingAgent(ABC):
             
             # Step 3: Ask agent to save output
             print(f"Asking {self.agent_name} to save output to {self.output_file}...")
-            save_prompt = f"""Save a comprehensive summary of everything you did to a file called '{self.output_file}' in the current directory. Include:
-- All changes made
-- Explanations of what was done"""
+            save_prompt = f"""Save a summary of everything you did to a file called '{self.output_file}' in the current directory. Include:\n- All changes made\n- Explanations of what was done.\n\nIMPORTANT: Do NOT create or update any documentation files (such as README.md or docs/*) unless you are explicitly asked to do so in the original prompt. If you believe that creating a documentation file would help you better implement the required coding task, you may create it, but you must delete it once you are finished and before you finish the task.\n"""
             
             # Ensure the window is focused before sending the save prompt
             if self._current_project_name:
