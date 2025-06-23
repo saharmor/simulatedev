@@ -288,14 +288,15 @@ class LLMComputerUse:
                                                ide_name: str = None, project_name: str = None) -> Optional[ComputerUseAction]:
         """Get coordinates and action type from vision model based on a natural language prompt
         
-        NOTE: This method always uses full screen screenshots since coordinates need to be 
-        relative to the entire screen for accurate clicking operations.
+        This method prioritizes IDE window screenshots when IDE parameters are provided to avoid
+        confusion from multiple windows. It then calculates absolute screen coordinates from
+        the relative window coordinates for accurate clicking.
         
         Args:
             prompt: Natural language prompt describing the UI element to find
             support_non_existing_elements: Whether to allow non-existing elements in response
-            ide_name: Optional IDE name to provide window context (for prompt enhancement)
-            project_name: Optional project name to provide window context (for prompt enhancement)
+            ide_name: Optional IDE name - when provided with project_name, uses IDE window screenshot
+            project_name: Optional project name - when provided with ide_name, uses IDE window screenshot
         """
         try:
             # Check if LLM client is available
@@ -303,24 +304,49 @@ class LLMComputerUse:
                 print("Error: LLM client not available")
                 return None
             
-            # If IDE info is provided, ensure the window is visible (but not focused)
-            # This uses the same visibility checking as _send_prompt_to_interface
+            image_buffer = None
+            screenshot_metadata = None
+            
+            # Try to use IDE window screenshot if both IDE name and project name are provided
             if ide_name and project_name:
-                if not is_project_window_visible(ide_name, project_name, auto_focus=True):
-                    print(f"WARNING: Could not make {ide_name} window for project '{project_name}' visible, continuing with full screen screenshot")
+                # Ensure the window is visible
+                if is_project_window_visible(ide_name, project_name, auto_focus=True):
+                    # Take IDE window screenshot with metadata
+                    ide_screenshot_result = take_ide_window_screenshot(
+                        ide_name, 
+                        project_name, 
+                        target_width=self.target_width, 
+                        target_height=self.target_height, 
+                        encode_base64=False, 
+                        verbose=False, 
+                        return_metadata=True
+                    )
+                    
+                    if ide_screenshot_result:
+                        image_buffer, screenshot_metadata = ide_screenshot_result
+                        self.last_screenshot_metadata = screenshot_metadata
+                    else:
+                        print(f"WARNING: Failed to capture IDE window screenshot, falling back to full screen")
+                else:
+                    print(f"WARNING: Could not make {ide_name} window for project '{project_name}' visible, falling back to full screen")
             
-            # Always take a full screen screenshot for coordinate detection
-            # This ensures coordinates are relative to the entire screen for accurate clicking
-            base64_image_data = take_screenshot(self.target_width, self.target_height, encode_base64=True)
-            self.last_screenshot_metadata = ScreenshotMetadata(ScreenshotType.FULL_SCREEN)
+            # Fallback to full screen screenshot if IDE screenshot failed or wasn't requested
+            if image_buffer is None:
+                base64_image_data = take_screenshot(self.target_width, self.target_height, encode_base64=True)
+                screenshot_metadata = ScreenshotMetadata(ScreenshotType.FULL_SCREEN)
+                self.last_screenshot_metadata = screenshot_metadata
+                
+                # Convert base64 string to BytesIO for llm_client
+                image_data = base64.b64decode(base64_image_data)
+                image_buffer = io.BytesIO(image_data)
             
-            # Convert base64 string to BytesIO for llm_client
-            image_data = base64.b64decode(base64_image_data)
-            image_buffer = io.BytesIO(image_data)
-            
-            # Enhance the prompt with window title context if IDE parameters are provided
+            # Create enhanced prompt - simpler for IDE screenshots since they're already focused
             enhanced_prompt = prompt
-            if ide_name and project_name:
+            if screenshot_metadata and screenshot_metadata.screenshot_type == ScreenshotType.WINDOW_SPECIFIC:
+                # For window screenshots, the prompt can be more direct since we're already focused on the right window
+                enhanced_prompt = f"{prompt}. This screenshot shows the {ide_name} IDE window for project '{project_name}'."
+            elif ide_name and project_name:
+                # For full screen fallback, add window context
                 window_title = get_ide_window_title_for_project(ide_name, project_name)
                 if window_title:
                     enhanced_prompt = f"{prompt}. Focus on the window titled '{window_title}' if multiple {ide_name} windows are visible."
@@ -357,8 +383,8 @@ Use "click" for buttons/links and "type" for text inputs."""
             x = result.action.coordinates.x
             y = result.action.coordinates.y
             
-            # Scale coordinates using full screen metadata (no window offset needed)
-            real_x, real_y = self.scale_coordinates(ScalingSource.API, x, y, self.last_screenshot_metadata)
+            # Scale coordinates using the appropriate metadata
+            real_x, real_y = self.scale_coordinates(ScalingSource.API, x, y, screenshot_metadata)
             
             return ComputerUseAction(
                 action_type=action_type,
@@ -368,6 +394,99 @@ Use "click" for buttons/links and "type" for text inputs."""
         except Exception as e:
             print(f"Error getting coordinates from LLM: {e}")
             return None
+
+    async def get_ide_input_coordinates(self, prompt: str, ide_name: str, project_name: str, 
+                                       support_non_existing_elements: bool = False) -> Optional[ComputerUseAction]:
+        """
+        Convenience method specifically for finding input coordinates within IDE windows.
+        
+        This method is optimized for IDE operations and will:
+        1. Always attempt to use IDE window screenshots first for better accuracy
+        2. Provide clear error messages if the IDE window is not available
+        3. Calculate precise screen coordinates for clicking/typing
+        
+        Args:
+            prompt: Natural language prompt describing the UI element to find
+            ide_name: Name of the IDE (cursor, windsurf, etc.)
+            project_name: Name of the project to find in window titles
+            support_non_existing_elements: Whether to allow non-existing elements in response
+            
+        Returns:
+            ComputerUseAction with absolute screen coordinates, or None if failed
+        """
+        if not ide_name or not project_name:
+            print("Error: Both ide_name and project_name are required for IDE input coordinate detection")
+            return None
+        
+        # Validate that the IDE is available before attempting coordinate detection
+        if not is_ide_open_with_project(ide_name, project_name, verbose=False):
+            print(f"Error: {ide_name} is not open with project '{project_name}'. Please ensure the IDE is running and the project is loaded.")
+            return None
+        
+        # Use the main coordinate detection method with IDE parameters
+        result = await self.get_coordinates_from_vision_model(
+            prompt=prompt,
+            support_non_existing_elements=support_non_existing_elements,
+            ide_name=ide_name,
+            project_name=project_name
+        )
+        
+        if result is None:
+            print(f"Failed to find UI element '{prompt}' in {ide_name} window for project '{project_name}'")
+        
+        return result
+
+    async def perform_ide_action(self, prompt: str, ide_name: str, project_name: str, 
+                                 text_to_type: str = None, support_non_existing_elements: bool = False) -> bool:
+        """
+        Perform a complete action (find + click/type) within an IDE window.
+        
+        This is a high-level convenience method that:
+        1. Finds the UI element using IDE window screenshot
+        2. Calculates absolute screen coordinates 
+        3. Performs the click or type action
+        
+        Args:
+            prompt: Natural language prompt describing the UI element to find
+            ide_name: Name of the IDE (cursor, windsurf, etc.)
+            project_name: Name of the project to find in window titles
+            text_to_type: Text to type if this is a typing action (None for click actions)
+            support_non_existing_elements: Whether to allow non-existing elements in response
+            
+        Returns:
+            True if the action was performed successfully, False otherwise
+        """
+        try:
+            # Get the coordinates
+            action = await self.get_ide_input_coordinates(
+                prompt=prompt,
+                ide_name=ide_name,
+                project_name=project_name,
+                support_non_existing_elements=support_non_existing_elements
+            )
+            
+            if not action:
+                return False
+            
+            # Perform the action
+            if action.action_type == ActionType.CLICK:
+                pyautogui.click(action.coordinates.x, action.coordinates.y)
+                return True
+            elif action.action_type == ActionType.TYPE:
+                if text_to_type is None:
+                    print("Error: text_to_type is required for TYPE actions")
+                    return False
+                pyautogui.click(action.coordinates.x, action.coordinates.y)
+                time.sleep(0.1)  # Brief pause to ensure focus
+                pyautogui.typewrite(text_to_type)
+                return True
+            else:
+                print(f"Error: Unknown action type {action.action_type}")
+                return False
+                
+        except Exception as e:
+            print(f"Error performing IDE action: {e}")
+            return False
 
 
 def get_ide_window_title_for_project(ide_name: str, project_name: str) -> Optional[str]:
@@ -636,7 +755,6 @@ def close_ide_window_for_project(app_name: str, project_name: str) -> bool:
         
         # Validate IDE is running with project
         if not is_ide_open_with_project(ide_context.app_name, project_name, verbose=False):
-            print(f"{ide_context.display_name} is not open with project '{project_name}'")
             return True  # Nothing to close
         
         # Discover the project window
@@ -702,9 +820,9 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
     """
     Capture a screenshot of the specific IDE window that contains the project name.
     
-    NOTE: This function should ONLY be used for IDE state monitoring (e.g., checking if IDE is done processing).
-    For coordinate detection (e.g., finding input boxes, buttons), use take_screenshot() with full screen
-    since coordinates need to be relative to the entire screen for accurate clicking.
+    This function is now used for both IDE state monitoring and coordinate detection.
+    When used for coordinate detection (with return_metadata=True), the returned metadata
+    contains window bounds information needed to calculate absolute screen coordinates.
     
     Args:
         ide_name: Name of the IDE (cursor, windsurf, etc.)
@@ -713,7 +831,7 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
         target_height: Target height for the processed image (defaults to calculated based on screen aspect ratio)
         encode_base64: Whether to return base64 encoded string instead of BytesIO
         verbose: Whether to print detailed error messages
-        return_metadata: Whether to return metadata along with the image
+        return_metadata: Whether to return metadata along with the image (required for coordinate detection)
         
     Returns:
         If return_metadata=False: Image data as string (base64) or BytesIO
@@ -748,6 +866,11 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
         
         x, y, width, height = bounds
         
+        if verbose:
+            # Also get the window title for debugging
+            window_title = get_ide_window_title_for_project(ide_name, project_name)
+            print(f"DEBUG: Found window '{window_title}' with bounds: x={x}, y={y}, w={width}, h={height}")
+        
         # Create a temporary file for the screenshot
         import tempfile
         fd, path = tempfile.mkstemp(suffix='.png')
@@ -761,6 +884,9 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
             path
         ]
         
+        if verbose:
+            print(f"DEBUG: Taking screenshot with bounds: x={x}, y={y}, w={width}, h={height}")
+        
         try:
             subprocess.run(cmd, check=True)
         except subprocess.CalledProcessError as e:
@@ -771,15 +897,20 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
         
         # Open and process the image
         image = Image.open(path)
-        original_width, original_height = image.size
+        captured_width, captured_height = image.size
         
-        # Create metadata
+        if verbose:
+            print(f"DEBUG: Captured image size: {captured_width}x{captured_height}, expected: {width}x{height}")
+        
+        # IMPORTANT: Use the window dimensions from AppleScript, not the captured image dimensions
+        # The captured image might have different dimensions due to Retina scaling or other factors
+        # but we need to use the logical window dimensions for coordinate transformation
         metadata = ScreenshotMetadata(
             screenshot_type=ScreenshotType.WINDOW_SPECIFIC,
             window_x=x,
             window_y=y,
-            original_width=original_width,
-            original_height=original_height
+            original_width=width,  # Use window width from AppleScript
+            original_height=height  # Use window height from AppleScript
         )
         
         # Delete the temporary file
@@ -789,7 +920,19 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
         processed_image = ImageProcessor.process_image_to_buffer(image, target_width, target_height, encode_base64)
         
         if verbose:
-            print(f"Successfully captured screenshot: {original_width}x{original_height} -> {target_width}x{target_height}")
+            print(f"Successfully captured screenshot: {captured_width}x{captured_height} -> {target_width}x{target_height}")
+        
+        # Always save a debug copy of the screenshot to see what we're actually capturing
+        debug_path = f"/tmp/debug_ide_screenshot_{ide_name}_{project_name}.png"
+        try:
+            # Save the resized image that will be sent to the LLM
+            if isinstance(processed_image, io.BytesIO):
+                processed_image.seek(0)
+                debug_image = Image.open(processed_image)
+                debug_image.save(debug_path)
+                processed_image.seek(0)  # Reset buffer position
+        except Exception as e:
+            print(f"Could not save debug screenshot: {e}")
         
         # Return based on whether metadata is requested
         if return_metadata:
@@ -812,33 +955,15 @@ def is_project_window_visible(agent_name: str, project_name: str, auto_focus: bo
         if not is_ide_open_with_project(ide_context.app_name, project_name, verbose=False):
             return False
         
-        # Check if the window is accessible (visible)
-        bounds = get_window_bounds(agent_name, project_name)
-        if bounds:
-            # Window is already visible and accessible
-            return True
-        
-        # If auto_focus is disabled, don't try to make it visible
-        if not auto_focus:
-            return False
-        
         # Window is not visible - try to bring it to front (without stealing focus)
         focus_success = bring_to_front_window(agent_name, project_name)
-        if focus_success:
-            # Wait a moment for the window to become visible
-            time.sleep(0.5)
-            
-            # Check again if the window is now visible/accessible
-            bounds = get_window_bounds(agent_name, project_name)
-            if bounds:
-                return True
-            else:
-                print(f"WARNING: Could not make {ide_context.display_name} window for project '{project_name}' visible")
-                return False
-        else:
+        if not focus_success:
             print(f"ERROR: Failed to bring {ide_context.display_name} window for project '{project_name}' to front")
             return False
-            
+        
+        # Wait a moment for the window to become visible
+        time.sleep(0.5)
+        return True
     except Exception as e:
         print(f"Error checking if {agent_name} project window is visible: {e}")
         return False

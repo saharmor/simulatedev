@@ -246,7 +246,6 @@ def initialize_llm_client():
                 print(f"Error: Invalid LLM provider '{provider}'. Please set LLM_PROVIDER to 'anthropic' or 'openai'.")
             return False
         
-        print(f"Successfully initialized LLM client using {llm_client.provider.upper()} provider")
         return True
     except Exception as e:
         print(f"Error initializing LLM client: {e}")

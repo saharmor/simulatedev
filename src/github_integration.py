@@ -314,7 +314,7 @@ class GitHubIntegration:
                 check=True,
                 capture_output=True
             )
-            print(f"SUCCESS: Committed changes: {commit_message}")
+            print(f"SUCCESS: Committed changes")
             return True
             
         except subprocess.CalledProcessError as e:

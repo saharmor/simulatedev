@@ -496,6 +496,7 @@ class Orchestrator:
                     )
                     
                     if pr_url:
+                        response.pr_url = pr_url
                         print(f"SUCCESS: Pull request created: {pr_url}")
                         print("Opening pull request in your default browser...")
                         webbrowser.open(pr_url)
@@ -511,6 +512,8 @@ class Orchestrator:
                 seconds = execution_time_seconds % 60
                 execution_time_str = f"{minutes}m {seconds:.1f}s"
             
+            response.execution_time_seconds = execution_time_seconds
+
             print(f"\n{'='*60}")
             print(f"{execution_type.upper()} EXECUTION COMPLETE")
             print(f"Successful agents: {successful_executions}/{len(request.agents)}")
@@ -526,11 +529,6 @@ class Orchestrator:
                 execution_log=self.execution_log,
                 test_results=test_results
             )
-            
-            # Add PR URL and execution time to response if available
-            if pr_url:
-                response.pr_url = pr_url
-            response.execution_time_seconds = execution_time_seconds
             
             return response
             

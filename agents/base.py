@@ -422,7 +422,6 @@ class CodingAgent(ABC):
         time.sleep(1.0)
         
         # Copy prompt to clipboard and paste it
-        print(f"Pasting prompt into {self.agent_name}...")
         pyperclip.copy(prompt)
         time.sleep(0.5)
         
