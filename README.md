@@ -8,7 +8,7 @@ For additional scripts and utilities, see the [scripts directory](scripts/README
 
 https://github.com/user-attachments/assets/13b35289-3f38-4a46-a176-9c8e85892fe9
 
-SimulateDev addresses an [open issue](https://github.com/tavily-ai/tavily-python/issues/93) in Tavily's Python, submitting [a PR](https://github.com/tavily-ai/tavily-python/pull/118) to solve it
+SimulateDev addresses an [open issue](https://github.com/tavily-ai/tavily-python/issues/93) in Tavily's Python, submitting a [pull request](https://github.com/tavily-ai/tavily-python/pull/118) to solve it
 
 
 ## ⚠️ Important Notes
