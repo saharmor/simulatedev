@@ -143,6 +143,42 @@
             margin: 0;
         }
 
+        .radio-group {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 12px;
+            padding: 12px;
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            transition: border-color 0.3s ease;
+        }
+
+        .radio-group:hover {
+            border-color: #3498db;
+        }
+
+        .radio-group input[type="radio"] {
+            width: auto;
+            margin: 0;
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
+
+        .radio-group label {
+            margin: 0;
+            font-weight: 500;
+            color: #2c3e50;
+            cursor: pointer;
+            flex: 1;
+        }
+
+        .radio-group.selected {
+            border-color: #3498db;
+            background: #f8f9fa;
+        }
+
         .agents-section {
             border: 2px solid #e9ecef;
             border-radius: 8px;
@@ -494,6 +530,8 @@
                                 <option value="refactor">Code Refactoring - Improve code quality and maintainability</option>
                                 <option value="low-hanging">Low-Hanging Fruit - Find and implement easy improvements</option>
                                 <option value="custom">Custom Coding - Custom tasks with your own prompt</option>
+                                <option value="issue-fix">Issue Fix - Convert GitHub issue to pull request</option>
+                                <option value="pr-review">PR Review & Fix - Improve existing pull requests</option>
                             </select>
                             <div id="workflowDescription" class="workflow-description" style="display: none;"></div>
                         </div>
@@ -503,7 +541,39 @@
                             <textarea id="taskDescription" placeholder="Describe the coding task you want to accomplish..."></textarea>
                         </div>
 
-                        <div class="form-group">
+                        <div class="form-group" id="issueUrlGroup" style="display: none;">
+                            <label for="issueUrl">GitHub Issue URL <span class="required">*</span></label>
+                            <input type="url" id="issueUrl" placeholder="https://github.com/username/repository/issues/123">
+                            <div class="help-text">URL of the GitHub issue you want to fix</div>
+                        </div>
+
+                        <div class="form-group" id="prUrlGroup" style="display: none;">
+                            <label for="prUrl">GitHub Pull Request URL <span class="required">*</span></label>
+                            <input type="url" id="prUrl" placeholder="https://github.com/username/repository/pull/123">
+                            <div class="help-text">URL of the GitHub pull request you want to improve</div>
+                        </div>
+
+                        <div class="form-group" id="prTaskGroup" style="display: none;">
+                            <label>PR Custom Improvement Mode</label>
+                            <div style="margin-top: 15px;">
+                                <div class="radio-group">
+                                    <input type="radio" id="reviewComments" name="prMode" value="review-comments">
+                                    <label for="reviewComments">Address review comments automatically</label>
+                                </div>
+                                <div class="radio-group">
+                                    <input type="radio" id="customPrTask" name="prMode" value="custom-task">
+                                    <label for="customPrTask">Custom improvement task</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group" id="prCustomTaskGroup" style="display: none;">
+                            <label for="prCustomTask">Custom PR Task <span class="required">*</span></label>
+                            <textarea id="prCustomTask" placeholder="Describe what you want to improve or add to this PR..."></textarea>
+                            <div class="help-text">Examples: "Add comprehensive tests", "Improve error handling", "Optimize performance"</div>
+                        </div>
+
+                        <div class="form-group" id="repoUrlGroup">
                             <label for="repoUrl">GitHub Repository URL <span class="required">*</span></label>
                             <input type="url" id="repoUrl" placeholder="https://github.com/username/repository" required>
                             <div class="help-text">Must be a valid GitHub repository URL</div>
@@ -611,7 +681,9 @@
             'optimize': 'Find and implement one high-value performance optimization to improve your application\'s speed and efficiency.',
             'refactor': 'Improve code quality, maintainability, and structure through systematic refactoring.',
             'low-hanging': 'Find and implement one impressive low-hanging fruit improvement that provides quick wins.',
-            'custom': 'Custom coding tasks with your own prompt. Perfect for feature development, bug fixes, and custom programming tasks.'
+            'custom': 'Custom coding tasks with your own prompt. Perfect for feature development, bug fixes, and custom programming tasks.',
+            'issue-fix': 'Convert a GitHub issue into a comprehensive fix with automatic pull request creation.',
+            'pr-review': 'Improve existing pull requests by addressing review comments or adding custom improvements.'
         };
 
         let agentCounter = 0;
@@ -625,6 +697,15 @@
                 const description = document.getElementById('workflowDescription');
                 const taskDescriptionGroup = document.getElementById('taskDescriptionGroup');
                 const taskDescriptionField = document.getElementById('taskDescription');
+                const issueUrlGroup = document.getElementById('issueUrlGroup');
+                const issueUrlField = document.getElementById('issueUrl');
+                const prUrlGroup = document.getElementById('prUrlGroup');
+                const prUrlField = document.getElementById('prUrl');
+                const prTaskGroup = document.getElementById('prTaskGroup');
+                const prCustomTaskGroup = document.getElementById('prCustomTaskGroup');
+                const prCustomTaskField = document.getElementById('prCustomTask');
+                const repoUrlGroup = document.getElementById('repoUrlGroup');
+                const repoUrlField = document.getElementById('repoUrl');
                 const selectedWorkflow = this.value;
                 
                 if (selectedWorkflow && workflowDescriptions[selectedWorkflow]) {
@@ -634,15 +715,76 @@
                     description.style.display = 'none';
                 }
 
-                // Show/hide task description based on workflow
+                // Reset all fields
+                taskDescriptionGroup.style.display = 'none';
+                taskDescriptionField.required = false;
+                taskDescriptionField.value = '';
+                
+                issueUrlGroup.style.display = 'none';
+                issueUrlField.required = false;
+                issueUrlField.value = '';
+                
+                prUrlGroup.style.display = 'none';
+                prUrlField.required = false;
+                prUrlField.value = '';
+                
+                prTaskGroup.style.display = 'none';
+                prCustomTaskGroup.style.display = 'none';
+                prCustomTaskField.required = false;
+                prCustomTaskField.value = '';
+                
+                            // Reset radio buttons and visual states
+            document.getElementById('reviewComments').checked = false;
+            document.getElementById('customPrTask').checked = false;
+            document.querySelectorAll('.radio-group').forEach(group => {
+                group.classList.remove('selected');
+            });
+
+                // Show/hide fields based on workflow
                 if (selectedWorkflow === 'custom') {
                     taskDescriptionGroup.style.display = 'block';
                     taskDescriptionField.required = true;
+                    repoUrlGroup.style.display = 'block';
+                    repoUrlField.required = true;
+                } else if (selectedWorkflow === 'issue-fix') {
+                    issueUrlGroup.style.display = 'block';
+                    issueUrlField.required = true;
+                    repoUrlGroup.style.display = 'none';
+                    repoUrlField.required = false;
+                } else if (selectedWorkflow === 'pr-review') {
+                    prUrlGroup.style.display = 'block';
+                    prUrlField.required = true;
+                    prTaskGroup.style.display = 'block';
+                    repoUrlGroup.style.display = 'none';
+                    repoUrlField.required = false;
                 } else {
-                    taskDescriptionGroup.style.display = 'none';
-                    taskDescriptionField.required = false;
-                    taskDescriptionField.value = ''; // Clear the field when hidden
+                    // Standard workflows (bugs, optimize, refactor, low-hanging)
+                    repoUrlGroup.style.display = 'block';
+                    repoUrlField.required = true;
                 }
+            });
+
+            // Add PR mode handler
+            document.querySelectorAll('input[name="prMode"]').forEach(radio => {
+                radio.addEventListener('change', function() {
+                    const prCustomTaskGroup = document.getElementById('prCustomTaskGroup');
+                    const prCustomTaskField = document.getElementById('prCustomTask');
+                    
+                    // Update visual selection state
+                    document.querySelectorAll('.radio-group').forEach(group => {
+                        group.classList.remove('selected');
+                    });
+                    this.closest('.radio-group').classList.add('selected');
+                    
+                    if (this.value === 'custom-task') {
+                        prCustomTaskGroup.style.display = 'block';
+                        prCustomTaskField.required = true;
+                    } else {
+                        prCustomTaskGroup.style.display = 'none';
+                        prCustomTaskField.required = false;
+                        prCustomTaskField.value = '';
+                    }
+                });
             });
         });
 
@@ -657,6 +799,13 @@
 
             agentDiv.innerHTML = `
                 <div>
+                    <label>Role</label>
+                    <select name="role" required onchange="updateRoleDropdowns()">
+                        <option value="">Select Role...</option>
+                        ${agentConfigs.roles.map(role => `<option value="${role}" ${isDefault && role === 'Coder' ? 'selected' : ''} ${usedRoles.includes(role) ? 'disabled' : ''}>${role}</option>`).join('')}
+                    </select>
+                </div>
+                <div>
                     <label>IDE</label>
                     <select name="ide" required>
                         <option value="">Select IDE...</option>
@@ -668,13 +817,6 @@
                     <select name="model" required>
                         <option value="">Select Model...</option>
                         ${agentConfigs.models.map(model => `<option value="${model}" ${isDefault && model === 'claude-4-sonnet' ? 'selected' : ''}>${model}</option>`).join('')}
-                    </select>
-                </div>
-                <div>
-                    <label>Role</label>
-                    <select name="role" required onchange="updateRoleDropdowns()">
-                        <option value="">Select Role...</option>
-                        ${agentConfigs.roles.map(role => `<option value="${role}" ${isDefault && role === 'Coder' ? 'selected' : ''} ${usedRoles.includes(role) ? 'disabled' : ''}>${role}</option>`).join('')}
                     </select>
                 </div>
                 <div>
@@ -730,6 +872,22 @@
             if (workflow === 'custom' && !taskDescription.trim()) {
                 alert('Task description is required for custom coding tasks.');
                 return;
+            }
+
+            // Validate PR mode for pr-review workflow
+            if (workflow === 'pr-review') {
+                const prMode = document.querySelector('input[name="prMode"]:checked');
+                if (!prMode) {
+                    alert('Please select a PR custom improvement mode.');
+                    return;
+                }
+                if (prMode.value === 'custom-task') {
+                    const prCustomTask = document.getElementById('prCustomTask').value;
+                    if (!prCustomTask.trim()) {
+                        alert('Custom PR task description is required.');
+                        return;
+                    }
+                }
             }
 
             // Validate agents
@@ -838,13 +996,78 @@ AGENT_TIMEOUT_SECONDS=1200`;
         function generateCliCommand() {
             const taskDescription = document.getElementById('taskDescription').value;
             const repoUrl = document.getElementById('repoUrl').value;
+            const issueUrl = document.getElementById('issueUrl').value;
+            const prUrl = document.getElementById('prUrl').value;
             const workflow = document.getElementById('workflow').value;
             const noPr = document.getElementById('noPr').checked;
             const deleteExisting = document.getElementById('deleteExisting').checked;
 
             const agents = getAgentsConfig();
 
-            // Start with base command
+            // Handle new workflow types
+            if (workflow === 'issue-fix') {
+                // Use issue_to_task.py script
+                let command = `python scripts/issue_to_task.py --issue-url "${issueUrl}"`;
+                
+                // Add agent configuration
+                if (agents.length === 1) {
+                    const agent = agents[0];
+                    if (agent.coding_ide === 'cursor' && agent.model === 'claude-4-sonnet' && agent.role === 'Coder') {
+                        command += ` --agent ${agent.coding_ide}`;
+                    } else {
+                        const agentsJson = JSON.stringify(agents).replace(/"/g, '\\"');
+                        command += ` --coding-agents "${agentsJson}"`;
+                    }
+                } else {
+                    const agentsJson = JSON.stringify(agents).replace(/"/g, '\\"');
+                    command += ` --coding-agents "${agentsJson}"`;
+                }
+                
+                if (noPr) {
+                    command += ` --no-pr`;
+                }
+                
+                document.getElementById('cliOutput').textContent = command;
+                return;
+            }
+            
+            if (workflow === 'pr-review') {
+                // Use pr_to_task.py script
+                let command = `python scripts/pr_to_task.py --pr-url "${prUrl}"`;
+                
+                // Add PR mode
+                const prMode = document.querySelector('input[name="prMode"]:checked');
+                if (prMode.value === 'review-comments') {
+                    command += ` --review-comments`;
+                } else {
+                    const prCustomTask = document.getElementById('prCustomTask').value;
+                    const escapedTask = prCustomTask.replace(/!/g, '\\!');
+                    command += ` --task "${escapedTask}"`;
+                }
+                
+                // Add agent configuration
+                if (agents.length === 1) {
+                    const agent = agents[0];
+                    if (agent.coding_ide === 'cursor' && agent.model === 'claude-4-sonnet' && agent.role === 'Coder') {
+                        command += ` --agent ${agent.coding_ide}`;
+                    } else {
+                        const agentsJson = JSON.stringify(agents).replace(/"/g, '\\"');
+                        command += ` --coding-agents "${agentsJson}"`;
+                    }
+                } else {
+                    const agentsJson = JSON.stringify(agents).replace(/"/g, '\\"');
+                    command += ` --coding-agents "${agentsJson}"`;
+                }
+                
+                if (noPr) {
+                    command += ` --no-push`;
+                }
+                
+                document.getElementById('cliOutput').textContent = command;
+                return;
+            }
+
+            // Standard workflows - use simulatedev.py
             let command = `python simulatedev.py --workflow ${workflow} --repo "${repoUrl}"`;
 
             // Add task description for custom workflow
@@ -891,6 +1114,22 @@ AGENT_TIMEOUT_SECONDS=1200`;
         function generateActionList() {
             const workflow = document.getElementById('workflow').value;
             const repoUrl = document.getElementById('repoUrl').value;
+            const issueUrl = document.getElementById('issueUrl').value;
+            const prUrl = document.getElementById('prUrl').value;
+            
+            let workflowDescription = "";
+            if (workflow === 'issue-fix') {
+                workflowDescription = "The AI agent will analyze the GitHub issue, create a comprehensive fix, and submit a new pull request";
+            } else if (workflow === 'pr-review') {
+                const prMode = document.querySelector('input[name="prMode"]:checked');
+                if (prMode && prMode.value === 'review-comments') {
+                    workflowDescription = "The AI agent will analyze review comments and push improvements directly to the existing PR branch";
+                } else {
+                    workflowDescription = "The AI agent will improve the existing PR with your custom task and push changes to the PR branch";
+                }
+            } else {
+                workflowDescription = "The AI agent will work on your repository and create a pull request when done";
+            }
             
             const steps = [
                 {
@@ -916,7 +1155,7 @@ AGENT_TIMEOUT_SECONDS=1200`;
                 {
                     title: "Monitor Progress",
                     description: "Watch the console output and wait for the task to complete",
-                    details: "The AI agent will work on your repository and create a pull request when done"
+                    details: workflowDescription
                 }
             ];
 
@@ -1006,11 +1245,29 @@ AGENT_TIMEOUT_SECONDS=1200`;
             agentCounter = 0;
             addAgent(true); // Add default agent
 
-            // Reset workflow description
+            // Reset workflow description and all workflow-specific fields
             const workflowDescription = document.getElementById('workflowDescription');
             const taskDescriptionGroup = document.getElementById('taskDescriptionGroup');
+            const issueUrlGroup = document.getElementById('issueUrlGroup');
+            const prUrlGroup = document.getElementById('prUrlGroup');
+            const prTaskGroup = document.getElementById('prTaskGroup');
+            const prCustomTaskGroup = document.getElementById('prCustomTaskGroup');
+            const repoUrlGroup = document.getElementById('repoUrlGroup');
+            
             workflowDescription.style.display = 'none';
             taskDescriptionGroup.style.display = 'none';
+            issueUrlGroup.style.display = 'none';
+            prUrlGroup.style.display = 'none';
+            prTaskGroup.style.display = 'none';
+            prCustomTaskGroup.style.display = 'none';
+            repoUrlGroup.style.display = 'block'; // Show by default
+            
+            // Reset radio buttons and visual states
+            document.getElementById('reviewComments').checked = false;
+            document.getElementById('customPrTask').checked = false;
+            document.querySelectorAll('.radio-group').forEach(group => {
+                group.classList.remove('selected');
+            });
 
             // Reset action list
             document.getElementById('actionListContent').innerHTML = '';
