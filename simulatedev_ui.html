@@ -469,6 +469,19 @@
             font-size: 0.8rem;
             font-weight: 600;
             margin-left: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .step-reference:hover {
+            background: #bbdefb;
+            color: #0d47a1;
+            transform: translateY(-1px);
+        }
+
+        .env-section, .command-section {
+            border-radius: 8px;
+            transition: box-shadow 0.3s ease;
         }
 
         .action-step code {
@@ -501,7 +514,7 @@
                             <input type="password" id="anthropicKey" placeholder="sk-ant-..." required>
                             <div class="help-text">
                                 <strong>Used for:</strong> Claude Computer Use to automate IDE interactions, analyze IDE state, and generate PR content<br>
-                                <strong>Get your key from:</strong> https://console.anthropic.com/
+                                <strong>Get your key from:</strong> <a href="https://console.anthropic.com/settings/keys" target="_blank">https://console.anthropic.com</a>
                             </div>
                         </div>
 
@@ -511,7 +524,7 @@
                             <div class="help-text">
                                 <strong>Used for:</strong> Creating pull requests, pushing code changes, and repository management<br>
                                 <strong>Required permissions:</strong> repo, pull_requests<br>
-                                <strong>Create at:</strong> https://github.com/settings/tokens<br>
+                                <strong>Create at:</strong> <a href="https://github.com/settings/tokens" target="_blank">https://github.com/settings/tokens</a><br>
                                 <strong>✨ Bonus:</strong> Automatically detects your GitHub name and email for commits!
                             </div>
                         </div>
@@ -1143,11 +1156,6 @@ AGENT_TIMEOUT_SECONDS=1200`;
                     details: "pip install -r requirements.txt"
                 },
                 {
-                    title: "Install System Dependencies",
-                    description: "Install GUI automation libraries (varies by operating system)",
-                    details: "Required for pyautogui, pygetwindow, and other GUI automation tools"
-                },
-                {
                     title: "Run Your Task",
                     description: "Execute the Python command below to start your coding task",
                     reference: "Command"
@@ -1166,7 +1174,7 @@ AGENT_TIMEOUT_SECONDS=1200`;
                     <div class="step-content">
                         <div class="step-title">
                             ${step.title}
-                            ${step.reference ? `<span class="step-reference">→ See ${step.reference}</span>` : ''}
+                            ${step.reference ? `<span class="step-reference" onclick="scrollToSection('${step.reference}')">→ See ${step.reference}</span>` : ''}
                         </div>
                         <div class="step-description">
                             ${step.description}
@@ -1177,6 +1185,32 @@ AGENT_TIMEOUT_SECONDS=1200`;
             `).join('');
 
             document.getElementById('actionListContent').innerHTML = actionListHTML;
+        }
+
+        function scrollToSection(reference) {
+            let targetElement;
+            
+            if (reference === 'Environment File') {
+                targetElement = document.querySelector('.env-section');
+            } else if (reference === 'Command') {
+                targetElement = document.getElementById('localCommandSection');
+            }
+            
+            if (targetElement) {
+                targetElement.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'start',
+                    inline: 'nearest'
+                });
+                
+                // Add a subtle highlight effect with wider shadow
+                targetElement.style.transition = 'box-shadow 0.3s ease';
+                targetElement.style.boxShadow = '0 0 30px 10px rgba(52, 152, 219, 0.2)';
+                
+                setTimeout(() => {
+                    targetElement.style.boxShadow = '';
+                }, 2000);
+            }
         }
 
         function copyToClipboard(elementId, button, type) {
