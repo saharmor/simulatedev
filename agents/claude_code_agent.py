@@ -115,16 +115,6 @@ class ClaudeCodeAgent(CodingAgent):
 
     async def execute_prompt(self, prompt: str) -> AgentResponse:
         """Execute prompt in headless mode with file output"""
-        print("\nWARNING: This will execute Claude with --dangerously-skip-permissions")
-        print("This gives Claude full access to execute commands in the repository directory")
-        approval = input("Do you want to continue? (y/n): ")
-        if approval.lower() != 'y':
-            return AgentResponse(
-                content="Operation cancelled by user",
-                success=False,
-                error_message="User did not approve execution with dangerous permissions"
-            )
-
         try:
             # Combine the original prompt with instruction to save output
             combined_prompt = f"""{prompt}\n\nAfter completing the above task, please save a comprehensive summary of everything you did to a file called '{self.output_file}' in the current directory. Include:\n- All changes made\n- Explanations of what was done.\n\nIMPORTANT: Do NOT create or update any documentation files (such as README.md or docs/*) unless you are explicitly asked to do so in the original prompt. If you believe that creating a documentation file would help you better implement the required coding task, you may create it, but you must delete it once you are finished and before you finish the task."""

@@ -27,6 +27,29 @@ class AgentRole(Enum):
     PLANNER = "Planner"
     CODER = "Coder"
     TESTER = "Tester"
+    
+    @classmethod
+    def get_execution_order(cls) -> Dict[str, int]:
+        """Get the execution order for roles"""
+        return {
+            cls.PLANNER: 1,
+            cls.CODER: 2,
+            cls.TESTER: 3
+        }
+    
+    @classmethod
+    def sort_agents_by_role(cls, agents: List['AgentDefinition']) -> List['AgentDefinition']:
+        """
+        Sort agents by role to ensure proper execution order: Planner -> Coder -> Tester
+        
+        Args:
+            agents: List of agent definitions to sort
+            
+        Returns:
+            List of agent definitions sorted by role execution order
+        """
+        role_order = cls.get_execution_order()
+        return sorted(agents, key=lambda agent: role_order.get(agent.role, 999))
 
 
 class WorkflowType(Enum):
@@ -48,6 +71,7 @@ class MultiAgentTask:
         """Validate the task after initialization"""
         self._validate_unique_roles()
         self._validate_workflow_requirements()
+        self._sort_agents_by_role()
     
     def _validate_unique_roles(self):
         """Ensure each role appears only once"""
@@ -65,6 +89,10 @@ class MultiAgentTask:
         if self.workflow and self.workflow != WorkflowType.CUSTOM_CODING and self.coding_task_prompt:
             # This is just a warning case - allow it but note it's unusual
             pass
+    
+    def _sort_agents_by_role(self):
+        """Sort agents by role to ensure proper execution order: Planner -> Coder -> Tester"""
+        self.agents = AgentRole.sort_agents_by_role(self.agents)
     
     def get_task_description(self) -> str:
         """Get the task description based on workflow type"""

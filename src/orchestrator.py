@@ -54,6 +54,8 @@ class Orchestrator:
         self.responses_dir = config.reports_path
         os.makedirs(self.responses_dir, exist_ok=True)
     
+
+    
     @classmethod
     def create_request(cls, 
                       # Core parameters
@@ -378,14 +380,17 @@ class Orchestrator:
             # Setup work directory
             work_directory = self._setup_work_directory(request)
             
+            # Sort agents by role to ensure proper execution order
+            sorted_agents = AgentRole.sort_agents_by_role(request.agents)
+            
             # Determine execution type for logging
-            execution_type = f"{len(request.agents)}-Agent"
+            execution_type = f"{len(sorted_agents)}-Agent"
             if request.workflow_type:
                 execution_type += f" ({request.workflow_type})"
             
             print(f"Starting {execution_type} execution")
             print(f"Task: {request.task_description}")
-            print(f"Agents: {len(request.agents)}")
+            print(f"Agents: {len(sorted_agents)}")
             print(f"Work Directory: {work_directory}")
             
             if request.repo_url:
@@ -396,7 +401,7 @@ class Orchestrator:
                 task_description=request.task_description,
                 previous_outputs=[],
                 current_step=0,
-                total_steps=len(request.agents),
+                total_steps=len(sorted_agents),
                 work_directory=work_directory
             )
             
@@ -404,7 +409,7 @@ class Orchestrator:
             successful_executions = 0
             
             # Execute agents sequentially
-            for i, agent_def in enumerate(request.agents):
+            for i, agent_def in enumerate(sorted_agents):
                 context.current_step = i + 1
                 
                 print(f"\n{'='*60}")
@@ -468,7 +473,7 @@ class Orchestrator:
             
             # Save agent response
             if final_output:
-                primary_agent = request.agents[0] if request.agents else None
+                primary_agent = sorted_agents[0] if sorted_agents else None
                 agent_name = primary_agent.coding_ide if primary_agent else "unknown"
                 self.save_agent_response(request.repo_url, agent_name, final_output)
             
@@ -482,7 +487,7 @@ class Orchestrator:
                 try:
                     # Construct agent information for PR description
                     agent_info_parts = []
-                    for agent in request.agents:
+                    for agent in sorted_agents:
                         agent_info_parts.append(f"{agent.coding_ide} with {agent.model} as {agent.role.value}")
                     coding_ides_info = ", ".join(agent_info_parts)
                     
@@ -513,7 +518,7 @@ class Orchestrator:
 
             print(f"\n{'='*60}")
             print(f"{execution_type.upper()} EXECUTION COMPLETE")
-            print(f"Successful agents: {successful_executions}/{len(request.agents)}")
+            print(f"Successful agents: {successful_executions}/{len(sorted_agents)}")
             print(f"Overall success: {overall_success}")
             print(f"Total execution time: {execution_time_str}")
             if pr_url:
