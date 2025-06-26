@@ -17,6 +17,7 @@ SimulateDev addresses an [open issue](https://github.com/tavily-ai/tavily-python
 - Ensure your coding IDEs (Cursor, Windsurf, Claude Code) are already installed and ready to use - SimulateDev doesn't handle IDE setup or installation (for now)
 - For Windsurf users: Turn on **Turbo mode** for terminal auto-execution to ensure commands run automatically. [Learn more](https://www.reddit.com/r/windsurf/comments/1kksxgh/comment/mrx2el2/)
 - SimulateDev will periodically bring the IDE to the front to monitor the coding agent's progress and state. Ideally: you take your coffee break and let it work :)
+- **Permissions Required**: GitHub token needs `repo` permissions. Cursor/Windsurf require Automation & Accessibility permissions in System Settings → Privacy & Security
 
 ## Run SimulateDev in <1 min
 Clone this repo → Create virtual environment → Install requirements.txt → Copy .env.example into .env and replace API keys → Run the following command (replace to your coding IDE of choice and GitHub repo url):
@@ -89,13 +90,13 @@ SimulateDev runs **entirely on your local machine** and leverages your existing 
   - [Windsurf](https://windsurf.ai/)
   - Claude Code
 - **IDE Setup**: Your chosen coding IDE must be properly installed and configured (logged in, authenticated, ready to use) before running SimulateDev
-- API keys (see Setup section)
+- API keys (see [Configuration](https://github.com/saharmor/simulatedev#configuration) section)
 
 ### Installation
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/your-username/simulatedev.git
+   git clone https://github.com/saharmor/simulatedev.git
    cd simulatedev
    ```
 
@@ -306,14 +307,6 @@ The timeout is automatically validated and clamped to reasonable bounds (30 seco
 ## Troubleshooting
 
 ### Common Issues and Solutions
-
-#### IDE Window Focus Issues
-If you see warnings about IDE windows not being visible/focused, SimulateDev will:
-- **Play a beep sound** to alert you
-- **Skip the current monitoring cycle** and retry
-- **Continue monitoring** once the correct window is focused
-
-**Solution**: Make sure the correct IDE window with your project is visible and focused.
 
 #### Input Field Detection Issues
 If Claude cannot locate the IDE's input field, SimulateDev will:
