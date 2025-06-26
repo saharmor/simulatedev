@@ -1,9 +1,0 @@
-{
-  "agents": [
-    {
-      "role": "Coder",
-      "coding_ide": "cursor",
-      "model": "claude-sonnet-4"
-    }
-  ]
-} 
