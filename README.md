@@ -89,13 +89,13 @@ SimulateDev runs **entirely on your local machine** and leverages your existing 
   - [Windsurf](https://windsurf.ai/)
   - Claude Code
 - **IDE Setup**: Your chosen coding IDE must be properly installed and configured (logged in, authenticated, ready to use) before running SimulateDev
-- API keys (see Setup section)
+- API keys (see [Configuration](https://github.com/saharmor/simulatedev#configuration) section)
 
 ### Installation
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/your-username/simulatedev.git
+   git clone https://github.com/saharmor/simulatedev.git
    cd simulatedev
    ```
 
@@ -106,8 +106,6 @@ SimulateDev runs **entirely on your local machine** and leverages your existing 
    
    # Activate virtual environment
    source venv/bin/activate  # On macOS/Linux
-   # or
-   venv\Scripts\activate     # On Windows
    ```
 
 3. **Install dependencies:**
@@ -276,11 +274,10 @@ All configuration is managed through environment variables in your `.env` file:
 | Variable | Purpose | Required | Default | Notes |
 |----------|---------|----------|---------|-------|
 | `ANTHROPIC_API_KEY` | UI element detection and IDE state analysis | Yes | - | [Get key](https://console.anthropic.com/) |
-| `GITHUB_TOKEN` | Pull request creation | Optional | - | [Get token](https://github.com/settings/tokens) |
+| `GITHUB_TOKEN` | Pull request creation | Optional | - | [Get token (Classic Token)](https://github.com/settings/tokens) |
 | `AGENT_TIMEOUT_SECONDS` | Agent execution timeout | Optional | 600 | 30-7200 seconds (0.5-120 minutes) |
 | `GIT_USER_NAME` | Git commit author | Optional | Auto-detected from GitHub | Set to override GitHub account name |
 | `GIT_USER_EMAIL` | Git commit email | Optional | Auto-detected from GitHub | Set to override GitHub account email |
-
 
 ### Timeout Configuration
 
@@ -302,6 +299,20 @@ The timeout is automatically validated and clamped to reasonable bounds (30 seco
 | Windsurf | Supported | Full integration |  
 | Claude Code | Supported (Headless) | Full integration |
 
+## Permissions
+
+### GitHub Token Permissions
+- `repo`: Full control of private repositories (required for cloning, creating branches, and opening pull requests)
+
+### Terminal Permissions Required
+
+| Agent | Required Permissions              |
+|------------|-----------------------------------|
+| Claude Code| None                              |
+| Cursor     | Automation & Accessibility        |
+| Windsurf   | Automation & Accessibility        |
+
+> To enable terminal permissions, go to **System Settings** → **Privacy & Security** and grant the required permissions to your terminal application.
 
 ## Troubleshooting
 
