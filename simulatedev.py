@@ -176,6 +176,9 @@ Examples:
   
   # Keep existing repository folder (don't delete before cloning)
   python simulatedev.py --workflow optimize --repo https://github.com/user/repo --agent cursor --no-delete-existing-repo-env
+  
+  # Skip GitHub preflight check (not recommended)
+  python simulatedev.py --workflow bugs --repo https://github.com/user/repo --agent cursor --skip-github-check
 
 Note: 
 - Repository must be a valid GitHub URL (https://github.com/user/repo)
@@ -211,6 +214,8 @@ Note:
     parser.add_argument("--no-report", action="store_true", help="Skip saving execution report")
     parser.add_argument("--no-delete-existing-repo-env", action="store_true",
                        help="Keep existing repository directory (don't delete before cloning)")
+    parser.add_argument("--skip-github-check", action="store_true",
+                       help="Skip GitHub preflight check (not recommended)")
     
     return parser.parse_args()
 
@@ -324,6 +329,21 @@ async def execute_task(args) -> bool:
         
         # Print summary
         print_task_summary(task_request, args.workflow)
+        
+        # Run GitHub preflight check before executing agents (unless skipped)
+        if task_request.repo_url and not args.skip_github_check:
+            from src.github_integration import run_github_preflight_check
+            
+            github_check_passed = run_github_preflight_check(
+                repo_url=task_request.repo_url,
+                create_pr=task_request.create_pr
+            )
+            
+            if not github_check_passed:
+                print("❌ GitHub preflight check failed! Please fix the issues above before proceeding.")
+                return False
+        elif task_request.repo_url and args.skip_github_check:
+            print("⚠️  Skipping GitHub preflight check (not recommended)")
         
         # Confirm execution
         # confirm = input("\nExecute this task? (y/N): ").strip().lower()

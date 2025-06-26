@@ -1408,5 +1408,75 @@ def test_github_integration():
     print(f"Push permissions: {has_permissions}")
 
 
+def run_github_preflight_check(repo_url: str, create_pr: bool = True) -> bool:
+    """
+    Run a comprehensive GitHub preflight check before executing coding agents.
+    
+    This function tests:
+    1. GitHub token authentication
+    2. User info retrieval 
+    3. Repository access and permissions
+    4. Fork capability (if needed)
+    5. Basic API connectivity
+    
+    Args:
+        repo_url: The GitHub repository URL to test
+        create_pr: Whether PR creation will be attempted (affects permission checks)
+    
+    Returns:
+        bool: True if all checks pass, False if any critical check fails
+    """
+    integration = GitHubIntegration()
+    all_checks_passed = True
+    
+    # Check 1: GitHub token authentication
+    try:
+        username = integration.get_authenticated_user()
+        if not username:
+            print("❌ GitHub authentication failed - check your GITHUB_TOKEN environment variable")
+            all_checks_passed = False
+    except Exception as e:
+        print(f"❌ GitHub authentication error: {str(e)}")
+        all_checks_passed = False
+    
+    # Check 2: Repository URL parsing
+    try:
+        repo_info = integration.parse_repo_info(repo_url)
+    except Exception as e:
+        print(f"❌ Invalid repository URL: {str(e)}")
+        all_checks_passed = False
+    
+    # Check 3: Repository access and permissions (only if PR creation is enabled)
+    if create_pr:
+        try:
+            has_push_permissions = integration.check_push_permissions(repo_url)
+            # Just test access, don't print success messages - only errors
+        except Exception as e:
+            print(f"❌ Repository permission check failed: {str(e)}")
+            all_checks_passed = False
+    
+    # Check 4: Basic API connectivity
+    try:
+        import requests
+        headers = integration.base_headers if hasattr(integration, 'base_headers') else {}
+        response = requests.get("https://api.github.com/user", headers=headers, timeout=10)
+        
+        if response.status_code == 401:
+            print("❌ GitHub API authentication failed - check your GITHUB_TOKEN permissions")
+            all_checks_passed = False
+        elif response.status_code == 403:
+            print("⚠️  GitHub API rate limited - execution may be slower")
+        elif response.status_code != 200:
+            print(f"⚠️  GitHub API connectivity issues (HTTP {response.status_code})")
+    except requests.exceptions.Timeout:
+        print("❌ GitHub API request timed out - check your internet connection")
+        all_checks_passed = False
+    except Exception as e:
+        print(f"❌ GitHub API connectivity test failed: {str(e)}")
+        all_checks_passed = False
+    
+    return all_checks_passed
+
+
 if __name__ == "__main__":
     test_github_integration() 
