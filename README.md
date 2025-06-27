@@ -326,19 +326,6 @@ If tasks are timing out, adjust the timeout in your `.env` file:
 AGENT_TIMEOUT_SECONDS=3600  # 1 hour
 ```
 
-#### Repository Access Issues
-If you see "Failed to clone repository" errors:
-- Check that the repository URL is correct and accessible
-- By default, existing repository directories are deleted before cloning (use `--no-delete-existing-repo-env` to keep existing directories)
-- Ensure you have proper GitHub access permissions
-
-### Error Handling Improvements
-SimulateDev now provides consistent error handling across all scenarios:
-- **Beep sounds** for attention-requiring issues
-- **Clear error messages** with specific guidance
-- **Automatic retries** for transient issues
-- **Graceful degradation** when possible
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
