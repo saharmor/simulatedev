@@ -508,4 +508,4 @@ class CodingAgent(ABC):
         os.remove(found_file)
         print(f"Cleaned up {self.output_file} from {found_file}")
         
-        return content 
+        return content
