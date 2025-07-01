@@ -84,6 +84,27 @@ class WebAgent(CodingAgent):
         # Web agents might need to navigate to project-specific URLs or set context
         # This can be customized by subclasses
     
+    def set_repository_context(self, repo_url: str, original_repo_url: Optional[str] = None):
+        """Set repository context for web agents
+        
+        Args:
+            repo_url: The repository URL the agent should work with (may be a fork)
+            original_repo_url: The original repository URL (if repo_url is a fork)
+        """
+        self.repo_url = repo_url
+        self.original_repo_url = original_repo_url
+        print(f"INFO: {self.agent_name} repository context set to: {repo_url}")
+        if original_repo_url and original_repo_url != repo_url:
+            print(f"INFO: {self.agent_name} original repository: {original_repo_url}")
+    
+    def get_working_repo_url(self) -> Optional[str]:
+        """Get the repository URL the agent should work with"""
+        return getattr(self, 'repo_url', None)
+    
+    def get_original_repo_url(self) -> Optional[str]:
+        """Get the original repository URL (before any forking)"""
+        return getattr(self, 'original_repo_url', None)
+    
     def is_ide_open_with_correct_project(self) -> bool:
         """Check if browser is open with the correct context"""
         if not self._current_project_name:
@@ -126,6 +147,7 @@ class WebAgent(CodingAgent):
                     user_action_layer=True,  # Show what the bot is doing
                     mask_fingerprint=True,  # Enable stealth mode
                     spoof_canvas=True,  # Spoof canvas fingerprinting
+                    scroll_into_view=True,  # Scroll into view
                 )
             
             # Create new browser if not already done
