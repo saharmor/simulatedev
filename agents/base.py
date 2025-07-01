@@ -19,6 +19,7 @@ class CodingAgentIdeType(Enum):
     CURSOR = "cursor"
     WINDSURF = "windsurf"
     CLAUDE_CODE = "claude_code"
+    OPENAI_CODEX = "openai_codex"
     TEST = "test"
 
 

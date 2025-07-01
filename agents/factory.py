@@ -7,6 +7,7 @@ from .base import CodingAgent, CodingAgentIdeType
 from .cursor_agent import CursorAgent
 from .windsurf_agent import WindsurfAgent
 from .claude_code_agent import ClaudeCodeAgent
+from .openai_codex_agent import OpenAICodexAgent
 from .test_agent import TestAgent
 
 
@@ -22,6 +23,8 @@ class AgentFactory:
             return WindsurfAgent(claude_computer_use)
         elif agent_type == CodingAgentIdeType.CLAUDE_CODE:
             return ClaudeCodeAgent(claude_computer_use)
+        elif agent_type == CodingAgentIdeType.OPENAI_CODEX:
+            return OpenAICodexAgent(claude_computer_use)
         elif agent_type == CodingAgentIdeType.TEST:
             return TestAgent(claude_computer_use)
         else:
@@ -38,6 +41,8 @@ class AgentFactory:
             return WindsurfAgent(claude_computer_use)
         elif agent_name == "claude_code" or agent_name == "cloud_code":
             return ClaudeCodeAgent(claude_computer_use)
+        elif agent_name == "openai_codex" or agent_name == "openai-codex":
+            return OpenAICodexAgent(claude_computer_use)
         elif agent_name == "test":
             return TestAgent(claude_computer_use)
         else:

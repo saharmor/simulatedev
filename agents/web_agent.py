@@ -126,12 +126,11 @@ class WebAgent(CodingAgent):
                     user_action_layer=True,  # Show what the bot is doing
                     mask_fingerprint=True,  # Enable stealth mode
                     spoof_canvas=True,  # Spoof canvas fingerprinting
-                    scroll_into_view=True  # Auto-scroll elements into view
                 )
             
             # Create new browser if not already done
             if not self.browser:
-                self.browser = await self.botright_client.new_browser()
+                self.browser = await self.botright_client.new_browser(no_viewport=True)
                 
             # Create new page
             self.page = await self.browser.new_page()
@@ -439,19 +438,33 @@ class WebAgent(CodingAgent):
                     print("Google login completed successfully")
                     return True
                 else:
-                    # Check for 2FA or other verification steps
+                    # Check for 2FA or other verification steps with polling
                     print("Google login may require additional verification (2FA, etc.)")
-                    # Wait a bit longer for manual intervention or automatic handling
-                    await self.page.wait_for_timeout(30000)  # 30 second wait for 2FA
+                    print("Waiting up to 5 minutes for verification completion...")
                     
-                    # Check again if login completed
-                    current_url = self.page.url
-                    if 'accounts.google.com' not in current_url:
-                        print("Google login completed after verification")
-                        return True
-                    else:
-                        print("WARNING: Google login appears to be stuck on verification")
-                        return False
+                    # Poll every 5 seconds for up to 5 minutes (300 seconds)
+                    max_wait_seconds = 300  # 5 minutes
+                    poll_interval_seconds = 5
+                    elapsed_seconds = 0
+                    
+                    while elapsed_seconds < max_wait_seconds:
+                        await self.page.wait_for_timeout(poll_interval_seconds * 1000)
+                        elapsed_seconds += poll_interval_seconds
+                        
+                        # Check if login completed
+                        current_url = self.page.url
+                        if 'accounts.google.com' not in current_url:
+                            print(f"Google login completed after verification ({elapsed_seconds}s)")
+                            return True
+                        
+                        # Show progress every 30 seconds
+                        if elapsed_seconds % 30 == 0:
+                            remaining_seconds = max_wait_seconds - elapsed_seconds
+                            print(f"Still waiting for verification... ({remaining_seconds}s remaining)")
+                    
+                    # Timed out
+                    print("WARNING: Google login verification timed out after 5 minutes")
+                    return False
             else:
                 print("ERROR: Could not find password input field")
                 return False

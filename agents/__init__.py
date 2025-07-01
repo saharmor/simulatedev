@@ -12,6 +12,7 @@ from .web_agent import WebAgent
 from .cursor_agent import CursorAgent
 from .windsurf_agent import WindsurfAgent
 from .claude_code_agent import ClaudeCodeAgent
+from .openai_codex_agent import OpenAICodexAgent
 from .test_agent import TestAgent
 from .factory import AgentFactory
 
@@ -28,6 +29,7 @@ __all__ = [
     'CursorAgent',
     'WindsurfAgent',
     'ClaudeCodeAgent',
+    'OpenAICodexAgent',
     'TestAgent',
     'AgentFactory'
 ] 
