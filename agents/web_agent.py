@@ -18,6 +18,41 @@ from common.config import config
 import botright
 
 
+# Selector constants for Google authentication
+class GoogleSelectors:
+    # Email input selectors
+    EMAIL_INPUTS = [
+        "input[type='email']",
+        "#identifierId",
+        "input[name='email']",
+        "input[autocomplete='username']"
+    ]
+    
+    # Email next/submit button selectors
+    EMAIL_NEXT_BUTTONS = [
+        "#identifierNext",
+        "button:has-text('Next')",
+        "input[type='submit']",
+        "button[type='submit']"
+    ]
+    
+    # Password input selectors
+    PASSWORD_INPUTS = [
+        "input[type='password']",
+        "input[name='password']",
+        "#password",
+        "input[autocomplete='current-password']"
+    ]
+    
+    # Password next/submit button selectors
+    PASSWORD_NEXT_BUTTONS = [
+        "#passwordNext",
+        "button:has-text('Next')",
+        "input[type='submit']",
+        "button[type='submit']"
+    ]
+
+
 class WebAgent(CodingAgent):
     """Base class for web-based coding agents using Botright"""
     
@@ -93,9 +128,6 @@ class WebAgent(CodingAgent):
         """
         self.repo_url = repo_url
         self.original_repo_url = original_repo_url
-        print(f"INFO: {self.agent_name} repository context set to: {repo_url}")
-        if original_repo_url and original_repo_url != repo_url:
-            print(f"INFO: {self.agent_name} original repository: {original_repo_url}")
     
     def get_working_repo_url(self) -> Optional[str]:
         """Get the repository URL the agent should work with"""
@@ -108,7 +140,6 @@ class WebAgent(CodingAgent):
     def is_ide_open_with_correct_project(self) -> bool:
         """Check if browser is open with the correct context"""
         if not self._current_project_name:
-            print(f"Warning: No project name set for {self.agent_name}")
             return self._is_browser_ready
         
         # For web agents, we consider the project "correct" if the browser is ready
@@ -121,7 +152,6 @@ class WebAgent(CodingAgent):
             return self._is_browser_ready and self.page is not None
                 
         except Exception as e:
-            print(f"INFO: Could not detect {self.agent_name} browser: {str(e)}")
             return False
     
     async def is_coding_agent_open_with_project(self) -> bool:
@@ -130,7 +160,6 @@ class WebAgent(CodingAgent):
             return False
             
         if not self.is_ide_open_with_correct_project():
-            print(f"{self.agent_name} browser is open but not with the correct project context")
             return False
             
         return True
@@ -158,7 +187,6 @@ class WebAgent(CodingAgent):
             self.page = await self.browser.new_page()
             
             # Navigate to the web agent URL
-            print(f"Navigating to {self.web_url}")
             await self.page.goto(self.web_url)
             
             # Wait for page to load
@@ -182,9 +210,7 @@ class WebAgent(CodingAgent):
     async def close_coding_interface(self) -> bool:
         """Close the web browser"""
         try:
-            print(f"Closing {self.agent_name} web interface...")
             await self._cleanup_browser()
-            print(f"SUCCESS: {self.agent_name} web interface closed")
             return True
             
         except Exception as e:
@@ -224,7 +250,6 @@ class WebAgent(CodingAgent):
             
             # Wait for input field to be available
             await self.page.wait_for_selector(self.input_selector, timeout=10000)
-            print(f"Input field found for {self.agent_name}")
             return True
         except Exception as e:
             print(f"ERROR: Could not find input field for {self.agent_name}: {str(e)}")
@@ -236,7 +261,7 @@ class WebAgent(CodingAgent):
             if not self._is_browser_ready or not self.page:
                 raise Exception("Browser not ready. Call open_coding_interface() first.")
             
-            print(f"Sending prompt to {self.agent_name} web interface...")
+            print(f"Executing task: {prompt[:100]}...")
             
             # Combine prompt with instruction to save output
             combined_prompt = f"""{prompt}\n\nAfter completing the above task, please save a comprehensive summary of everything you did to a file called '{self.output_file}' in the current directory. Include:\n- All changes made\n- Explanations of what was done.\n\nIMPORTANT: Do NOT create or update any documentation files (such as README.md or docs/*) unless you are explicitly asked to do so in the original prompt. If you believe that creating a documentation file would help you better implement the required coding task, you may create it, but you must delete it once you are finished and before you finish the task."""
@@ -245,11 +270,9 @@ class WebAgent(CodingAgent):
             await self._send_prompt_to_web_interface(combined_prompt)
             
             # Wait for completion
-            print(f"Waiting for {self.agent_name} to complete...")
             await self._wait_for_web_completion()
             
             # Read output file
-            print(f"Reading output from {self.output_file}...")
             content = await self._read_output_file()
             
             return AgentResponse(content=content, success=True)
@@ -287,8 +310,6 @@ class WebAgent(CodingAgent):
         timeout_seconds = config.agent_timeout_seconds
         start_time = time.time()
         
-        print(f"Waiting for {self.agent_name} to complete (timeout: {timeout_seconds}s)...")
-        
         try:
             while time.time() - start_time < timeout_seconds:
                 # Check if loading indicator is present (if defined)
@@ -300,7 +321,6 @@ class WebAgent(CodingAgent):
                             state="hidden", 
                             timeout=5000
                         )
-                        print(f"{self.agent_name} appears to have finished processing")
                         break
                     except:
                         # Loading indicator handling failed, fall back to other methods
@@ -312,7 +332,6 @@ class WebAgent(CodingAgent):
                     if output_element:
                         output_text = await output_element.text_content()
                         if output_text and len(output_text.strip()) > 100:  # Arbitrary threshold
-                            print(f"{self.agent_name} has generated substantial output")
                             # Wait a bit more to ensure completion
                             await self.page.wait_for_timeout(10000)
                             break
@@ -366,21 +385,12 @@ class WebAgent(CodingAgent):
                 print("ERROR: GOOGLE_EMAIL or GOOGLE_PASSWORD environment variables not set")
                 return False
             
-            print(f"Starting Google login for {self.agent_name}...")
-            
             # Wait for Google login page to be ready
             await self.page.wait_for_timeout(2000)
             
             # Handle email input
-            email_selectors = [
-                "input[type='email']",
-                "#identifierId",
-                "input[name='email']",
-                "input[autocomplete='username']"
-            ]
-            
             email_input = None
-            for selector in email_selectors:
+            for selector in GoogleSelectors.EMAIL_INPUTS:
                 try:
                     email_input = await self.page.query_selector(selector)
                     if email_input:
@@ -390,17 +400,9 @@ class WebAgent(CodingAgent):
             
             if email_input:
                 await email_input.fill(google_email)
-                print("Entered Google email")
                 
                 # Click Next or submit button for email
-                next_button_selectors = [
-                    "#identifierNext",
-                    "button:has-text('Next')",
-                    "input[type='submit']",
-                    "button[type='submit']"
-                ]
-                
-                for selector in next_button_selectors:
+                for selector in GoogleSelectors.EMAIL_NEXT_BUTTONS:
                     try:
                         next_button = await self.page.query_selector(selector)
                         if next_button:
@@ -413,15 +415,8 @@ class WebAgent(CodingAgent):
                 await self.page.wait_for_timeout(3000)
             
             # Handle password input
-            password_selectors = [
-                "input[type='password']",
-                "input[name='password']",
-                "#password",
-                "input[autocomplete='current-password']"
-            ]
-            
             password_input = None
-            for selector in password_selectors:
+            for selector in GoogleSelectors.PASSWORD_INPUTS:
                 try:
                     await self.page.wait_for_selector(selector, timeout=5000)
                     password_input = await self.page.query_selector(selector)
@@ -432,17 +427,9 @@ class WebAgent(CodingAgent):
             
             if password_input:
                 await password_input.fill(google_password)
-                print("Entered Google password")
                 
                 # Click Next or submit button for password
-                password_next_selectors = [
-                    "#passwordNext",
-                    "button:has-text('Next')",
-                    "input[type='submit']",
-                    "button[type='submit']"
-                ]
-                
-                for selector in password_next_selectors:
+                for selector in GoogleSelectors.PASSWORD_NEXT_BUTTONS:
                     try:
                         next_button = await self.page.query_selector(selector)
                         if next_button:
@@ -457,12 +444,10 @@ class WebAgent(CodingAgent):
                 # Check if we're back to the original site (successful login)
                 current_url = self.page.url
                 if 'accounts.google.com' not in current_url:
-                    print("Google login completed successfully")
                     return True
                 else:
                     # Check for 2FA or other verification steps with polling
-                    print("Google login may require additional verification (2FA, etc.)")
-                    print("Waiting up to 5 minutes for verification completion...")
+                    print("Waiting for verification (2FA, etc.)...")
                     
                     # Poll every 5 seconds for up to 5 minutes (300 seconds)
                     max_wait_seconds = 300  # 5 minutes
@@ -476,16 +461,10 @@ class WebAgent(CodingAgent):
                         # Check if login completed
                         current_url = self.page.url
                         if 'accounts.google.com' not in current_url:
-                            print(f"Google login completed after verification ({elapsed_seconds}s)")
                             return True
-                        
-                        # Show progress every 30 seconds
-                        if elapsed_seconds % 30 == 0:
-                            remaining_seconds = max_wait_seconds - elapsed_seconds
-                            print(f"Still waiting for verification... ({remaining_seconds}s remaining)")
                     
                     # Timed out
-                    print("WARNING: Google login verification timed out after 5 minutes")
+                    print("WARNING: Login verification timed out")
                     return False
             else:
                 print("ERROR: Could not find password input field")
@@ -504,7 +483,6 @@ class WebAgent(CodingAgent):
             # Try to solve hCaptcha
             try:
                 await self.page.solve_hcaptcha()
-                print(f"Solved hCaptcha for {self.agent_name}")
                 return True
             except:
                 pass
@@ -512,7 +490,6 @@ class WebAgent(CodingAgent):
             # Try to solve reCaptcha
             try:
                 await self.page.solve_recaptcha()
-                print(f"Solved reCaptcha for {self.agent_name}")
                 return True
             except:
                 pass
@@ -520,7 +497,6 @@ class WebAgent(CodingAgent):
             # Try to solve geeTest
             try:
                 await self.page.solve_geetest()
-                print(f"Solved geeTest for {self.agent_name}")
                 return True
             except:
                 pass
