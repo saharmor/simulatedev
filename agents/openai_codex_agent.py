@@ -77,7 +77,7 @@ class OpenAICodexAgent(WebAgent):
     async def _setup_web_interface(self) -> bool:
         """Main setup flow: authenticate and navigate to correct environment"""
         try:
-            print("🚀 Starting OpenAI Codex setup...")
+            print("Starting OpenAI Codex setup...")
             
             # Step 1: Handle authentication if needed
             if not await self._handle_authentication():
@@ -87,17 +87,17 @@ class OpenAICodexAgent(WebAgent):
             if not await self._handle_environments_page():
                 return False
             
-            print("✅ OpenAI Codex setup completed successfully")
+            print("SUCCESS: OpenAI Codex setup completed successfully")
             return True
             
         except Exception as e:
-            print(f"❌ Setup failed: {str(e)}")
+            print(f"ERROR: Setup failed: {str(e)}")
             return False
 
     async def execute_prompt(self, prompt: str) -> AgentResponse:
         """Execute a coding task on OpenAI Codex"""
         try:
-            print(f"🎯 Executing task: {prompt[:100]}...")
+            print(f"Executing task: {prompt[:100]}...")
             
             # Send prompt and create task
             await self._send_prompt(prompt)
@@ -124,16 +124,14 @@ class OpenAICodexAgent(WebAgent):
     async def _handle_authentication(self) -> bool:
         """Handle the complete authentication flow"""
         current_url = self.page.url
-        print(f"📍 Current URL: {current_url}")
         
         # Check if already authenticated
         if self._is_environments_page(current_url):
-            print("✅ Already authenticated")
             return True
         
         # Handle login page
         if 'auth/login' in current_url or await self._is_login_page():
-            print("🔐 On login page, clicking login...")
+            print("Authenticating...")
             if not await self._click_element(CodexSelectors.LOGIN_BUTTON, "login button"):
                 return False
             await self.page.wait_for_timeout(3000)
@@ -141,7 +139,6 @@ class OpenAICodexAgent(WebAgent):
         
         # Handle OpenAI auth page
         if 'auth.openai.com' in current_url:
-            print("🔗 On OpenAI auth page, clicking Google login...")
             if not await self._click_element(CodexSelectors.GOOGLE_BUTTON, "Google login button"):
                 return False
             await self.page.wait_for_timeout(3000)
@@ -149,7 +146,6 @@ class OpenAICodexAgent(WebAgent):
         
         # Handle Google authentication
         if 'accounts.google.com' in current_url:
-            print("🔑 Handling Google authentication...")
             if not await self.handle_google_login():
                 return False
             await self.page.wait_for_timeout(5000)
@@ -177,30 +173,26 @@ class OpenAICodexAgent(WebAgent):
         """Handle environment selection or creation for the repository"""
         repo_url = self.get_working_repo_url()
         if not repo_url:
-            print("⚠️ No repository URL provided")
+            print("WARNING: No repository URL provided")
             return True
         
         repo_name = self._extract_repo_name(repo_url)
-        print(f"🏗️ Setting up environment for repository: {repo_name}")
+        print(f"Setting up environment for repository: {repo_name}")
         
         # Check if we're already on environment creation page
         if 'settings/environment/create' in self.page.url:
-            print("📍 Already on environment creation page")
             return await self._create_new_environment(repo_name)
         
         # Look for existing environment
         if await self._find_and_select_existing_environment(repo_name):
-            print("✅ Found and selected existing environment")
+            print("Found and selected existing environment")
             return True
         
         # Create new environment
-        print("📝 Repository not found, creating new environment...")
+        print("Creating new environment...")
         if not await self._click_element(CodexSelectors.CREATE_ENV_BUTTON, "create environment button"):
-            print("❌ Failed to click create environment button, trying fallback method...")
-            # Try the more detailed method as fallback
-            if not await self._click_create_environment_final():
-                print("❌ All create environment button methods failed")
-                return False
+            print("ERROR: Failed to click create environment button")
+            return False
         
         return await self._create_new_environment(repo_name)
 
@@ -212,67 +204,45 @@ class OpenAICodexAgent(WebAgent):
             element = await self.page.query_selector(repo_selector)
             
             if element:
-                print(f"✅ Found existing environment for {repo_name}")
                 await element.click()
                 await self.page.wait_for_timeout(2000)
                 return await self._click_element(CodexSelectors.USE_THIS_BUTTON, "Use this button")
             
-            # Fallback: try simpler selectors
-            fallback_selectors = [
-                f"td:has-text('{repo_name}')",
-                f"div:has-text('{repo_name}')"
-            ]
-            
-            for selector in fallback_selectors:
-                element = await self.page.query_selector(selector)
-                if element:
-                    print(f"✅ Found existing environment with fallback: {selector}")
-                    await element.click()
-                    await self.page.wait_for_timeout(2000)
-                    return await self._click_element(CodexSelectors.USE_THIS_BUTTON, "Use this button")
-            
             return False
         except Exception as e:
-            print(f"❌ Error finding existing environment: {str(e)}")
             return False
 
     async def _create_new_environment(self, repo_name: str) -> bool:
         """Create a new environment by selecting repository"""
         try:
-            # Wait for repository creation list to load (proven from logs)
+            # Wait for repository creation list to load
             await self._wait_for_element(CodexSelectors.REPO_LIST_CONTAINER, "creation list container")
             await self._wait_for_element(CodexSelectors.REPO_NAME_ELEMENTS, "repository list")
             await self.page.wait_for_timeout(2000)  # Allow list to fully populate
             
             # Wait for at least one repository button to become available
-            print("⏳ Waiting for repository buttons to become available...")
             await self.page.wait_for_selector("button p.text-token-text-primary", timeout=10000)
-            print("✅ Repository buttons are available")
             
             # Find and click repository using proven selector
             repo_only = repo_name.split('/')[-1] if '/' in repo_name else repo_name
             repo_selector = CodexSelectors.NEW_REPO_BUTTON.format(repo_name=repo_only)
             
-            print(f"🔍 Looking for repository: {repo_only}")
             element = await self.page.query_selector(repo_selector)
             
             if element and await element.is_visible():
-                print(f"✅ Found repository with proven selector")
                 await self._scroll_and_click(element, f"repository {repo_only}")
             else:
-                # Use fallback search if proven selector doesn't work
-                if not await self._fallback_repository_search(repo_only):
-                    return False
+                print(f"ERROR: Repository {repo_only} not found")
+                return False
             
             # Click final create button using proven selector
             await self.page.wait_for_timeout(2000)
             final_create_element = await self.page.query_selector(CodexSelectors.FINAL_CREATE_BUTTON)
             
             if final_create_element and await final_create_element.is_visible():
-                print("✅ Found final create environment button")
                 await self._scroll_and_click(final_create_element, "final create environment button")
             else:
-                print("❌ Final create environment button not found")
+                print("ERROR: Failed to create environment")
                 return False
             
             # Wait for redirect and click "Use this"
@@ -280,50 +250,7 @@ class OpenAICodexAgent(WebAgent):
             return await self._click_element(CodexSelectors.USE_THIS_BUTTON, "Use this button")
             
         except Exception as e:
-            print(f"❌ Failed to create environment: {str(e)}")
-            return False
-
-    async def _fallback_repository_search(self, repo_name: str) -> bool:
-        """Fallback method to find repository by searching all buttons"""
-        try:
-            print(f"🔍 Using fallback search for repository: {repo_name}")
-            buttons = await self.page.query_selector_all("button")
-            for button in buttons:
-                try:
-                    p_element = await button.query_selector("p.text-token-text-primary")
-                    if p_element:
-                        text = await p_element.text_content()
-                        if text and text.strip() == repo_name:
-                            print(f"✅ Found repository in fallback search")
-                            await self._scroll_and_click(button, f"repository {repo_name}")
-                            return True
-                except:
-                    continue
-            return False
-        except:
-            return False
-
-    async def _click_create_environment_final(self) -> bool:
-        """Click the final Create environment button (fallback method)"""
-        try:
-            # Try the proven final create button selector first
-            element = await self.page.query_selector(CodexSelectors.FINAL_CREATE_BUTTON)
-            if element and await element.is_visible() and await element.is_enabled():
-                print(f"✅ Found final create environment button")
-                await self._scroll_and_click(element, "final create environment button")
-                return True
-            
-            # Fallback to the basic create button
-            element = await self.page.query_selector(CodexSelectors.CREATE_ENV_BUTTON)
-            if element and await element.is_visible() and await element.is_enabled():
-                print(f"✅ Found create environment button (fallback)")
-                await self._scroll_and_click(element, "create environment button")
-                return True
-            else:
-                print(f"❌ No create environment button found")
-                return False
-        except Exception as e:
-            print(f"❌ Failed to find create environment button: {str(e)}")
+            print(f"ERROR: Failed to create environment: {str(e)}")
             return False
 
     async def _wait_for_redirect(self):
@@ -351,7 +278,6 @@ class OpenAICodexAgent(WebAgent):
 
     async def _send_prompt(self, prompt: str):
         """Send prompt to the Codex interface"""
-        print("📝 Sending prompt to Codex...")
         
         # Wait for and fill input field
         await self._wait_for_element(CodexSelectors.PROMPT_INPUT, "prompt input")
@@ -360,14 +286,12 @@ class OpenAICodexAgent(WebAgent):
         await input_field.click()
         await self.page.keyboard.press("Control+a")
         await input_field.fill(prompt)
-        print(f"✅ Prompt entered: {prompt[:50]}...")
         
         # Click Code button
         await self._click_element(CodexSelectors.CODE_BUTTON, "Code button")
 
     async def _open_created_task(self) -> bool:
         """Find and open the newly created task"""
-        print("🔍 Looking for created task...")
         
         # Wait for loading to complete
         await self._wait_for_loading_complete()
@@ -378,17 +302,15 @@ class OpenAICodexAgent(WebAgent):
         
         if task_element:
             href = await task_element.get_attribute('href')
-            print(f"✅ Found task: {href}")
             await task_element.click()
             await self.page.wait_for_timeout(2000)
             return True
         
-        print("❌ No task found")
+        print("ERROR: No task found")
         return False
 
     async def _complete_task_and_get_pr(self) -> Optional[str]:
         """Wait for task completion and extract PR URL"""
-        print("⏳ Waiting for task completion...")
         
         # Focus on chat input
         await self._focus_chat_input()
@@ -408,29 +330,22 @@ class OpenAICodexAgent(WebAgent):
             # Use proven chat input selector (same as prompt input)
             element = await self.page.query_selector(CodexSelectors.CHAT_INPUT)
             if element:
-                print("✅ Focused on chat input")
                 await element.click()
                 await self.page.wait_for_timeout(1000)
-            else:
-                print("⚠️ Chat input field not found")
         except Exception as e:
-            print(f"⚠️ Could not focus chat input: {str(e)}")
+            print(f"WARNING: Could not focus chat input: {str(e)}")
 
     async def _wait_for_completion(self):
         """Wait for task completion by monitoring stop button"""
-        print("⏳ Monitoring task completion...")
-        
         try:
             # Wait for stop button to appear (proven selector)
             await self.page.wait_for_selector(CodexSelectors.STOP_BUTTON, timeout=30000)
-            print("🔄 Task is running...")
             
             # Wait for stop button to disappear (proven selector)
             await self.page.wait_for_selector(CodexSelectors.STOP_BUTTON, state="hidden", timeout=300000)
-            print("✅ Task completed!")
             
         except:
-            print("⚠️ Stop button monitoring failed, assuming completion")
+            print("WARNING: Could not monitor task completion")
         
         await self.page.wait_for_timeout(2000)
 
@@ -441,16 +356,14 @@ class OpenAICodexAgent(WebAgent):
             element = await self.page.query_selector(CodexSelectors.CREATE_PR_BUTTON)
             
             if element and await element.is_visible():
-                print("🔗 Creating PR...")
                 await element.click()
                 await self.page.wait_for_timeout(3000)
             
         except:
-            print("ℹ️ No Create PR button found")
+            pass  # No Create PR button found
 
     async def _extract_pr_url(self) -> Optional[str]:
         """Extract PR URL from View PR button"""
-        print("🔍 Looking for PR URL...")
         
         try:
             await self.page.wait_for_selector(CodexSelectors.VIEW_PR_LINK, timeout=30000)
@@ -459,11 +372,10 @@ class OpenAICodexAgent(WebAgent):
             if pr_link:
                 href = await pr_link.get_attribute('href')
                 if href and 'github.com' in href and '/pull/' in href:
-                    print(f"✅ Found PR: {href}")
                     return href
                     
         except Exception as e:
-            print(f"❌ No PR URL found: {str(e)}")
+            print(f"WARNING: No PR URL found: {str(e)}")
         
         return None
 
@@ -475,25 +387,23 @@ class OpenAICodexAgent(WebAgent):
         """Wait for an element to appear"""
         try:
             await self.page.wait_for_selector(selector, timeout=timeout)
-            print(f"✅ Found {description}")
         except:
-            print(f"⚠️ Timeout waiting for {description}")
+            print(f"WARNING: Timeout waiting for {description}")
 
     async def _click_element(self, selector: str, description: str) -> bool:
-        """Find and click an element with multiple strategies"""
+        """Find and click an element"""
         try:
             element = await self.page.query_selector(selector)
             if element and await element.is_visible() and await element.is_enabled():
                 await element.click()
-                print(f"✅ Clicked {description}")
                 await self.page.wait_for_timeout(1000)
                 return True
             
-            print(f"❌ Could not click {description}")
+            print(f"ERROR: Could not click {description}")
             return False
             
         except Exception as e:
-            print(f"❌ Error clicking {description}: {str(e)}")
+            print(f"ERROR: Failed to click {description}: {str(e)}")
             return False
 
     async def _scroll_and_click(self, element, description: str):
@@ -504,21 +414,17 @@ class OpenAICodexAgent(WebAgent):
             
             try:
                 await element.click()
-                print(f"✅ Clicked {description}")
             except:
                 await element.evaluate("element => element.click()")
-                print(f"✅ JS clicked {description}")
                 
         except Exception as e:
-            print(f"❌ Failed to click {description}: {str(e)}")
+            print(f"ERROR: Failed to click {description}: {str(e)}")
 
     async def _wait_for_loading_complete(self):
         """Wait for any loading indicators to complete"""
         try:
-            # Use proven loading selector from logs
+            # Use proven loading selector
             await self.page.wait_for_selector(CodexSelectors.LOADING, timeout=5000)
-            print("🔄 Loading detected, waiting for completion...")
             await self.page.wait_for_selector(CodexSelectors.LOADING, state="hidden", timeout=30000)
-            print("✅ Loading completed")
         except:
-            print("ℹ️ No loading indicator found or already completed") 
+            pass  # No loading indicator found or already completed 
