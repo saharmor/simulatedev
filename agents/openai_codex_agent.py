@@ -8,7 +8,7 @@ Core flow: Login → Environments → Repository Selection → Task Execution �
 
 import re
 import time
-from typing import Optional
+from typing import Optional, Tuple
 from .web_agent import WebAgent, AgentResponse
 
 
@@ -39,6 +39,9 @@ class CodexSelectors:
     STOP_BUTTON = "button[aria-label='stop-button'], button[data-testid='stop-button']"
     CREATE_PR_BUTTON = "div.btn-primary button:has(span:text('Create PR'))"
     VIEW_PR_LINK = "a:has(span:text('View PR'))"
+    
+    # Output content extraction (NEW)
+    OUTPUT_CONTENT = "div.markdown.prose, div[class*='markdown'][class*='prose']"
     
     # Loading and status (PROVEN WORKING)
     LOADING = ".animate-pulse, .loading, [role='progressbar']"
@@ -106,13 +109,33 @@ class OpenAICodexAgent(WebAgent):
             if not await self._open_created_task():
                 return AgentResponse(content="", success=False, error_message="Failed to open task")
             
-            # Wait for completion and get PR URL
-            pr_url = await self._complete_task_and_get_pr()
+            # Wait for completion and get output content and PR URL
+            output_content, pr_url = await self._complete_task_and_get_pr()
+            
+            # Build response content
+            response_parts = []
+            
+            if output_content:
+                response_parts.append("AGENT OUTPUT:")
+                response_parts.append("=" * 50)
+                response_parts.append(output_content)
+                response_parts.append("=" * 50)
             
             if pr_url:
-                return AgentResponse(content=f"Task completed successfully. PR created: {pr_url}", success=True)
+                response_parts.append(f"PR created: {pr_url}")
+                status_message = "Task completed successfully with output and PR created."
+            elif output_content:
+                status_message = "Task completed successfully with output generated."
             else:
-                return AgentResponse(content="Task completed but no PR created", success=True)
+                status_message = "Task completed but no output or PR captured."
+            
+            if response_parts:
+                response_parts.insert(0, status_message)
+                final_content = "\n\n".join(response_parts)
+            else:
+                final_content = status_message
+            
+            return AgentResponse(content=final_content, success=True)
             
         except Exception as e:
             return AgentResponse(content="", success=False, error_message=str(e))
@@ -309,8 +332,8 @@ class OpenAICodexAgent(WebAgent):
         print("ERROR: No task found")
         return False
 
-    async def _complete_task_and_get_pr(self) -> Optional[str]:
-        """Wait for task completion and extract PR URL"""
+    async def _complete_task_and_get_pr(self) -> Tuple[Optional[str], Optional[str]]:
+        """Wait for task completion and extract output content and PR URL"""
         
         # Focus on chat input
         await self._focus_chat_input()
@@ -318,11 +341,48 @@ class OpenAICodexAgent(WebAgent):
         # Wait for completion (stop button disappears)
         await self._wait_for_completion()
         
+        # Extract output content after completion
+        output_content = await self._extract_output_content()
+        
         # Try to create PR
         await self._try_create_pr()
         
         # Extract PR URL
-        return await self._extract_pr_url()
+        pr_url = await self._extract_pr_url()
+        
+        return output_content, pr_url
+
+    async def _extract_output_content(self) -> Optional[str]:
+        """Extract the agent's output content from the page"""
+        try:
+            # Wait a moment for content to fully render
+            await self.page.wait_for_timeout(2000)
+            
+            # Try to find output content using the selector
+            output_elements = await self.page.query_selector_all(CodexSelectors.OUTPUT_CONTENT)
+            
+            if not output_elements:
+                print("WARNING: No output content found using primary selector")
+                # Fallback: try to find any markdown content
+                output_elements = await self.page.query_selector_all("div[class*='markdown'], div[class*='prose']")
+            
+            if output_elements:
+                # Get the text content from the last (most recent) output element
+                content_element = output_elements[-1]
+                content = await content_element.inner_text()
+                
+                if content and len(content.strip()) > 0:
+                    print(f"SUCCESS: Extracted {len(content)} characters of output content")
+                    return content.strip()
+                else:
+                    print("WARNING: Output element found but no text content")
+            else:
+                print("WARNING: No output content elements found")
+                
+        except Exception as e:
+            print(f"ERROR: Failed to extract output content: {str(e)}")
+        
+        return None
 
     async def _focus_chat_input(self):
         """Focus on the chat input field"""
@@ -342,7 +402,7 @@ class OpenAICodexAgent(WebAgent):
             await self.page.wait_for_selector(CodexSelectors.STOP_BUTTON, timeout=30000)
             
             # Wait for stop button to disappear (proven selector)
-            await self.page.wait_for_selector(CodexSelectors.STOP_BUTTON, state="hidden", timeout=300000)
+            await self.page.wait_for_selector(CodexSelectors.STOP_BUTTON, state="hidden", timeout=1200000)
             
         except:
             print("WARNING: Could not monitor task completion")
