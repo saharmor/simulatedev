@@ -3,11 +3,9 @@ Run cutting-edge AI coding IDEs such as Cursor, Devin, and Claude Code via code.
 
 SimulateDev is an automation tool that runs AI coding agents (Cursor, Devin, Claude Code) on any GitHub repository with custom prompts and automatically creates pull requests with the changes. It supports both **single-agent** and **multi-agent collaborative workflows**. SimulateDev can also help you automatically address reviewer comments on existing PRs or completely resolve open GitHub issues.
 
--> [Run SimulateDev in <1 mins](https://github.com/saharmor/simulatedev?tab=readme-ov-file#run-simulatedev-in-1-min)
+[How SimulateDev works](https://github.com/saharmor/simulatedev?tab=readme-ov-file#how-simulatedev-operates)
 
--> How SimulateDev works
-
--> For additional scripts and utilities, see the [scripts directory](scripts/README.md).
+[Run SimulateDev in less than a minute](https://github.com/saharmor/simulatedev?tab=readme-ov-file#run-simulatedev-in-1-min)
 
 
 https://github.com/user-attachments/assets/13b35289-3f38-4a46-a176-9c8e85892fe9
