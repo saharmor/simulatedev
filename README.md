@@ -3,7 +3,11 @@ Run cutting-edge AI coding IDEs such as Cursor, Devin, and Claude Code via code.
 
 SimulateDev is an automation tool that runs AI coding agents (Cursor, Devin, Claude Code) on any GitHub repository with custom prompts and automatically creates pull requests with the changes. It supports both **single-agent** and **multi-agent collaborative workflows**. SimulateDev can also help you automatically address reviewer comments on existing PRs or completely resolve open GitHub issues.
 
-For additional scripts and utilities, see the [scripts directory](scripts/README.md).
+-> [Run SimulateDev in <1 mins](https://github.com/saharmor/simulatedev?tab=readme-ov-file#run-simulatedev-in-1-min)
+
+-> How SimulateDev works
+
+-> For additional scripts and utilities, see the [scripts directory](scripts/README.md).
 
 
 https://github.com/user-attachments/assets/13b35289-3f38-4a46-a176-9c8e85892fe9
@@ -34,49 +38,6 @@ python simulatedev.py --workflow bugs --repo https://github.com/saharmor/gemini-
 - **Custom Prompts**: Send any coding task to your preferred AI agent(s)
 - **Visual UI Detection**: Uses Claude Computer Use for precise UI interaction
 - **Local Execution**: Runs coding agents on your local machine (future: cloud execution)
-
-## How It Works
-
-```mermaid
-graph LR
-    A[GitHub Repo] --> B[Clone Repository]
-    B --> C[Check Permissions]
-    C --> D{Has Push Access?}
-    D -->|Yes| E[Open AI IDE]
-    D -->|No| F[Fork Repository]
-    F --> G[Update Remote Origin]
-    G --> E[Open AI IDE]
-    E --> H[Send Prompt]
-    H --> I[Wait for Completion]
-    I --> J[Extract Results]
-    J --> K[Create Branch & Commit]
-    K --> L{Using Fork?}
-    L -->|Yes| M[Push to Fork & Create Cross-Repo PR]
-    L -->|No| N[Push & Create PR]
-    M --> O[Done!]
-    N --> O[Done!]
-```
-
-1. **Clone**: Downloads the specified GitHub repository
-2. **Smart Workflow**: If no push access, automatically forks the repository
-3. **Launch**: Opens your chosen AI coding agent (Cursor/Windsurf/etc.)
-4. **Prompt**: Sends your custom coding task to the agent
-5. **Monitor**: Watches the IDE interface to detect completion
-6. **Commit**: Creates a new branch with the changes
-7. **PR**: Creates pull request
-
-## How SimulateDev Operates
-
-SimulateDev runs **entirely on your local machine** and leverages your existing AI coding IDEs (Cursor, Windsurf, Claude Code) to execute both single-agent and multi-agent collaborative workflows. Here's how it works under the hood:
-
-- **Multi-Agent Orchestration**: Supports collaborative workflows where specialized agents (Planner → Coder → Tester) work together sequentially on complex tasks
-- **IDE Integration**: SimulateDev programmatically opens and controls your installed coding IDEs through:
-  - **GUI Automation**: Uses keyboard shortcuts and UI interaction for Cursor and Windsurf
-- **Screen Analysis**: Uses vision models (e.g. Claude) to analyze IDE screenshots and detect task completion, progress, and UI states
-- **Intelligent Monitoring**: Continuously monitors IDE interfaces with adaptive check intervals, automatic resume detection, and timeout management
-- **Window Focus Management**: For GUI-based IDEs like Cursor, the window must be **visible and focused**. SimulateDev will play a beep sound and pause execution if the IDE window loses focus
-
-**Important**: For Cursor and Windsurf, keep the IDE window visible and focused during execution. Claude Code runs headlessly and doesn't require window focus.
 
 ## Quick Start
 
@@ -302,6 +263,50 @@ The timeout is automatically validated and clamped to reasonable bounds (30 seco
 | Cursor | Supported | Full integration |
 | Windsurf | Supported | Full integration |  
 | Claude Code | Supported (Headless) | Full integration |
+
+## How SimulateDev Operates
+
+SimulateDev runs **entirely on your local machine** and leverages your existing AI coding IDEs (Cursor, Windsurf, Claude Code) to execute both single-agent and multi-agent collaborative workflows. Here's how it works under the hood:
+
+- **Multi-Agent Orchestration**: Supports collaborative workflows where specialized agents (Planner → Coder → Tester) work together sequentially on complex tasks
+- **IDE Integration**: SimulateDev programmatically opens and controls your installed coding IDEs through:
+  - **GUI Automation**: Uses keyboard shortcuts and UI interaction for Cursor and Windsurf
+- **Screen Analysis**: Uses vision models (e.g. Claude) to analyze IDE screenshots and detect task completion, progress, and UI states
+- **Intelligent Monitoring**: Continuously monitors IDE interfaces with adaptive check intervals, automatic resume detection, and timeout management
+- **Window Focus Management**: For GUI-based IDEs like Cursor, the window must be **visible and focused**. SimulateDev will play a beep sound and pause execution if the IDE window loses focus
+
+**Important**: For Cursor and Windsurf, keep the IDE window visible and focused during execution. Claude Code runs headlessly and doesn't require window focus.
+
+
+## How It Works
+
+```mermaid
+graph LR
+    A[GitHub Repo] --> B[Clone Repository]
+    B --> C[Check Permissions]
+    C --> D{Has Push Access?}
+    D -->|Yes| E[Open AI IDE]
+    D -->|No| F[Fork Repository]
+    F --> G[Update Remote Origin]
+    G --> E[Open AI IDE]
+    E --> H[Send Prompt]
+    H --> I[Wait for Completion]
+    I --> J[Extract Results]
+    J --> K[Create Branch & Commit]
+    K --> L{Using Fork?}
+    L -->|Yes| M[Push to Fork & Create Cross-Repo PR]
+    L -->|No| N[Push & Create PR]
+    M --> O[Done!]
+    N --> O[Done!]
+```
+
+1. **Clone**: Downloads the specified GitHub repository
+2. **Smart Workflow**: If no push access, automatically forks the repository
+3. **Launch**: Opens your chosen AI coding agent (Cursor/Windsurf/etc.)
+4. **Prompt**: Sends your custom coding task to the agent
+5. **Monitor**: Watches the IDE interface to detect completion
+6. **Commit**: Creates a new branch with the changes
+7. **PR**: Creates pull request
 
 
 ## Troubleshooting
