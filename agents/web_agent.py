@@ -314,22 +314,29 @@ class WebAgent(CodingAgent):
             while time.time() - start_time < timeout_seconds:
                 # Check if loading indicator is present (if defined)
                 if self.loading_selector:
-                    # If loading indicator is still visible, keep waiting
-                    await self.page.wait_for_selector(
-                        self.loading_selector, 
-                        state="hidden", 
-                        timeout=5000
-                    )
-                    break
+                    try:
+                        await self.page.wait_for_selector(
+                            self.loading_selector, 
+                            state="hidden", 
+                            timeout=5000
+                        )
+                        break
+                    except:
+                        # If loading indicator is still visible, keep waiting
+                        pass
                 
                 # Check if output area has been updated (basic implementation)
-                output_element = await self.page.query_selector(self.output_selector)
-                if output_element:
-                    output_text = await output_element.text_content()
-                    if output_text and len(output_text.strip()) > 100:  # Arbitrary threshold
-                        # Wait a bit more to ensure completion
-                        await self.page.wait_for_timeout(10000)
-                        break
+                try:
+                    output_element = await self.page.query_selector(self.output_selector)
+                    if output_element:
+                        output_text = await output_element.text_content()
+                        if output_text and len(output_text.strip()) > 100:  # Arbitrary threshold
+                            # Wait a bit more to ensure completion
+                            await self.page.wait_for_timeout(10000)
+                            break
+                except:
+                    # failure to extract output shouldn't break the flow
+                    pass
                 
                 # Wait before next check
                 await self.page.wait_for_timeout(5000)
