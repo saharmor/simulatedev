@@ -322,9 +322,6 @@ class WebAgent(CodingAgent):
                             timeout=5000
                         )
                         break
-                    except:
-                        # Loading indicator handling failed, fall back to other methods
-                        pass
                 
                 # Check if output area has been updated (basic implementation)
                 try:
