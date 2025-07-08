@@ -82,7 +82,7 @@ class OpenAICodexAgent(WebAgent):
         """Main setup flow: authenticate and navigate to correct environment"""
         try:
             print("Starting OpenAI Codex setup...")
-            
+
             # Step 1: Handle authentication if needed
             if not await self._handle_authentication():
                 return False
@@ -308,7 +308,6 @@ class OpenAICodexAgent(WebAgent):
         input_field = await self.page.query_selector(CodexSelectors.PROMPT_INPUT)
         
         await input_field.click()
-        await self.page.keyboard.press("Control+a")
         await input_field.fill(prompt)
         
         # Click Code button
