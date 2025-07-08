@@ -41,7 +41,7 @@ class AgentFactory:
             return WindsurfAgent(claude_computer_use)
         elif agent_name == "claude_code" or agent_name == "cloud_code":
             return ClaudeCodeAgent(claude_computer_use)
-        elif agent_name == "openai_codex" or agent_name == "openai-codex":
+        elif agent_name == "openai_codex":
             return OpenAICodexAgent(claude_computer_use)
         elif agent_name == "test":
             return TestAgent(claude_computer_use)

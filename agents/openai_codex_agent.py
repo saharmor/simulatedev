@@ -10,6 +10,7 @@ import re
 import time
 from typing import Optional, Tuple
 from .web_agent import WebAgent, AgentResponse
+from web_automation_utils import wait_for_element, click_element, scroll_and_click, wait_for_loading_complete
 
 
 # Selector constants for better maintainability
@@ -86,8 +87,8 @@ class OpenAICodexAgent(WebAgent):
             if not await self._handle_authentication():
                 return False
             
-            # Step 2: Handle environments page
-            if not await self._handle_environments_page():
+            # Step 2: Set up repository environment
+            if not await self._setup_repository_environment():
                 return False
             
             print("SUCCESS: OpenAI Codex setup completed successfully")
@@ -155,14 +156,14 @@ class OpenAICodexAgent(WebAgent):
         # Handle login page
         if 'auth/login' in current_url or await self._is_login_page():
             print("Authenticating...")
-            if not await self._click_element(CodexSelectors.LOGIN_BUTTON, "login button"):
+            if not await click_element(self.page, CodexSelectors.LOGIN_BUTTON, "login button"):
                 return False
             await self.page.wait_for_timeout(3000)
             current_url = self.page.url
         
         # Handle OpenAI auth page
         if 'auth.openai.com' in current_url:
-            if not await self._click_element(CodexSelectors.GOOGLE_BUTTON, "Google login button"):
+            if not await click_element(self.page, CodexSelectors.GOOGLE_BUTTON, "Google login button"):
                 return False
             await self.page.wait_for_timeout(3000)
             current_url = self.page.url
@@ -192,8 +193,8 @@ class OpenAICodexAgent(WebAgent):
     # ENVIRONMENTS AND REPOSITORY MANAGEMENT
     # =============================================================================
 
-    async def _handle_environments_page(self) -> bool:
-        """Handle environment selection or creation for the repository"""
+    async def _setup_repository_environment(self) -> bool:
+        """Set up the repository environment by selecting existing or creating new one"""
         repo_url = self.get_working_repo_url()
         if not repo_url:
             print("WARNING: No repository URL provided")
@@ -213,7 +214,7 @@ class OpenAICodexAgent(WebAgent):
         
         # Create new environment
         print("Creating new environment...")
-        if not await self._click_element(CodexSelectors.CREATE_ENV_BUTTON, "create environment button"):
+        if not await click_element(self.page, CodexSelectors.CREATE_ENV_BUTTON, "create environment button"):
             print("ERROR: Failed to click create environment button")
             return False
         
@@ -229,7 +230,7 @@ class OpenAICodexAgent(WebAgent):
             if element:
                 await element.click()
                 await self.page.wait_for_timeout(2000)
-                return await self._click_element(CodexSelectors.USE_THIS_BUTTON, "Use this button")
+                return await click_element(self.page, CodexSelectors.USE_THIS_BUTTON, "Use this button")
             
             return False
         except Exception as e:
@@ -239,8 +240,8 @@ class OpenAICodexAgent(WebAgent):
         """Create a new environment by selecting repository"""
         try:
             # Wait for repository creation list to load
-            await self._wait_for_element(CodexSelectors.REPO_LIST_CONTAINER, "creation list container")
-            await self._wait_for_element(CodexSelectors.REPO_NAME_ELEMENTS, "repository list")
+            await wait_for_element(self.page, CodexSelectors.REPO_LIST_CONTAINER, "creation list container")
+            await wait_for_element(self.page, CodexSelectors.REPO_NAME_ELEMENTS, "repository list")
             await self.page.wait_for_timeout(2000)  # Allow list to fully populate
             
             # Wait for at least one repository button to become available
@@ -253,7 +254,7 @@ class OpenAICodexAgent(WebAgent):
             element = await self.page.query_selector(repo_selector)
             
             if element and await element.is_visible():
-                await self._scroll_and_click(element, f"repository {repo_only}")
+                await scroll_and_click(self.page, element, f"repository {repo_only}")
             else:
                 print(f"ERROR: Repository {repo_only} not found")
                 return False
@@ -263,14 +264,14 @@ class OpenAICodexAgent(WebAgent):
             final_create_element = await self.page.query_selector(CodexSelectors.FINAL_CREATE_BUTTON)
             
             if final_create_element and await final_create_element.is_visible():
-                await self._scroll_and_click(final_create_element, "final create environment button")
+                await scroll_and_click(self.page, final_create_element, "final create environment button")
             else:
                 print("ERROR: Failed to create environment")
                 return False
             
             # Wait for redirect and click "Use this"
             await self._wait_for_redirect()
-            return await self._click_element(CodexSelectors.USE_THIS_BUTTON, "Use this button")
+            return await click_element(self.page, CodexSelectors.USE_THIS_BUTTON, "Use this button")
             
         except Exception as e:
             print(f"ERROR: Failed to create environment: {str(e)}")
@@ -279,7 +280,7 @@ class OpenAICodexAgent(WebAgent):
     async def _wait_for_redirect(self):
         """Wait for redirect to environment page"""
         await self.page.wait_for_timeout(3000)
-        await self._wait_for_element(CodexSelectors.USE_THIS_BUTTON, "Use this button")
+        await wait_for_element(self.page, CodexSelectors.USE_THIS_BUTTON, "Use this button")
 
     def _extract_repo_name(self, repo_url: str) -> str:
         """Extract repository name from GitHub URL"""
@@ -303,7 +304,7 @@ class OpenAICodexAgent(WebAgent):
         """Send prompt to the Codex interface"""
         
         # Wait for and fill input field
-        await self._wait_for_element(CodexSelectors.PROMPT_INPUT, "prompt input")
+        await wait_for_element(self.page, CodexSelectors.PROMPT_INPUT, "prompt input")
         input_field = await self.page.query_selector(CodexSelectors.PROMPT_INPUT)
         
         await input_field.click()
@@ -311,13 +312,13 @@ class OpenAICodexAgent(WebAgent):
         await input_field.fill(prompt)
         
         # Click Code button
-        await self._click_element(CodexSelectors.CODE_BUTTON, "Code button")
+        await click_element(self.page, CodexSelectors.CODE_BUTTON, "Code button")
 
     async def _open_created_task(self) -> bool:
         """Find and open the newly created task"""
         
         # Wait for loading to complete
-        await self._wait_for_loading_complete()
+        await wait_for_loading_complete(self.page, CodexSelectors.LOADING)
         
         # Find and click task link
         await self.page.wait_for_timeout(3000)
@@ -439,52 +440,4 @@ class OpenAICodexAgent(WebAgent):
         
         return None
 
-    # =============================================================================
-    # UTILITY METHODS
-    # =============================================================================
-
-    async def _wait_for_element(self, selector: str, description: str, timeout: int = 10000):
-        """Wait for an element to appear"""
-        try:
-            await self.page.wait_for_selector(selector, timeout=timeout)
-        except:
-            print(f"WARNING: Timeout waiting for {description}")
-
-    async def _click_element(self, selector: str, description: str) -> bool:
-        """Find and click an element"""
-        try:
-            element = await self.page.query_selector(selector)
-            if element and await element.is_visible() and await element.is_enabled():
-                await element.click()
-                await self.page.wait_for_timeout(1000)
-                return True
-            
-            print(f"ERROR: Could not click {description}")
-            return False
-            
-        except Exception as e:
-            print(f"ERROR: Failed to click {description}: {str(e)}")
-            return False
-
-    async def _scroll_and_click(self, element, description: str):
-        """Scroll element into view and click it"""
-        try:
-            await element.scroll_into_view_if_needed()
-            await self.page.wait_for_timeout(500)
-            
-            try:
-                await element.click()
-            except:
-                await element.evaluate("element => element.click()")
-                
-        except Exception as e:
-            print(f"ERROR: Failed to click {description}: {str(e)}")
-
-    async def _wait_for_loading_complete(self):
-        """Wait for any loading indicators to complete"""
-        try:
-            # Use proven loading selector
-            await self.page.wait_for_selector(CodexSelectors.LOADING, timeout=5000)
-            await self.page.wait_for_selector(CodexSelectors.LOADING, state="hidden", timeout=30000)
-        except:
-            pass  # No loading indicator found or already completed 
+ 
