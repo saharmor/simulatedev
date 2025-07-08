@@ -20,6 +20,7 @@ from agents import (
     AgentFactory, CodingAgentIdeType, AgentRole, MultiAgentTask, 
     AgentDefinition, AgentContext, MultiAgentResponse
 )
+from agents.web_agent import WebAgent
 from roles import RoleFactory
 from utils.clone_repo import clone_repository
 from src.github_integration import GitHubIntegration
@@ -37,6 +38,7 @@ class TaskRequest:
     create_pr: bool = True
     work_directory: Optional[str] = None
     delete_existing_repo_env: bool = True
+    original_repo_url: Optional[str] = None  # Track original repo URL before potential forking
     
 
 class Orchestrator:
@@ -198,6 +200,65 @@ class Orchestrator:
             raise ValueError(f"Unsupported workflow in _generate_workflow_prompt: {workflow_type}")
     
 
+    def _has_web_agents(self, agents: List[AgentDefinition]) -> bool:
+        """Check if any of the agents are web agents"""
+        for agent_def in agents:
+            try:
+                agent_type = CodingAgentIdeType(agent_def.coding_ide.lower().strip())
+                # Create a temporary agent instance to check if it's a WebAgent
+                temp_agent = AgentFactory.create_agent(agent_type, self.computer_use_client)
+                if isinstance(temp_agent, WebAgent):
+                    return True
+            except Exception:
+                # If agent creation fails, skip this agent
+                continue
+        return False
+    
+    def _handle_web_agent_repo_setup(self, request: TaskRequest) -> bool:
+        """Handle repository setup for web agents (forking if necessary)
+        
+        Returns:
+            bool: True if setup was successful, False if critical error occurred
+        """
+        if not request.repo_url:
+            # No repository to setup
+            return True
+        
+        # Check if we have any web agents
+        if not self._has_web_agents(request.agents):
+            # No web agents, no special setup needed
+            return True
+        
+        print("INFO: Web agents detected, checking repository permissions...")
+        
+        # Store original repo URL before any modifications
+        if not request.original_repo_url:
+            request.original_repo_url = request.repo_url
+        
+        # Check if we have push permissions to the repository
+        has_push_permissions = self.github_integration.check_push_permissions(request.repo_url)
+        
+        if has_push_permissions:
+            print(f"SUCCESS: Have push permissions to {request.repo_url}, no forking needed")
+            return True
+        
+        print(f"INFO: No push permissions to {request.repo_url}, attempting to fork...")
+        
+        # Fork the repository
+        fork_url = self.github_integration.fork_repository(request.repo_url)
+        
+        if fork_url:
+            print(f"SUCCESS: Repository forked to {fork_url}")
+            # Update the repo_url to point to the fork
+            request.repo_url = fork_url
+            print(f"INFO: Web agents will use fork: {fork_url}")
+            print(f"INFO: Original repository: {request.original_repo_url}")
+            return True
+        else:
+            print("ERROR: Failed to fork repository")
+            print("WARNING: Web agents may not be able to make changes to the repository")
+            # Don't fail completely - let the user decide to continue or not
+            return True
     
     def _setup_work_directory(self, request: TaskRequest) -> str:
         """Setup and return the work directory for the request"""
@@ -276,6 +337,11 @@ class Orchestrator:
                 
                 # Set current project for window title checking
                 agent.set_current_project(work_directory)
+                
+                # Set repository context for web agents
+                if isinstance(agent, WebAgent):
+                    if context.working_repo_url:
+                        agent.set_repository_context(context.working_repo_url, context.original_repo_url)
                 
                 # Always close any existing IDE window with this project first to ensure clean state
                 repo_name = os.path.basename(work_directory)
@@ -377,6 +443,10 @@ class Orchestrator:
         start_time = time.time()
         
         try:
+            # Handle web agent repository setup (forking if necessary)
+            if not self._handle_web_agent_repo_setup(request):
+                raise Exception("Failed to setup repository for web agents")
+            
             # Setup work directory
             work_directory = self._setup_work_directory(request)
             
@@ -402,7 +472,9 @@ class Orchestrator:
                 previous_outputs=[],
                 current_step=0,
                 total_steps=len(sorted_agents),
-                work_directory=work_directory
+                work_directory=work_directory,
+                working_repo_url=request.repo_url,
+                original_repo_url=request.original_repo_url
             )
             
             self.execution_log = []
@@ -475,14 +547,18 @@ class Orchestrator:
             if final_output:
                 primary_agent = sorted_agents[0] if sorted_agents else None
                 agent_name = primary_agent.coding_ide if primary_agent else "unknown"
-                self.save_agent_response(request.repo_url, agent_name, final_output)
+                # Use original repo URL for logging consistency
+                repo_url_for_logging = request.original_repo_url if request.original_repo_url else request.repo_url
+                self.save_agent_response(repo_url_for_logging, agent_name, final_output)
             
             # Calculate execution time before PR creation
             execution_time_seconds = time.time() - start_time
             
             # Create pull request if requested and we have a repo
             pr_url = None
-            if request.create_pr and request.repo_url and overall_success:
+            has_web_agents = self._has_web_agents(request.agents)
+            
+            if request.create_pr and request.repo_url and overall_success and not has_web_agents:
                 print("\nProcessing changes and creating pull request...")
                 try:
                     # Construct agent information for PR description
@@ -491,9 +567,12 @@ class Orchestrator:
                         agent_info_parts.append(f"{agent.coding_ide} with {agent.model} as {agent.role.value}")
                     coding_ides_info = ", ".join(agent_info_parts)
                     
+                    # Use original repo URL for PR target if we forked the repository
+                    pr_target_repo = request.original_repo_url if request.original_repo_url else request.repo_url
+                    
                     pr_url = self.github_integration.smart_workflow(
                         repo_path=work_directory,
-                        original_repo_url=request.repo_url,
+                        original_repo_url=pr_target_repo,
                         workflow_name=f"{execution_type}",
                         agent_execution_report_summary=final_output[:1000] + "..." if len(final_output) > 1000 else final_output,
                         coding_ides_info=coding_ides_info,
@@ -508,6 +587,16 @@ class Orchestrator:
                         print("WARNING: Pull request creation failed")
                 except Exception as e:
                     print(f"WARNING: Pull request creation failed: {e}")
+            elif has_web_agents:
+                # Extract PR URL from web agent response if available
+                import re
+                pr_pattern = r'PR created: (https://github\.com/[^\s]+)'
+                pr_match = re.search(pr_pattern, final_output)
+                if pr_match:
+                    pr_url = pr_match.group(1)
+                    print(f"\nINFO: Web agent created PR: {pr_url}")
+                else:
+                    print("\nINFO: Web agents detected - skipping orchestrator PR creation")
             
             if execution_time_seconds < 60:
                 execution_time_str = f"{execution_time_seconds:.1f} seconds"

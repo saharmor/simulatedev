@@ -13,3 +13,5 @@ pymsgbox==1.0.9
 requests>=2.31.0
 mss>=9.0.1
 tenacity>=8.2.3
+botright>=0.5.1
+playwright>=1.40.0
