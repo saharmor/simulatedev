@@ -19,6 +19,7 @@ class CodingAgentIdeType(Enum):
     CURSOR = "cursor"
     WINDSURF = "windsurf"
     CLAUDE_CODE = "claude_code"
+    OPENAI_CODEX = "openai_codex"
     TEST = "test"
 
 
@@ -186,6 +187,8 @@ class AgentContext:
     current_step: int
     total_steps: int
     work_directory: str
+    working_repo_url: Optional[str] = None  # Repository URL agents should work with (may be fork)
+    original_repo_url: Optional[str] = None  # Original repository URL before any forking
     
     def add_agent_output(self, coding_ide: str, role: AgentRole, output: str, success: bool):
         """Add output from an agent to the context"""
@@ -508,4 +511,4 @@ class CodingAgent(ABC):
         os.remove(found_file)
         print(f"Cleaned up {self.output_file} from {found_file}")
         
-        return content 
+        return content
