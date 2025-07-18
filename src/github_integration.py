@@ -633,6 +633,30 @@ class GitHubIntegration:
             print(f"WARNING: Error checking permissions: {str(e)}, assuming no push access")
             return False
     
+    def check_repository_ownership(self, repo_url: str) -> bool:
+        """Check if the authenticated user owns the repository"""
+        if not self.github_token:
+            print("INFO: No GitHub token, cannot check ownership")
+            return False
+        
+        try:
+            repo_info = self.parse_repo_info(repo_url)
+            current_username = self.get_authenticated_user()
+            
+            if not current_username:
+                print("INFO: Cannot determine authenticated user")
+                return False
+            
+            repo_owner = repo_info['owner']
+            is_owner = current_username == repo_owner
+            
+            print(f"INFO: Repository ownership check - Current user: {current_username}, Repo owner: {repo_owner}, Is owner: {is_owner}")
+            return is_owner
+                
+        except Exception as e:
+            print(f"WARNING: Error checking repository ownership: {str(e)}")
+            return False
+    
     def fork_repository(self, repo_url: str) -> Optional[str]:
         """Fork the repository to the authenticated user's account"""
         if not self.github_token:
