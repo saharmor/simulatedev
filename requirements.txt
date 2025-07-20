@@ -15,3 +15,5 @@ mss>=9.0.1
 tenacity>=8.2.3
 botright>=0.5.1
 playwright>=1.40.0
+psutil>=5.9.0
+pywin32>=306; sys_platform == "win32"

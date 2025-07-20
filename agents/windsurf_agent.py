@@ -21,7 +21,13 @@ class WindsurfAgent(CodingAgent):
     
     @property
     def keyboard_shortcut(self) -> Optional[str]:
-        return "cmd+i"  # Command+I opens Windsurf Cascade
+        from utils.platform_utils import keyboard_shortcuts, PlatformDetector
+        if PlatformDetector.is_macos():
+            return "cmd+i"  # Keep original format for compatibility
+        elif PlatformDetector.is_windows():
+            return "ctrl+i"
+        else:  # Linux
+            return "ctrl+i"
     
     @property
     def interface_state_prompt(self) -> str:
@@ -87,7 +93,8 @@ Only analyze the right panel and provide nothing but valid JSON in your response
         
         # Interface is not open or not with correct project, open Cascade interface with keyboard shortcut
         print(f"Opening {self.agent_name} Cascade interface with shortcut: {self.keyboard_shortcut}")
-        pyautogui.hotkey('command', 'i')
+        from utils.platform_utils import keyboard_shortcuts
+        keyboard_shortcuts.execute_shortcut('windsurf_cascade')
         time.sleep(2)  # Wait for interface to open
         
         # TODO commend out for now as it's not working that well, prompt needs to be improved
@@ -106,32 +113,36 @@ Only analyze the right panel and provide nothing but valid JSON in your response
     
     async def _ensure_windsurf_app_open(self):
         """Ensure Windsurf application is open"""
-        import subprocess
         import os
+        from utils.platform_utils import app_launcher, PlatformDetector
         
         try:
             # Get current project path
             project_path = os.getcwd()
             
-            # Open Windsurf with the current project
-            subprocess.run(["open", "-a", self.window_name, project_path])
-            print("Waiting 5 seconds for app to start...")
-            time.sleep(5)  # wait for the app to start
-            
-            # Activate the application
-            activate_script = f'''
-            tell application "{self.window_name}"
-                activate
-            end tell
-            '''
-            subprocess.run(["osascript", "-e", activate_script], check=True)
-            time.sleep(1)
-            
-            # Use computer_use_utils to activate window and steal focus for initial setup
-            repo_name = os.path.basename(project_path)
-            ide_open_success = bring_to_front_window(self.window_name, repo_name)
-            if not ide_open_success:
-                print("Warning: Could not activate Windsurf window, but continuing...")
+            # Open Windsurf with the current project using cross-platform launcher
+            if app_launcher.open_application(self.window_name, project_path):
+                print("Waiting 5 seconds for app to start...")
+                time.sleep(5)  # wait for the app to start
+                
+                # Platform-specific activation
+                if PlatformDetector.is_macos():
+                    # Activate the application on macOS
+                    activate_script = f'''
+                    tell application "{self.window_name}"
+                        activate
+                    end tell
+                    '''
+                    subprocess.run(["osascript", "-e", activate_script], check=True)
+                    time.sleep(1)
+                
+                # Use computer_use_utils to activate window and steal focus for initial setup
+                repo_name = os.path.basename(project_path)
+                ide_open_success = bring_to_front_window(self.window_name, repo_name)
+                if not ide_open_success:
+                    print("Warning: Could not activate Windsurf window, but continuing...")
+            else:
+                print("Warning: Could not launch Windsurf application")
                 
         except Exception as e:
             print(f"Warning: Could not open Windsurf application: {str(e)}")

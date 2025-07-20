@@ -405,6 +405,11 @@ async def execute_task(args) -> bool:
 async def main():
     """Main entry point"""
     try:
+        # Show platform information
+        from utils.platform_utils import PlatformDetector
+        platform_name = PlatformDetector.get_platform_name()
+        print(f"🚀 SimulateDev running on {platform_name}")
+        
         args = parse_arguments()
         
         # Execute the task

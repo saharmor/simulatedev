@@ -15,11 +15,15 @@ https://github.com/user-attachments/assets/13b35289-3f38-4a46-a176-9c8e85892fe9
 
 ## ⚠️ Important Notes
 
-- macOS only: SimulateDev currently only works on macOS. Windows and Linux support are planned for future releases.
+- **Cross-Platform Support**: SimulateDev now works on macOS, Linux, and Windows! 🎉
 - Ensure your coding IDEs (Cursor, Windsurf, Claude Code) are already installed and ready to use - SimulateDev doesn't handle IDE setup or installation (for now)
 - For Windsurf users: Turn on **Turbo mode** for terminal auto-execution to ensure commands run automatically. [Learn more](https://www.reddit.com/r/windsurf/comments/1kksxgh/comment/mrx2el2/)
 - SimulateDev will periodically bring the IDE to the front to monitor the coding agent's progress and state. Ideally: you take your coffee break and let it work :)
-- **Permissions Required**: GitHub token needs `repo` permissions. Cursor/Windsurf require Automation & Accessibility permissions in System Settings → Privacy & Security
+- **Permissions Required**: 
+  - GitHub token needs `repo` permissions
+  - **macOS**: Cursor/Windsurf require Automation & Accessibility permissions in System Settings → Privacy & Security
+  - **Linux**: Install `xdotool` or `wmctrl` for window management: `sudo apt-get install xdotool wmctrl` (Ubuntu/Debian)
+  - **Windows**: No additional permissions required
 
 ## Run SimulateDev in <1 min
 Clone this repo → Create virtual environment → Install requirements.txt → Copy .env.example into .env and replace API keys → Run the following command (replace to your coding IDE of choice and GitHub repo url):
@@ -41,7 +45,7 @@ python simulatedev.py --workflow bugs --repo https://github.com/saharmor/gemini-
 
 ### Prerequisites
 
-- **macOS** (SimulateDev currently only works on Mac)
+- **Operating System**: macOS, Linux, or Windows
 - Python 3.8+
 - Git installed and configured
 - One of the supported AI IDEs installed:
@@ -49,6 +53,10 @@ python simulatedev.py --workflow bugs --repo https://github.com/saharmor/gemini-
   - [Windsurf](https://windsurf.ai/)
   - Claude Code
 - **IDE Setup**: Your chosen coding IDE must be properly installed and configured (logged in, authenticated, ready to use) before running SimulateDev
+- **Platform-Specific Requirements**:
+  - **Linux**: `xdotool` or `wmctrl` for window management (`sudo apt-get install xdotool wmctrl`)
+  - **Windows**: No additional requirements
+  - **macOS**: No additional requirements
 - API keys (see [Configuration](https://github.com/saharmor/simulatedev#configuration) section)
 
 ### Installation
@@ -67,7 +75,7 @@ python simulatedev.py --workflow bugs --repo https://github.com/saharmor/gemini-
    # Activate virtual environment
    source venv/bin/activate  # On macOS/Linux
    # or
-   venv\Scripts\activate     # On Windows
+   venv\Scripts\activate.bat     # On Windows
    ```
 
 3. **Install dependencies:**
@@ -75,13 +83,19 @@ python simulatedev.py --workflow bugs --repo https://github.com/saharmor/gemini-
    pip install -r requirements.txt
    ```
 
-4. **Set up environment variables:**
+4. **Check platform compatibility (recommended):**
+   ```bash
+   python scripts/setup_platform.py
+   ```
+   This script will check your system and provide platform-specific setup instructions.
+
+5. **Set up environment variables:**
    ```bash
    cp env.example .env
    # Edit .env with your API keys
    ```
 
-5. **Configure your API keys in `.env`:**
+6. **Configure your API keys in `.env`:**
    ```env
    ANTHROPIC_API_KEY=your_anthropic_key_here
    GITHUB_TOKEN=your_github_token_here  # Optional, for PR creation
@@ -333,9 +347,24 @@ AGENT_TIMEOUT_SECONDS=3600  # 1 hour
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+## Cross-Platform Support
+
+SimulateDev now works on **macOS**, **Linux**, and **Windows**! 🎉
+
+For detailed platform-specific information, setup instructions, and troubleshooting, see:
+**[📖 Cross-Platform Documentation](docs/CROSS_PLATFORM.md)**
+
+Quick platform check:
+```bash
+python scripts/setup_platform.py
+```
+
 ## Roadmap
 
+- [x] ✅ **Cross-Platform Support** - Windows, Linux, and macOS compatibility
 - [ ] Add web agents (Devin, Factory, Codex)
 - [ ] Cloud execution (Daytona, E2B)
 - [ ] Live monitoring of coding task
 - [ ] Budgeting tools for better spend control
+- [ ] Wayland support for modern Linux systems
+- [ ] IDE auto-installation and setup
