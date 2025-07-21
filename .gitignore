@@ -176,3 +176,4 @@ execution_output/
 screenshot.png
 .DS_Store
 .vscode/launch.json
+api/simulatedev.db
