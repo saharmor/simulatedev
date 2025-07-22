@@ -22,8 +22,43 @@ class GitHubPermissions(BaseModel):
     pull: bool
 
 
-class GitHubRepository(BaseModel):
+class RepositoryInfo(BaseModel):
     """Schema for GitHub repository information"""
+    id: int
+    name: str
+    full_name: str
+    description: Optional[str] = None
+    html_url: str
+    private: bool
+    language: Optional[str] = None
+    updated_at: str
+
+
+class IssueInfo(BaseModel):
+    """Schema for GitHub issue information"""
+    id: int
+    number: int
+    title: str
+    body: Optional[str] = None
+    state: str
+    created_at: str
+    updated_at: str
+    html_url: str
+    user_login: str
+
+
+class RepositoryIssues(BaseModel):
+    """Schema for paginated GitHub issue list"""
+    issues: List[IssueInfo]
+    total_count: int
+    page: int
+    per_page: int
+    has_more: bool
+
+
+# Keep legacy schemas for backward compatibility
+class GitHubRepository(BaseModel):
+    """Legacy schema for GitHub repository information"""
     id: int
     name: str
     full_name: str
@@ -37,17 +72,8 @@ class GitHubRepository(BaseModel):
     permissions: Optional[GitHubPermissions] = None
 
 
-class GitHubRepositoryList(BaseModel):
-    """Schema for paginated GitHub repository list"""
-    repositories: List[GitHubRepository]
-    total_count: int
-    page: int
-    per_page: int
-    has_next: bool
-
-
 class GitHubIssue(BaseModel):
-    """Schema for GitHub issue information"""
+    """Legacy schema for GitHub issue information"""
     number: int
     title: str
     body: Optional[str] = None
@@ -57,12 +83,4 @@ class GitHubIssue(BaseModel):
     updated_at: datetime
     comments: int = 0
     labels: List[GitHubLabel] = []
-    user: GitHubUser
-
-
-class GitHubIssueList(BaseModel):
-    """Schema for paginated GitHub issue list"""
-    issues: List[GitHubIssue]
-    total_count: int
-    page: int
-    per_page: int 
+    user: GitHubUser 

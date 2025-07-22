@@ -8,12 +8,10 @@ from app.models.task import Task, ExecutionHistory
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskResponse, TaskStatus
 from app.services.task_service import TaskService
-from app.services.github_service import GitHubService
 from app.dependencies import require_authentication, get_user_github_token
 
 router = APIRouter()
 task_service = TaskService()
-github_service = GitHubService()
 
 
 async def execute_task_with_error_handling(task_id: str, github_token: str, websocket_manager=None):
