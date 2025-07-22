@@ -44,9 +44,9 @@ class TaskRequest:
 class Orchestrator:
     """Unified orchestrator for all agent execution scenarios"""
     
-    def __init__(self):
+    def __init__(self, github_token: Optional[str] = None):
         self.computer_use_client = LLMComputerUse()
-        self.github_integration = GitHubIntegration()
+        self.github_integration = GitHubIntegration(github_token)
         self.execution_log = []
         
         # Create necessary directories using config
@@ -590,13 +590,40 @@ class Orchestrator:
             elif has_web_agents:
                 # Extract PR URL from web agent response if available
                 import re
-                pr_pattern = r'PR created: (https://github\.com/[^\s]+)'
-                pr_match = re.search(pr_pattern, final_output)
-                if pr_match:
-                    pr_url = pr_match.group(1)
-                    print(f"\nINFO: Web agent created PR: {pr_url}")
+                
+                # Try multiple patterns to extract PR URL
+                pr_patterns = [
+                    r'PR created: (https://github\.com/[^\s]+)',
+                    r'Pull request: (https://github\.com/[^\s]+)',
+                    r'PR URL: (https://github\.com/[^\s]+)',
+                    r'https://github\.com/[^/]+/[^/]+/pull/\d+',  # Direct PR URL pattern
+                ]
+                
+                pr_url = None
+                for pattern in pr_patterns:
+                    pr_match = re.search(pattern, final_output)
+                    if pr_match:
+                        if len(pr_match.groups()) > 0:
+                            pr_url = pr_match.group(1)
+                        else:
+                            pr_url = pr_match.group(0)
+                        break
+                
+                if pr_url:
+                    # Validate the PR URL format
+                    if pr_url.startswith('https://github.com/') and '/pull/' in pr_url:
+                        print(f"\nSUCCESS: Web agent created PR: {pr_url}")
+                        print("Opening pull request in your default browser...")
+                        try:
+                            webbrowser.open(pr_url)
+                        except Exception as e:
+                            print(f"WARNING: Could not open browser: {e}")
+                    else:
+                        print(f"\nWARNING: Invalid PR URL format detected: {pr_url}")
+                        pr_url = None
                 else:
-                    print("\nINFO: Web agents detected - skipping orchestrator PR creation")
+                    print("\nINFO: Web agents completed but no PR URL found in output")
+                    print("INFO: Skipping orchestrator PR creation for web agents")
             
             if execution_time_seconds < 60:
                 execution_time_str = f"{execution_time_seconds:.1f} seconds"

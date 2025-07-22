@@ -15,7 +15,13 @@ from .base import CodingAgent, AgentResponse
 from common.exceptions import AgentTimeoutException
 from common.config import config
 
-import botright
+try:
+    import botright
+    BOTRIGHT_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Botright not available: {e}")
+    botright = None
+    BOTRIGHT_AVAILABLE = False
 
 
 # Selector constants for Google authentication
@@ -166,6 +172,11 @@ class WebAgent(CodingAgent):
     
     async def open_coding_interface(self) -> bool:
         """Open the web browser and navigate to the coding agent's website"""
+        
+        if not BOTRIGHT_AVAILABLE:
+            print(f"ERROR: Cannot open {self.agent_name} web interface - Botright dependencies not available")
+            return False
+            
         try:
             print(f"Opening {self.agent_name} web interface...")
             
@@ -264,7 +275,7 @@ class WebAgent(CodingAgent):
             print(f"Executing task: {prompt[:100]}...")
             
             # Combine prompt with instruction to save output
-            combined_prompt = f"""{prompt}\n\nAfter completing the above task, please save a comprehensive summary of everything you did to a file called '{self.output_file}' in the current directory. Include:\n- All changes made\n- Explanations of what was done.\n\nIMPORTANT: Do NOT create or update any documentation files (such as README.md or docs/*) unless you are explicitly asked to do so in the original prompt. If you believe that creating a documentation file would help you better implement the required coding task, you may create it, but you must delete it once you are finished and before you finish the task."""
+            combined_prompt = f"""{prompt}\n\nAfter completing the above task, please save a comprehensive summary of everything you did to a file called '{self.output_file}' in the current directory. Include:\n- All changes made\n- Explanations of what was done.\n- If you created a pull request, include the PR URL.\n\nIMPORTANT: Do NOT create or update any documentation files (such as README.md or docs/*) unless you are explicitly asked to do so in the original prompt. If you believe that creating a documentation file would help you better implement the required coding task, you may create it, but you must delete it once you are finished and before you finish the task."""
             
             # Send prompt to web interface
             await self._send_prompt_to_web_interface(combined_prompt)
@@ -272,8 +283,16 @@ class WebAgent(CodingAgent):
             # Wait for completion
             await self._wait_for_web_completion()
             
+            # Try to extract PR URL from the web interface
+            pr_url = await self._extract_pr_url_from_interface()
+            
             # Read output file
             content = await self._read_output_file()
+            
+            # If we found a PR URL, add it to the content
+            if pr_url and content:
+                if "PR created:" not in content and pr_url not in content:
+                    content += f"\n\nPR created: {pr_url}"
             
             return AgentResponse(content=content, success=True)
             
@@ -506,3 +525,34 @@ class WebAgent(CodingAgent):
         except Exception as e:
             print(f"WARNING: Error during captcha solving: {str(e)}")
             return False 
+
+    async def _extract_pr_url_from_interface(self) -> Optional[str]:
+        """Extract PR URL from the web interface. Override in subclasses for specific extraction logic."""
+        try:
+            if not self.page:
+                return None
+            
+            # Generic approach: look for GitHub PR links on the page
+            pr_links = await self.page.query_selector_all('a[href*="github.com"][href*="/pull/"]')
+            
+            for link in pr_links:
+                href = await link.get_attribute('href')
+                if href and '/pull/' in href and href.startswith('https://github.com/'):
+                    print(f"Found PR URL in interface: {href}")
+                    return href
+            
+            # Also check page content for PR URLs
+            page_content = await self.page.content()
+            import re
+            pr_pattern = r'https://github\.com/[^/]+/[^/]+/pull/\d+'
+            matches = re.findall(pr_pattern, page_content)
+            if matches:
+                pr_url = matches[-1]  # Get the most recent PR URL
+                print(f"Found PR URL in page content: {pr_url}")
+                return pr_url
+            
+            return None
+            
+        except Exception as e:
+            print(f"WARNING: Could not extract PR URL from interface: {str(e)}")
+            return None 

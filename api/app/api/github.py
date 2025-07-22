@@ -2,11 +2,13 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Optional
 
 from app.services.github_service import GitHubService
-from app.dependencies import require_authentication, get_user_github_token
+from app.services.auth_service import AuthService
+from app.dependencies import require_authentication, get_user_github_token, get_current_user
 from app.models.user import User
 
 router = APIRouter()
 github_service = GitHubService()
+auth_service = AuthService()
 
 
 @router.post("/parse-repo-url")
@@ -35,12 +37,22 @@ async def get_repository_issues(
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(30, ge=1, le=100, description="Issues per page"),
     search: Optional[str] = Query(None, description="Search term for filtering issues"),
-    user: User = Depends(require_authentication),
-    github_token: str = Depends(get_user_github_token)
+    user: Optional[User] = Depends(get_current_user)
 ):
     """Get issues for a repository"""
     
     try:
+        # Try to get GitHub token if user is authenticated
+        github_token = None
+        if user:
+            try:
+                github_token = auth_service.decrypt_token(user.access_token_encrypted)
+                print(f"[GitHub] Using authenticated token for user: {user.github_username}")
+            except Exception as e:
+                print(f"[GitHub] Failed to decrypt token for user {user.github_username}: {e}")
+        else:
+            print(f"[GitHub] No authentication - fetching public issues only")
+        
         result = github_service.get_repository_issues(
             owner=owner,
             repo=repo,

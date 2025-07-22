@@ -177,3 +177,5 @@ screenshot.png
 .DS_Store
 .vscode/launch.json
 api/simulatedev.db
+simulatedev.db
+cookies.txt

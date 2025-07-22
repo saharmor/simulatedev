@@ -8,7 +8,15 @@ from .base import (
     AgentRole, MultiAgentTask, AgentDefinition, 
     AgentContext, MultiAgentResponse
 )
-from .web_agent import WebAgent
+
+# Conditionally import WebAgent only if botright is available
+try:
+    from .web_agent import WebAgent
+    WEB_AGENT_AVAILABLE = True
+except ImportError:
+    WebAgent = None
+    WEB_AGENT_AVAILABLE = False
+
 from .cursor_agent import CursorAgent
 from .windsurf_agent import WindsurfAgent
 from .claude_code_agent import ClaudeCodeAgent
@@ -25,11 +33,14 @@ __all__ = [
     'AgentDefinition',
     'AgentContext',
     'MultiAgentResponse',
-    'WebAgent',
     'CursorAgent',
     'WindsurfAgent',
     'ClaudeCodeAgent',
     'OpenAICodexAgent',
     'TestAgent',
     'AgentFactory'
-] 
+]
+
+# Only add WebAgent to __all__ if it's available
+if WEB_AGENT_AVAILABLE:
+    __all__.append('WebAgent') 
