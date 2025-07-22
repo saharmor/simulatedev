@@ -20,7 +20,14 @@ class CursorAgent(CodingAgent):
     
     @property
     def keyboard_shortcut(self) -> Optional[str]:
-        return "cmd+l"  # Command+L opens Cursor chat
+        from utils.platform_utils import keyboard_shortcuts, PlatformDetector
+        keys = keyboard_shortcuts.get_shortcut_keys('cursor_chat')
+        if PlatformDetector.is_macos():
+            return "cmd+l"  # Keep original format for compatibility
+        elif PlatformDetector.is_windows():
+            return "ctrl+l"
+        else:  # Linux
+            return "ctrl+l"
     
     @property
     def interface_state_prompt(self) -> str:
@@ -71,7 +78,8 @@ Only analyze the right panel and provide nothing but valid JSON in your response
         
         # Interface is not open or not with correct project, open chat interface with keyboard shortcut
         print(f"Opening {self.agent_name} chat interface with shortcut: {self.keyboard_shortcut}")
-        pyautogui.hotkey('command', 'l')
+        from utils.platform_utils import keyboard_shortcuts
+        keyboard_shortcuts.execute_shortcut('cursor_chat')
         time.sleep(2)  # Wait for interface to open
         
         # Verify the chat interface opened with correct project
@@ -86,32 +94,36 @@ Only analyze the right panel and provide nothing but valid JSON in your response
     
     async def _ensure_cursor_app_open(self):
         """Ensure Cursor application is open"""
-        import subprocess
         import os
+        from utils.platform_utils import app_launcher, PlatformDetector
         
         try:
             # Get current project path
             project_path = os.getcwd()
             
-            # Open Cursor with the current project
-            subprocess.run(["open", "-a", self.window_name, project_path])
-            print("Waiting 3 seconds for app to start...")
-            time.sleep(3)  # wait for the app to start
-            
-            # Activate the application
-            activate_script = f'''
-            tell application "{self.window_name}"
-                activate
-            end tell
-            '''
-            subprocess.run(["osascript", "-e", activate_script], check=True)
-            time.sleep(1)
-            
-            # Use computer_use_utils to activate window and steal focus for initial setup
-            repo_name = os.path.basename(project_path)
-            ide_open_success = bring_to_front_window(self.window_name, repo_name)
-            if not ide_open_success:
-                print("Warning: Could not activate Cursor window, but continuing...")
+            # Open Cursor with the current project using cross-platform launcher
+            if app_launcher.open_application(self.window_name, project_path):
+                print("Waiting 3 seconds for app to start...")
+                time.sleep(3)  # wait for the app to start
+                
+                # Platform-specific activation
+                if PlatformDetector.is_macos():
+                    # Activate the application on macOS
+                    activate_script = f'''
+                    tell application "{self.window_name}"
+                        activate
+                    end tell
+                    '''
+                    subprocess.run(["osascript", "-e", activate_script], check=True)
+                    time.sleep(1)
+                
+                # Use computer_use_utils to activate window and steal focus for initial setup
+                repo_name = os.path.basename(project_path)
+                ide_open_success = bring_to_front_window(self.window_name, repo_name)
+                if not ide_open_success:
+                    print("Warning: Could not activate Cursor window, but continuing...")
+            else:
+                print("Warning: Could not launch Cursor application")
                 
         except Exception as e:
             print(f"Warning: Could not open Cursor application: {str(e)}")

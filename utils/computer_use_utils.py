@@ -13,6 +13,10 @@ from mss import mss
 from PIL import Image
 from functools import wraps
 from .llm_client import llm_client, ActionResponse
+from .platform_utils import (
+    PlatformDetector, window_manager, app_launcher, 
+    keyboard_shortcuts, system_utils
+)
 
 load_dotenv()
 
@@ -59,13 +63,26 @@ IDE_CONFIG = {
     }
 }
 
-def darwin_only(operation_name: str):
-    """Decorator to ensure function only runs on macOS"""
+def cross_platform_operation(operation_name: str):
+    """Decorator for cross-platform operations with fallback messaging"""
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            if platform.system() != "Darwin":
-                print(f"{operation_name} not implemented for {platform.system()}")
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                print(f"{operation_name} failed on {PlatformDetector.get_platform_name()}: {e}")
+                return None if func.__annotations__.get('return') == Optional[str] else False
+        return wrapper
+    return decorator
+
+def darwin_only(operation_name: str):
+    """Decorator to ensure function only runs on macOS (deprecated, use cross_platform_operation)"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            if not PlatformDetector.is_macos():
+                print(f"{operation_name} not implemented for {PlatformDetector.get_platform_name()}")
                 return None if func.__annotations__.get('return') == Optional[str] else False
             return func(*args, **kwargs)
         return wrapper
@@ -574,13 +591,24 @@ def get_window_bounds(ide_name: str, project_name: str) -> Optional[Tuple[int, i
         print(f"Error getting window bounds: {e.stderr}")
         return None
 
-@darwin_only("Window focusing")
+@cross_platform_operation("Window focusing")
 def bring_to_front_window(app_name: str, project_name: str) -> bool:
     """Bring the appropriate IDE window to front above all other applications"""
     try:
         ide_context = IDEContext.create(app_name)
         
-        # Validate IDE is running with project
+        # First try cross-platform approach
+        if not PlatformDetector.is_macos():
+            # Use cross-platform window manager
+            windows = window_manager.get_window_list(ide_context.process_name)
+            for window in windows:
+                if project_name.lower() in window.title.lower():
+                    return window_manager.bring_window_to_front(window.title, ide_context.process_name)
+            
+            print(f"Could not find window containing '{project_name}' in {ide_context.display_name}")
+            return False
+        
+        # Validate IDE is running with project (macOS specific check)
         if not is_ide_open_with_project(ide_context.app_name, project_name, verbose=False):
             print(f"{ide_context.display_name} is not open with project '{project_name}'")
             return False
@@ -970,20 +998,7 @@ def is_project_window_visible(agent_name: str, project_name: str, auto_focus: bo
 
 def play_beep_sound():
     """Play a beep sound to alert the user"""
-    try:
-        if platform.system() == "Darwin":
-            # Use macOS system beep
-            subprocess.run(["afplay", "/System/Library/Sounds/Ping.aiff"], check=False)
-        elif platform.system() == "Windows":
-            # Use Windows system beep
-            import winsound
-            winsound.Beep(1000, 500)  # 1000 Hz for 500ms
-        else:
-            # Linux - try to use system bell
-            subprocess.run(["pactl", "upload-sample", "/usr/share/sounds/alsa/Front_Left.wav", "bell"], check=False)
-            subprocess.run(["pactl", "play-sample", "bell"], check=False)
-    except Exception as e:
-        print(f"Warning: Could not play beep sound: {e}")
+    return system_utils.play_system_sound()
 
 def get_llm_target_dimensions() -> Tuple[int, int]:
     """

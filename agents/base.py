@@ -455,8 +455,9 @@ class CodingAgent(ABC):
         pyperclip.copy(prompt)
         time.sleep(0.5)
         
-        # Paste the prompt using Cmd+V on macOS
-        pyautogui.hotkey('command', 'v')
+        # Paste the prompt using cross-platform shortcut
+        from utils.platform_utils import keyboard_shortcuts
+        keyboard_shortcuts.execute_shortcut('paste')
         time.sleep(1.0)
         
         # Submit the prompt
