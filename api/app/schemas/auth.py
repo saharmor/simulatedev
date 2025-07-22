@@ -18,7 +18,7 @@ class UserResponse(BaseModel):
 
 class UserSessionCreate(BaseModel):
     """Request schema for creating a user session"""
-    session_code: str = Field(..., description="Temporary session identifier from OAuth callback")
+    session_code: str = Field(..., description="Session identifier from OAuth callback")
 
 
 class UserSessionResponse(BaseModel):
