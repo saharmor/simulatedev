@@ -1,7 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
-from typing import Generator
+from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
 
@@ -20,10 +19,10 @@ Base = declarative_base()
 def create_tables():
     """Create all database tables"""
     # Import models to register them with Base
-    from app.models import User, UserSession, Task, ExecutionHistory, RepositoryCache
+    from app.models import User, UserSession, Task, ExecutionHistory
     Base.metadata.create_all(bind=engine)
 
-def get_db() -> Generator[Session, None, None]:
+def get_db():
     """Dependency to get database session"""
     db = SessionLocal()
     try:

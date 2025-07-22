@@ -39,9 +39,7 @@ import json
 import os
 import shutil
 import sys
-import webbrowser
-from typing import Dict, Any, List, Optional
-from pathlib import Path
+from typing import List
 from urllib.parse import urlparse
 
 from src.orchestrator import Orchestrator, TaskRequest
@@ -146,6 +144,89 @@ def print_task_summary(request: TaskRequest, workflow_type: str):
         print(f"  Timeout: {config.agent_timeout_seconds} seconds ({config.agent_timeout_seconds/60:.1f} minutes)")
 
 
+def create_task_request_from_args(args) -> TaskRequest:
+    """Create a TaskRequest object from parsed command line arguments"""
+    # Validate GitHub URL
+    if not validate_github_url(args.repo):
+        raise ValueError(f"Repository must be a valid GitHub URL. Provided: {args.repo}")
+    
+    # Validate task requirement for custom workflow
+    if args.workflow == "custom" and not args.task:
+        raise ValueError("--task is required for custom workflow")
+    
+    # Validate agent specification
+    if not args.agent and not args.coding_agents:
+        raise ValueError("Either --agent or --coding-agents must be specified")
+    
+    # Determine if we should delete existing repository directory
+    # Default is True, unless --no-delete-existing-repo-env is specified
+    delete_existing_repo_env = not getattr(args, 'no_delete_existing_repo_env', False)
+    
+    # Parse coding agents or use default
+    if args.coding_agents:
+        try:
+            agents = validate_coding_agents_json(args.coding_agents)
+        except ValueError as e:
+            raise ValueError(f"Error parsing coding agents: {e}")
+    else:
+        # Use single agent
+        agent_type = args.agent or "cursor"
+        agents = create_default_coder_agent(agent_type)
+    
+    # Create task request based on workflow type
+    if args.workflow == "custom":
+        # Custom coding workflow
+        if len(agents) == 1:
+            # Single agent
+            agent = agents[0]
+            task_request = Orchestrator.create_request(
+                task_description=args.task,
+                agent_type=agent.coding_ide,
+                agent_model=agent.model,
+                agent_role=agent.role,
+                workflow_type="custom_coding",  # Map to internal workflow type
+                repo_url=args.repo,
+                target_dir=getattr(args, 'target_dir', None),
+                create_pr=not getattr(args, 'no_pr', False),
+                work_directory=getattr(args, 'work_dir', None),
+                delete_existing_repo_env=delete_existing_repo_env
+            )
+        else:
+            # Multi-agent
+            from agents.base import WorkflowType
+            workflow_enum = WorkflowType("custom_coding")
+            multi_agent_task = MultiAgentTask(
+                agents=agents,
+                repo_url=args.repo,
+                workflow=workflow_enum,
+                coding_task_prompt=args.task
+            )
+            task_request = Orchestrator.create_request(
+                multi_agent_task=multi_agent_task,
+                workflow_type="custom_coding",
+                repo_url=args.repo,
+                target_dir=getattr(args, 'target_dir', None),
+                create_pr=not getattr(args, 'no_pr', False),
+                work_directory=getattr(args, 'work_dir', None),
+                delete_existing_repo_env=delete_existing_repo_env
+            )
+    else:
+        # Predefined workflow (bugs, optimize, refactor, low-hanging)
+        agent = agents[0]  # Use first agent for predefined workflows
+        task_request = Orchestrator.create_request(
+            workflow_type=args.workflow,
+            repo_url=args.repo,
+            agent_type=agent.coding_ide,
+            agent_model=agent.model,
+            agent_role=agent.role,
+            target_dir=getattr(args, 'target_dir', None),
+            create_pr=not getattr(args, 'no_pr', False),
+            delete_existing_repo_env=delete_existing_repo_env
+        )
+    
+    return task_request
+
+
 def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
@@ -226,32 +307,8 @@ async def execute_task(args) -> bool:
         print("SimulateDev - AI Coding Assistant")
         print("=" * 40)
         
-        # Validate GitHub URL
-        if not validate_github_url(args.repo):
-            print(f"Error: Repository must be a valid GitHub URL")
-            print(f"Provided: {args.repo}")
-            print("Valid formats:")
-            print("  - https://github.com/user/repo")
-            print("  - http://github.com/user/repo") 
-            print("  - git@github.com:user/repo.git")
-            print("  - github.com/user/repo")
-            return False
-        
-        # Validate task requirement for custom workflow
-        if args.workflow == "custom" and not args.task:
-            print("Error: --task is required for custom workflow")
-            return False
-        
-        # Validate agent specification
-        if not args.agent and not args.coding_agents:
-            print("Error: Either --agent or --coding-agents must be specified")
-            return False
-        
-        # Determine if we should delete existing repository directory
-        # Default is True, unless --no-delete-existing-repo-env is specified
-        delete_existing_repo_env = not args.no_delete_existing_repo_env
-        
         # Handle repository deletion if requested
+        delete_existing_repo_env = not getattr(args, 'no_delete_existing_repo_env', False)
         if delete_existing_repo_env:
             parsed_path = urlparse(args.repo).path.rstrip('/')
             repo_name = os.path.splitext(os.path.basename(parsed_path))[0]
@@ -262,76 +319,26 @@ async def execute_task(args) -> bool:
                 shutil.rmtree(repo_path)
                 print(f"Deleted existing repository folder: {repo_path}")
         
-        # Parse coding agents or use default
-        if args.coding_agents:
-            try:
-                agents = validate_coding_agents_json(args.coding_agents)
-                print(f"Using {len(agents)} custom agents")
-            except ValueError as e:
-                print(f"Error parsing coding agents: {e}")
-                return False
-        else:
-            # Use single agent
-            agent_type = args.agent or "cursor"
-            agents = create_default_coder_agent(agent_type)
-            print(f"Using default single {agent_type} agent")
+        # Create task request using the extracted function
+        try:
+            task_request = create_task_request_from_args(args)
+        except ValueError as e:
+            print(f"Error: {e}")
+            return False
         
-        # Create task request based on workflow type
-        if args.workflow == "custom":
-            # Custom coding workflow
-            if len(agents) == 1:
-                # Single agent
-                agent = agents[0]
-                task_request = Orchestrator.create_request(
-                    task_description=args.task,
-                    agent_type=agent.coding_ide,
-                    agent_model=agent.model,
-                    agent_role=agent.role,
-                    workflow_type="custom_coding",  # Map to internal workflow type
-                    repo_url=args.repo,
-                    target_dir=args.target_dir,
-                    create_pr=not args.no_pr,
-                    work_directory=args.work_dir,
-                    delete_existing_repo_env=delete_existing_repo_env
-                )
-            else:
-                # Multi-agent
-                from agents.base import WorkflowType
-                workflow_enum = WorkflowType("custom_coding")
-                multi_agent_task = MultiAgentTask(
-                    agents=agents,
-                    repo_url=args.repo,
-                    workflow=workflow_enum,
-                    coding_task_prompt=args.task
-                )
-                task_request = Orchestrator.create_request(
-                    multi_agent_task=multi_agent_task,
-                    workflow_type="custom_coding",
-                    repo_url=args.repo,
-                    target_dir=args.target_dir,
-                    create_pr=not args.no_pr,
-                    work_directory=args.work_dir,
-                    delete_existing_repo_env=delete_existing_repo_env
-                )
+        # Print agent information
+        if args.coding_agents:
+            agents = validate_coding_agents_json(args.coding_agents)
+            print(f"Using {len(agents)} custom agents")
         else:
-            # Predefined workflow (bugs, optimize, refactor, low-hanging)
-            agent = agents[0]  # Use first agent for predefined workflows
-            task_request = Orchestrator.create_request(
-                workflow_type=args.workflow,
-                repo_url=args.repo,
-                agent_type=agent.coding_ide,
-                agent_model=agent.model,
-                agent_role=agent.role,
-                target_dir=args.target_dir,
-                create_pr=not args.no_pr,
-                delete_existing_repo_env=delete_existing_repo_env
-            )
+            agent_type = args.agent or "cursor"
+            print(f"Using default single {agent_type} agent")
         
         # Print summary
         print_task_summary(task_request, args.workflow)
         
         # Run GitHub preflight check before executing agents (unless skipped)
-        if task_request.repo_url and not args.skip_github_check:
+        if task_request.repo_url and not getattr(args, 'skip_github_check', False):
             from src.github_integration import run_github_preflight_check
             
             github_check_passed = run_github_preflight_check(
@@ -342,14 +349,8 @@ async def execute_task(args) -> bool:
             if not github_check_passed:
                 print("❌ GitHub preflight check failed! Please fix the issues above before proceeding.")
                 return False
-        elif task_request.repo_url and args.skip_github_check:
+        elif task_request.repo_url and getattr(args, 'skip_github_check', False):
             print("⚠️  Skipping GitHub preflight check (not recommended)")
-        
-        # Confirm execution
-        # confirm = input("\nExecute this task? (y/N): ").strip().lower()
-        # if confirm not in ['y', 'yes']:
-        #     print("Task execution cancelled")
-        #     return False
         
         # Execute
         print(f"\nSTARTING: {args.workflow} workflow...")
@@ -369,8 +370,8 @@ async def execute_task(args) -> bool:
             print("Check the output above for specific details about what went wrong.")
         
         # Save report if requested
-        if not args.no_report:
-            if args.output:
+        if not getattr(args, 'no_report', False):
+            if getattr(args, 'output', None):
                 # If user specified a custom output path, use it as-is
                 output_file = args.output
             else:
