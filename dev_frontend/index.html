@@ -12,6 +12,11 @@
             padding: 20px;
             background-color: #f5f5f5;
             color: #333;
+            box-sizing: border-box;
+        }
+        
+        * {
+            box-sizing: border-box;
         }
         .container {
             background: white;
@@ -105,12 +110,15 @@
             display: flex;
             justify-content: center;
             margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 10px;
         }
         .step-item {
             display: flex;
             align-items: center;
-            margin: 0 10px;
+            margin: 0 5px;
             color: #bdc3c7;
+            flex-shrink: 0;
         }
         .step-item.active {
             color: #3498db;
@@ -153,6 +161,7 @@
             border-radius: 8px;
             font-size: 16px;
             transition: border-color 0.3s ease;
+            max-width: 100%;
         }
         input:focus, select:focus, textarea:focus {
             outline: none;
@@ -182,6 +191,12 @@
         }
         button.secondary:hover {
             background: #7f8c8d;
+        }
+        .button-group {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
         }
         .search-box {
             position: relative;
@@ -447,6 +462,203 @@
         .confetti-piece.triangle:nth-child(6n) { border-bottom-color: #ff9ff3; }
         .confetti-piece.triangle:nth-child(7n) { border-bottom-color: #54a0ff; }
         .confetti-piece.triangle:nth-child(8n) { border-bottom-color: #5f27cd; }
+        
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            
+            .container {
+                padding: 20px;
+                border-radius: 8px;
+            }
+            
+            h1 {
+                font-size: 24px;
+                margin-bottom: 20px;
+            }
+            
+            .step-indicator {
+                margin-bottom: 20px;
+            }
+            
+            .step-item {
+                font-size: 14px;
+                margin: 0 3px;
+            }
+            
+            .step-item span {
+                display: none;
+            }
+            
+            .step-number {
+                width: 28px;
+                height: 28px;
+                font-size: 14px;
+                margin-right: 0;
+            }
+            
+            .user-info {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+            
+            .user-details {
+                justify-content: center;
+            }
+            
+            .issues-list {
+                max-height: 300px;
+            }
+            
+            .issue-item {
+                padding: 12px;
+            }
+            
+            .issue-title {
+                font-size: 15px;
+            }
+            
+            .issue-meta {
+                font-size: 12px;
+            }
+            
+            .issue-body {
+                font-size: 14px;
+            }
+            
+            button {
+                padding: 10px 20px;
+                font-size: 14px;
+                width: 100%;
+                margin-bottom: 10px;
+            }
+            
+            button.secondary {
+                margin-bottom: 10px;
+            }
+            
+            .form-group {
+                margin-bottom: 15px;
+            }
+            
+            input, select, textarea {
+                padding: 10px;
+                font-size: 14px;
+            }
+            
+            .auth-container {
+                padding: 30px 20px;
+            }
+            
+            .github-login-btn {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+            
+            #selected-issue-info {
+                padding: 12px;
+                font-size: 14px;
+            }
+            
+            #selected-issue-info h3 {
+                font-size: 16px;
+                margin-bottom: 10px;
+            }
+            
+            #task-info {
+                padding: 12px;
+                font-size: 14px;
+            }
+            
+            #task-info h3 {
+                font-size: 16px;
+                margin-bottom: 10px;
+            }
+            
+            .pr-link {
+                padding: 15px;
+                font-size: 14px;
+            }
+            
+            .error {
+                padding: 12px;
+                font-size: 14px;
+            }
+            
+            /* Fix button layout on mobile */
+            .button-group {
+                flex-direction: column-reverse;
+            }
+            
+            .button-group button {
+                width: 100%;
+                margin: 0;
+            }
+            
+            /* Autocomplete responsive */
+            .autocomplete-dropdown {
+                max-height: 250px;
+            }
+            
+            .autocomplete-item {
+                padding: 10px 12px;
+            }
+            
+            .repo-name {
+                font-size: 14px;
+            }
+            
+            .repo-description {
+                font-size: 12px;
+            }
+            
+            .repo-meta {
+                font-size: 11px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            body {
+                padding: 5px;
+            }
+            
+            .container {
+                padding: 15px;
+            }
+            
+            h1 {
+                font-size: 20px;
+            }
+            
+            .step-item {
+                margin: 0 2px;
+            }
+            
+            .issues-list {
+                max-height: 250px;
+            }
+            
+            .issue-item {
+                padding: 10px;
+            }
+            
+            .issue-title {
+                font-size: 14px;
+                line-height: 1.3;
+            }
+            
+            .issue-labels {
+                margin-top: 6px;
+            }
+            
+            .label {
+                font-size: 11px;
+                padding: 1px 6px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -529,7 +741,7 @@
                         No open issues found for this repository.
                     </div>
                 </div>
-                <div style="margin-top: 20px;">
+                <div class="button-group">
                     <button class="secondary" onclick="goToStep(1)">Back</button>
                     <button onclick="selectIssue()" id="select-issue-btn" disabled>Continue with Selected Issue</button>
                 </div>
@@ -550,10 +762,9 @@
                         <option value="claude_code">Claude Code</option>
                     </select>
                 </div>
-                <div style="margin-top: 20px;">
+                <div class="button-group">
                     <button class="secondary" onclick="goToStep(2)">Back</button>
                     <button onclick="startTask()" id="start-task-btn">Start Task</button>
-                    <button onclick="startTask(true)" id="test-simulation-btn" style="margin-left: 10px; background-color: #17a2b8; border-color: #17a2b8;">Test Simulation</button>
                 </div>
             </div>
 
@@ -909,17 +1120,8 @@
             allIssues = [];
             currentTaskId = null;
             
-            // Close WebSocket connection
-            if (websocket) {
-                websocket.close();
-                websocket = null;
-            }
-            
-            // Clear progress interval
-            if (progressInterval) {
-                clearTimeout(progressInterval);
-                progressInterval = null;
-            }
+            // Stop all progress monitoring
+            stopProgressMonitoring();
             
             // Reset form fields
             document.getElementById('repo-url').value = '';
@@ -1059,7 +1261,7 @@
         }
 
         // Start task
-        async function startTask(isTest = false) {
+        async function startTask() {
             const agent = document.getElementById('agent').value;
             if (!agent) {
                 showError('Please select a coding agent');
@@ -1090,11 +1292,8 @@
                 };
 
                 console.log('Sending task data:', taskData);
-
-                const endpoint = isTest ? '/tasks/test/simulate' : '/tasks/execute';
-                console.log('Using endpoint:', endpoint);
                 
-                const response = await fetchWithConnectionLimit(`${API_BASE}${endpoint}`, {
+                const response = await fetchWithConnectionLimit(`${API_BASE}/tasks/execute`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
@@ -1123,9 +1322,8 @@
                 
                 // Display task info
                 const taskInfo = document.getElementById('task-info');
-                const simulationBadge = isTest ? '<span style="background: #17a2b8; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-left: 10px;">TEST SIMULATION</span>' : '';
                 taskInfo.innerHTML = `
-                    <h3>Task Started${simulationBadge}</h3>
+                    <h3>Task Started</h3>
                     <p><strong>Task ID:</strong> ${result.task_id}</p>
                     <p><strong>Repository:</strong> ${result.repo_url}</p>
                     <p><strong>Issue:</strong> #${result.issue_number}</p>
@@ -1142,9 +1340,13 @@
 
         // Progress monitoring with WebSocket
         let websocket = null;
+        let isMonitoringStopped = false; // Flag to prevent continued monitoring after completion
         
         function startProgressMonitoring() {
             console.log('Starting progress monitoring for task:', currentTaskId);
+            
+            // Reset monitoring flag
+            isMonitoringStopped = false;
             
             // Try to connect via WebSocket for real-time updates
             connectWebSocket();
@@ -1153,10 +1355,31 @@
             startPollingFallback();
         }
         
+        function stopProgressMonitoring() {
+            console.log('Stopping all progress monitoring');
+            
+            // Set flag to prevent any further monitoring
+            isMonitoringStopped = true;
+            
+            // Close WebSocket
+            if (websocket) {
+                console.log('Closing WebSocket connection');
+                websocket.close();
+                websocket = null;
+            }
+            
+            // Clear polling interval
+            if (progressInterval) {
+                console.log('Clearing polling interval');
+                clearTimeout(progressInterval);
+                progressInterval = null;
+            }
+        }
+        
         function connectWebSocket() {
-            // Don't try to connect WebSocket if backend is unavailable
-            if (backendUnavailable) {
-                console.log('[Frontend] Backend unavailable - skipping WebSocket connection');
+            // Don't try to connect WebSocket if backend is unavailable or monitoring is stopped
+            if (backendUnavailable || isMonitoringStopped) {
+                console.log('[Frontend] Backend unavailable or monitoring stopped - skipping WebSocket connection');
                 return;
             }
             
@@ -1217,6 +1440,12 @@
                 websocket.onmessage = function(event) {
                     console.log('[Frontend] WebSocket message received:', event);
                     console.log('[Frontend] Message data:', event.data);
+                    
+                    // Check if monitoring has been stopped
+                    if (isMonitoringStopped) {
+                        console.log('[Frontend] Monitoring stopped - ignoring WebSocket message');
+                        return;
+                    }
                     
                     try {
                         // Skip heartbeat responses
@@ -1302,6 +1531,12 @@
                 
                 progressInterval = setTimeout(async () => {
                     try {
+                        // Check if monitoring has been stopped
+                        if (isMonitoringStopped) {
+                            console.log('[Frontend] Monitoring stopped - canceling polling');
+                            return; // Don't schedule next check
+                        }
+                        
                         console.log('[Frontend] Polling task status for:', currentTaskId);
                         console.log('[Frontend] WebSocket status check - exists:', websocket !== null);
                         if (websocket) {
@@ -1324,6 +1559,12 @@
                         const task = await response.json();
                         console.log('[Frontend] Polling response data:', task);
                         
+                        // Double-check monitoring hasn't been stopped while we were fetching
+                        if (isMonitoringStopped) {
+                            console.log('[Frontend] Monitoring stopped during fetch - ignoring response');
+                            return; // Don't schedule next check
+                        }
+                        
                         // Only update if no WebSocket connection (WebSocket has priority)
                         if (!websocket || websocket.readyState !== WebSocket.OPEN) {
                             console.log('[Frontend] Using polling data (no active WebSocket):', task);
@@ -1343,9 +1584,13 @@
                             console.log('[Frontend] WebSocket active, polling data ignored');
                         }
                         
-                        // Continue polling
-                        console.log('[Frontend] Scheduling next polling check');
-                        scheduleNextCheck();
+                        // Continue polling only if monitoring hasn't been stopped
+                        if (!isMonitoringStopped) {
+                            console.log('[Frontend] Scheduling next polling check');
+                            scheduleNextCheck();
+                        } else {
+                            console.log('[Frontend] Monitoring stopped - not scheduling next check');
+                        }
                         
                     } catch (error) {
                         console.error('[Frontend] Polling error:', error);
@@ -1394,17 +1639,8 @@
         function handleTaskCompletion(data) {
             console.log('Task completed:', data);
             
-            // Close WebSocket
-            if (websocket) {
-                websocket.close();
-                websocket = null;
-            }
-            
-            // Clear polling interval
-            if (progressInterval) {
-                clearTimeout(progressInterval);
-                progressInterval = null;
-            }
+            // CRITICAL: Stop all monitoring immediately
+            stopProgressMonitoring();
             
             // 🎉 Trigger celebration with sound and confetti!
             triggerCelebration();
@@ -1449,17 +1685,8 @@
         function handleTaskError(errorMessage) {
             console.log('Task failed:', errorMessage);
             
-            // Close WebSocket
-            if (websocket) {
-                websocket.close();
-                websocket = null;
-            }
-            
-            // Clear polling interval
-            if (progressInterval) {
-                clearTimeout(progressInterval);
-                progressInterval = null;
-            }
+            // CRITICAL: Stop all monitoring immediately
+            stopProgressMonitoring();
             
             showError(errorMessage || 'Task failed');
         }
