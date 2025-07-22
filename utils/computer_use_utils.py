@@ -866,11 +866,6 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
         
         x, y, width, height = bounds
         
-        if verbose:
-            # Also get the window title for debugging
-            window_title = get_ide_window_title_for_project(ide_name, project_name)
-            print(f"DEBUG: Found window '{window_title}' with bounds: x={x}, y={y}, w={width}, h={height}")
-        
         # Create a temporary file for the screenshot
         import tempfile
         fd, path = tempfile.mkstemp(suffix='.png')
@@ -884,9 +879,6 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
             path
         ]
         
-        if verbose:
-            print(f"DEBUG: Taking screenshot with bounds: x={x}, y={y}, w={width}, h={height}")
-        
         try:
             subprocess.run(cmd, check=True)
         except subprocess.CalledProcessError as e:
@@ -898,9 +890,6 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
         # Open and process the image
         image = Image.open(path)
         captured_width, captured_height = image.size
-        
-        if verbose:
-            print(f"DEBUG: Captured image size: {captured_width}x{captured_height}, expected: {width}x{height}")
         
         # IMPORTANT: Use the window dimensions from AppleScript, not the captured image dimensions
         # The captured image might have different dimensions due to Retina scaling or other factors
@@ -922,17 +911,19 @@ def take_ide_window_screenshot(ide_name: str, project_name: str, target_width: i
         if verbose:
             print(f"Successfully captured screenshot: {captured_width}x{captured_height} -> {target_width}x{target_height}")
         
-        # Always save a debug copy of the screenshot to see what we're actually capturing
-        debug_path = f"/tmp/debug_ide_screenshot_{ide_name}_{project_name}.png"
-        try:
-            # Save the resized image that will be sent to the LLM
-            if isinstance(processed_image, io.BytesIO):
-                processed_image.seek(0)
-                debug_image = Image.open(processed_image)
-                debug_image.save(debug_path)
-                processed_image.seek(0)  # Reset buffer position
-        except Exception as e:
-            print(f"Could not save debug screenshot: {e}")
+        # Save debug screenshot if debug mode is enabled in config
+        if config.save_screenshots_for_debug:
+            debug_path = f"/tmp/debug_ide_screenshot_{ide_name}_{project_name}.png"
+            try:
+                # Save the resized image that will be sent to the LLM
+                if isinstance(processed_image, io.BytesIO):
+                    processed_image.seek(0)
+                    debug_image = Image.open(processed_image)
+                    debug_image.save(debug_path)
+                    processed_image.seek(0)  # Reset buffer position
+            except Exception as e:
+                if verbose:
+                    print(f"Could not save debug screenshot: {e}")
         
         # Return based on whether metadata is requested
         if return_metadata:
