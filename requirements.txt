@@ -1,17 +1,15 @@
+# Core AI/LLM packages
 anthropic==0.52.2
 litellm==1.72.4
 openai>=1.54.0
+
+# Automation and computer control
 pyautogui==0.9.54
 pyperclip==1.9.0
+mss>=9.0.1
+botright>=0.5.1
+
+# Utilities
 python-dotenv==1.0.1
 Pillow==11.1.0
-pyscreeze==1.0.1
-mouseinfo==0.1.3
-pytweening==1.2.0
-pygetwindow==0.0.9
-pymsgbox==1.0.9 
 requests>=2.31.0
-mss>=9.0.1
-tenacity>=8.2.3
-botright>=0.5.1
-playwright>=1.40.0

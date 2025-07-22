@@ -1,0 +1,34 @@
+# FastAPI and web framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+websockets==12.0
+
+# Database and ORM
+sqlalchemy>=2.0.25
+alembic>=1.13.0
+aiosqlite==0.19.0
+
+# Data validation and settings
+pydantic>=2.0.0,<3.0.0
+pydantic-settings>=2.0.0,<3.0.0
+
+# Authentication and security
+cryptography==41.0.7
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Rate limiting and utilities
+slowapi==0.1.9
+requests==2.31.0
+python-dotenv==1.0.1
+
+# SimulateDev core dependencies (for task execution)
+anthropic==0.52.2
+litellm==1.72.4
+openai>=1.54.0
+pyautogui==0.9.54
+pyperclip==1.9.0
+mss>=9.0.1
+botright>=0.5.1
+Pillow==11.1.0 
