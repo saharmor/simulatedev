@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { LoginScreen } from "../components/LoginScreen";
 import { Sidebar } from "../components/Sidebar";
 import { HomeScreen } from "../components/HomeScreen";
 import { TaskScreen } from "../components/TaskScreen";
 import { CommandPalette } from "../components/CommandPalette";
 import { NavigationHeader } from "../components/NavigationHeader";
+import { useDeepLink } from "../hooks/useDeepLink";
 
 type Screen = 'login' | 'home' | 'task';
 
@@ -12,6 +13,7 @@ const Index = () => {
   const [currentScreen, setCurrentScreen] = useState<Screen>('login');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const { deepLinkUrl, parseDeepLink, clearDeepLink } = useDeepLink();
 
   const handleLogin = () => {
     setCurrentScreen('home');
@@ -42,6 +44,37 @@ const Index = () => {
   const handleCommandK = () => {
     setIsCommandPaletteOpen(true);
   };
+
+  // Handle deep link navigation
+  useEffect(() => {
+    if (deepLinkUrl) {
+      const parsed = parseDeepLink(deepLinkUrl);
+      if (parsed) {
+        switch (parsed.path) {
+          case '/login':
+            setCurrentScreen('login');
+            break;
+          case '/home':
+            setCurrentScreen('home');
+            break;
+          case '/task':
+            const taskId = parsed.params.id;
+            if (taskId) {
+              setSelectedTaskId(taskId);
+              setCurrentScreen('task');
+            } else {
+              setCurrentScreen('home');
+            }
+            break;
+          default:
+            // Unknown path, default to home if logged in, login otherwise
+            setCurrentScreen(currentScreen === 'login' ? 'login' : 'home');
+            break;
+        }
+      }
+      clearDeepLink();
+    }
+  }, [deepLinkUrl, parseDeepLink, clearDeepLink, currentScreen]);
 
   // Get current task name for navigation
   const getCurrentTaskName = () => {
