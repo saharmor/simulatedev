@@ -7,7 +7,7 @@ openai>=1.54.0
 pyautogui==0.9.54
 pyperclip==1.9.0
 mss>=9.0.1
-botright>=0.5.1
+playwright>=1.45.0
 
 # Utilities
 python-dotenv==1.0.1

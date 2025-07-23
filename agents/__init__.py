@@ -9,18 +9,13 @@ from .base import (
     AgentContext, MultiAgentResponse
 )
 
-# Conditionally import WebAgent only if botright is available
-try:
-    from .web_agent import WebAgent
-    WEB_AGENT_AVAILABLE = True
-except ImportError:
-    WebAgent = None
-    WEB_AGENT_AVAILABLE = False
+from .web_agent import WebAgent
 
 from .cursor_agent import CursorAgent
 from .windsurf_agent import WindsurfAgent
 from .claude_code_agent import ClaudeCodeAgent
 from .openai_codex_agent import OpenAICodexAgent
+from .gemini_cli_agent import GeminiCliAgent
 from .test_agent import TestAgent
 from .factory import AgentFactory
 
@@ -33,14 +28,12 @@ __all__ = [
     'AgentDefinition',
     'AgentContext',
     'MultiAgentResponse',
+    'WebAgent',
     'CursorAgent',
     'WindsurfAgent',
     'ClaudeCodeAgent',
     'OpenAICodexAgent',
+    'GeminiCliAgent',
     'TestAgent',
     'AgentFactory'
-]
-
-# Only add WebAgent to __all__ if it's available
-if WEB_AGENT_AVAILABLE:
-    __all__.append('WebAgent') 
+] 
