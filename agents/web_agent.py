@@ -3,7 +3,7 @@
 Web Agent Base Class Implementation
 
 This module provides a base class for web-based coding agents that run in browsers.
-Uses Botright for stealth browser automation and captcha solving.
+Uses the BrowserManager for centralized browser management.
 """
 
 import asyncio
@@ -14,60 +14,15 @@ from typing import Optional, Dict, Any
 from .base import CodingAgent, AgentResponse
 from common.exceptions import AgentTimeoutException
 from common.config import config
-
-try:
-    import botright
-    BOTRIGHT_AVAILABLE = True
-except ImportError as e:
-    print(f"Warning: Botright not available: {e}")
-    botright = None
-    BOTRIGHT_AVAILABLE = False
-
-
-# Selector constants for Google authentication
-class GoogleSelectors:
-    # Email input selectors
-    EMAIL_INPUTS = [
-        "input[type='email']",
-        "#identifierId",
-        "input[name='email']",
-        "input[autocomplete='username']"
-    ]
-    
-    # Email next/submit button selectors
-    EMAIL_NEXT_BUTTONS = [
-        "#identifierNext",
-        "button:has-text('Next')",
-        "input[type='submit']",
-        "button[type='submit']"
-    ]
-    
-    # Password input selectors
-    PASSWORD_INPUTS = [
-        "input[type='password']",
-        "input[name='password']",
-        "#password",
-        "input[autocomplete='current-password']"
-    ]
-    
-    # Password next/submit button selectors
-    PASSWORD_NEXT_BUTTONS = [
-        "#passwordNext",
-        "button:has-text('Next')",
-        "input[type='submit']",
-        "button[type='submit']"
-    ]
+from utils.browser_manager import BrowserManager
 
 
 class WebAgent(CodingAgent):
-    """Base class for web-based coding agents using Botright"""
+    """Base class for web-based coding agents using centralized BrowserManager"""
     
     def __init__(self, computer_use_client):
         super().__init__(computer_use_client)
-        self.botright_client = None
-        self.browser = None
-        self.page = None
-        self._is_browser_ready = False
+        self.browser_manager: Optional[BrowserManager] = None
     
     @property
     def window_name(self) -> str:
@@ -146,16 +101,16 @@ class WebAgent(CodingAgent):
     def is_ide_open_with_correct_project(self) -> bool:
         """Check if browser is open with the correct context"""
         if not self._current_project_name:
-            return self._is_browser_ready
+            return self.browser_manager and self.browser_manager.is_ready
         
         # For web agents, we consider the project "correct" if the browser is ready
         # and we're on the right URL. Subclasses can override for more specific checks.
-        return self._is_browser_ready and self.page is not None
+        return self.browser_manager and self.browser_manager.is_ready
     
     async def is_coding_agent_open(self) -> bool:
         """Check if the browser is open and ready"""
         try:
-            return self._is_browser_ready and self.page is not None
+            return self.browser_manager and self.browser_manager.is_ready
                 
         except Exception as e:
             return False
@@ -173,35 +128,24 @@ class WebAgent(CodingAgent):
     async def open_coding_interface(self) -> bool:
         """Open the web browser and navigate to the coding agent's website"""
         
-        if not BOTRIGHT_AVAILABLE:
-            print(f"ERROR: Cannot open {self.agent_name} web interface - Botright dependencies not available")
-            return False
-            
         try:
             print(f"Opening {self.agent_name} web interface...")
             
-            # Initialize Botright client if not already done
-            if not self.botright_client:
-                self.botright_client = await botright.Botright(
-                    headless=False,  # Keep visible for debugging, can be made configurable
-                    user_action_layer=True,  # Show what the bot is doing
-                    mask_fingerprint=True,  # Enable stealth mode
-                    spoof_canvas=True,  # Spoof canvas fingerprinting
-                    scroll_into_view=True,  # Scroll into view
-                )
+            # Initialize browser manager
+            self.browser_manager = BrowserManager(
+                headless=False,  # Keep visible for debugging, can be made configurable
+                auth_file_path=os.getenv('PLAYWRIGHT_AUTH_FILE')
+            )
             
-            # Create new browser if not already done
-            if not self.browser:
-                self.browser = await self.botright_client.new_browser(no_viewport=True)
-                
-            # Create new page
-            self.page = await self.browser.new_page()
+            # Initialize browser
+            if not await self.browser_manager.initialize():
+                print(f"ERROR: Failed to initialize browser manager for {self.agent_name}")
+                return False
             
             # Navigate to the web agent URL
-            await self.page.goto(self.web_url)
-            
-            # Wait for page to load
-            await self.page.wait_for_load_state("networkidle")
+            if not await self.browser_manager.navigate_to(self.web_url):
+                print(f"ERROR: Failed to navigate to {self.web_url}")
+                return False
             
             # Perform any agent-specific setup
             setup_success = await self._setup_web_interface()
@@ -209,67 +153,61 @@ class WebAgent(CodingAgent):
                 print(f"ERROR: Failed to setup {self.agent_name} web interface")
                 return False
             
-            self._is_browser_ready = True
             print(f"SUCCESS: {self.agent_name} web interface is ready")
             return True
             
         except Exception as e:
             print(f"ERROR: Failed to open {self.agent_name} web interface: {str(e)}")
-            await self._cleanup_browser()
+            await self.close_coding_interface()
             return False
     
     async def close_coding_interface(self) -> bool:
         """Close the web browser"""
         try:
-            await self._cleanup_browser()
+            if self.browser_manager:
+                await self.browser_manager.cleanup()
+                self.browser_manager = None
             return True
             
         except Exception as e:
             print(f"ERROR: Failed to close {self.agent_name} web interface: {str(e)}")
             return False
     
-    async def _cleanup_browser(self):
-        """Clean up browser resources"""
-        try:
-            self._is_browser_ready = False
-            
-            if self.page:
-                await self.page.close()
-                self.page = None
-                
-            if self.browser:
-                await self.browser.close()
-                self.browser = None
-                
-            if self.botright_client:
-                await self.botright_client.close()
-                self.botright_client = None
-                
-        except Exception as e:
-            print(f"WARNING: Error during browser cleanup: {str(e)}")
+
     
     async def _setup_web_interface(self) -> bool:
         """Perform agent-specific setup after navigation. Override in subclasses."""
         # Default implementation - subclasses can override for specific setup
         try:
+            if not self.browser_manager:
+                return False
+            
             # Example: Handle Google login if redirected to Google login page
-            # if 'accounts.google.com' in self.page.url:
-            #     await self.handle_google_login()
+            # current_url = self.browser_manager.current_url
+            # if current_url and 'accounts.google.com' in current_url:
+            #     google_email = os.getenv('GOOGLE_EMAIL')
+            #     google_password = os.getenv('GOOGLE_PASSWORD')
+            #     if google_email and google_password:
+            #         await self.browser_manager.handle_google_login(google_email, google_password)
             
             # Solve any captchas that might appear
-            await self.solve_captcha_if_present()
+            await self.browser_manager.solve_captcha_if_present()
             
             # Wait for input field to be available
-            await self.page.wait_for_selector(self.input_selector, timeout=10000)
+            if not await self.browser_manager.wait_for_selector(self.input_selector, timeout=10000):
+                print(f"ERROR: Could not find input field for {self.agent_name}")
+                return False
+            
             return True
+            
         except Exception as e:
-            print(f"ERROR: Could not find input field for {self.agent_name}: {str(e)}")
+            print(f"ERROR: Setup failed for {self.agent_name}: {str(e)}")
             return False
     
     async def execute_prompt(self, prompt: str) -> AgentResponse:
         """Execute prompt by sending it to the web interface"""
         try:
-            if not self._is_browser_ready or not self.page:
+            if not self.browser_manager or not self.browser_manager.is_ready:
                 raise Exception("Browser not ready. Call open_coding_interface() first.")
             
             print(f"Executing task: {prompt[:100]}...")
@@ -306,20 +244,23 @@ class WebAgent(CodingAgent):
     async def _send_prompt_to_web_interface(self, prompt: str):
         """Send prompt to the web interface"""
         try:
-            # Focus on input field
-            await self.page.click(self.input_selector)
+            if not self.browser_manager:
+                raise Exception("Browser manager not initialized")
             
-            # Clear any existing content
-            await self.page.fill(self.input_selector, "")
+            # Click on input field
+            if not await self.browser_manager.click_element(self.input_selector):
+                raise Exception(f"Failed to click input field: {self.input_selector}")
             
-            # Enter the prompt
-            await self.page.fill(self.input_selector, prompt)
+            # Fill the prompt
+            if not await self.browser_manager.fill_input(self.input_selector, prompt, clear_first=True):
+                raise Exception(f"Failed to fill input field: {self.input_selector}")
             
             # Submit the prompt
-            await self.page.click(self.submit_selector)
+            if not await self.browser_manager.click_element(self.submit_selector):
+                raise Exception(f"Failed to click submit button: {self.submit_selector}")
             
             # Small delay after submission
-            await self.page.wait_for_timeout(2000)
+            await asyncio.sleep(2)
             
         except Exception as e:
             raise Exception(f"Failed to send prompt to web interface: {str(e)}")
@@ -330,35 +271,31 @@ class WebAgent(CodingAgent):
         start_time = time.time()
         
         try:
+            if not self.browser_manager:
+                raise Exception("Browser manager not initialized")
+            
             while time.time() - start_time < timeout_seconds:
                 # Check if loading indicator is present (if defined)
                 if self.loading_selector:
-                    try:
-                        await self.page.wait_for_selector(
-                            self.loading_selector, 
-                            state="hidden", 
-                            timeout=5000
-                        )
+                    if await self.browser_manager.wait_for_selector(
+                        self.loading_selector, 
+                        state="hidden", 
+                        timeout=5000
+                    ):
                         break
-                    except:
-                        # If loading indicator is still visible, keep waiting
-                        pass
                 
                 # Check if output area has been updated (basic implementation)
-                try:
-                    output_element = await self.page.query_selector(self.output_selector)
-                    if output_element:
-                        output_text = await output_element.text_content()
-                        if output_text and len(output_text.strip()) > 100:  # Arbitrary threshold
-                            # Wait a bit more to ensure completion
-                            await self.page.wait_for_timeout(10000)
-                            break
-                except:
-                    # failure to extract output shouldn't break the flow
-                    pass
+                output_text = await self.browser_manager.get_text_content(
+                    self.output_selector, 
+                    timeout=5000
+                )
+                if output_text and len(output_text.strip()) > 100:  # Arbitrary threshold
+                    # Wait a bit more to ensure completion
+                    await asyncio.sleep(10)
+                    break
                 
                 # Wait before next check
-                await self.page.wait_for_timeout(5000)
+                await asyncio.sleep(5)
             
             if time.time() - start_time >= timeout_seconds:
                 raise AgentTimeoutException(self.agent_name, timeout_seconds, "Web agent processing timed out")
@@ -372,168 +309,27 @@ class WebAgent(CodingAgent):
     async def get_web_output(self) -> str:
         """Extract output from the web interface. Override in subclasses for specific parsing."""
         try:
-            if not self.page:
+            if not self.browser_manager:
                 return ""
             
             # Try to get output from the designated output selector
-            output_element = await self.page.query_selector(self.output_selector)
-            if output_element:
-                return await output_element.text_content() or ""
-            
-            return ""
+            output_text = await self.browser_manager.get_text_content(self.output_selector)
+            return output_text or ""
             
         except Exception as e:
             print(f"WARNING: Could not extract output from web interface: {str(e)}")
             return ""
     
-    async def handle_google_login(self) -> bool:
-        """Handle Google authentication using environment variables
-        
-        Assumes we're already on the Google login page.
-        Uses GOOGLE_EMAIL and GOOGLE_PASSWORD environment variables.
-        
-        Returns:
-            bool: True if login was successful, False if login failed
-        """
-        try:
-            # Get credentials from environment variables
-            google_email = os.getenv('GOOGLE_EMAIL')
-            google_password = os.getenv('GOOGLE_PASSWORD')
-            
-            if not google_email or not google_password:
-                print("ERROR: GOOGLE_EMAIL or GOOGLE_PASSWORD environment variables not set")
-                return False
-            
-            # Wait for Google login page to be ready
-            await self.page.wait_for_timeout(2000)
-            
-            # Handle email input
-            email_input = None
-            for selector in GoogleSelectors.EMAIL_INPUTS:
-                try:
-                    email_input = await self.page.query_selector(selector)
-                    if email_input:
-                        break
-                except:
-                    continue
-            
-            if email_input:
-                await email_input.fill(google_email)
-                
-                # Click Next or submit button for email
-                for selector in GoogleSelectors.EMAIL_NEXT_BUTTONS:
-                    try:
-                        next_button = await self.page.query_selector(selector)
-                        if next_button:
-                            await next_button.click()
-                            break
-                    except:
-                        continue
-                
-                # Wait for password page
-                await self.page.wait_for_timeout(3000)
-            
-            # Handle password input
-            password_input = None
-            for selector in GoogleSelectors.PASSWORD_INPUTS:
-                try:
-                    await self.page.wait_for_selector(selector, timeout=5000)
-                    password_input = await self.page.query_selector(selector)
-                    if password_input:
-                        break
-                except:
-                    continue
-            
-            if password_input:
-                await password_input.fill(google_password)
-                
-                # Click Next or submit button for password
-                for selector in GoogleSelectors.PASSWORD_NEXT_BUTTONS:
-                    try:
-                        next_button = await self.page.query_selector(selector)
-                        if next_button:
-                            await next_button.click()
-                            break
-                    except:
-                        continue
-                
-                # Wait for login to complete
-                await self.page.wait_for_timeout(5000)
-                
-                # Check if we're back to the original site (successful login)
-                current_url = self.page.url
-                if 'accounts.google.com' not in current_url:
-                    return True
-                else:
-                    # Check for 2FA or other verification steps with polling
-                    print("Waiting for verification (2FA, etc.)...")
-                    
-                    # Poll every 5 seconds for up to 5 minutes (300 seconds)
-                    max_wait_seconds = 300  # 5 minutes
-                    poll_interval_seconds = 5
-                    elapsed_seconds = 0
-                    
-                    while elapsed_seconds < max_wait_seconds:
-                        await self.page.wait_for_timeout(poll_interval_seconds * 1000)
-                        elapsed_seconds += poll_interval_seconds
-                        
-                        # Check if login completed
-                        current_url = self.page.url
-                        if 'accounts.google.com' not in current_url:
-                            return True
-                    
-                    # Timed out
-                    print("WARNING: Login verification timed out")
-                    return False
-            else:
-                print("ERROR: Could not find password input field")
-                return False
-                
-        except Exception as e:
-            print(f"ERROR: Google login failed: {str(e)}")
-            return False
-
-    async def solve_captcha_if_present(self) -> bool:
-        """Use Botright's captcha solving capabilities if a captcha is detected"""
-        try:
-            # Check for common captcha types and solve them using Botright
-            # This is a basic implementation - subclasses can override for specific captcha handling
-            
-            # Try to solve hCaptcha
-            try:
-                await self.page.solve_hcaptcha()
-                return True
-            except:
-                pass
-            
-            # Try to solve reCaptcha
-            try:
-                await self.page.solve_recaptcha()
-                return True
-            except:
-                pass
-            
-            # Try to solve geeTest
-            try:
-                await self.page.solve_geetest()
-                return True
-            except:
-                pass
-            
-            return False
-            
-        except Exception as e:
-            print(f"WARNING: Error during captcha solving: {str(e)}")
-            return False 
+ 
 
     async def _extract_pr_url_from_interface(self) -> Optional[str]:
         """Extract PR URL from the web interface. Override in subclasses for specific extraction logic."""
         try:
-            if not self.page:
+            if not self.browser_manager or not self.browser_manager.page:
                 return None
             
             # Generic approach: look for GitHub PR links on the page
-            pr_links = await self.page.query_selector_all('a[href*="github.com"][href*="/pull/"]')
+            pr_links = await self.browser_manager.page.query_selector_all('a[href*="github.com"][href*="/pull/"]')
             
             for link in pr_links:
                 href = await link.get_attribute('href')
@@ -542,7 +338,7 @@ class WebAgent(CodingAgent):
                     return href
             
             # Also check page content for PR URLs
-            page_content = await self.page.content()
+            page_content = await self.browser_manager.page.content()
             import re
             pr_pattern = r'https://github\.com/[^/]+/[^/]+/pull/\d+'
             matches = re.findall(pr_pattern, page_content)

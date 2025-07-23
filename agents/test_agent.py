@@ -4,6 +4,7 @@ Test Agent Implementation
 
 A simple test agent that analyzes the codebase for inconsistencies and updates the README.
 This agent is designed to test the pipeline functionality without requiring complex UI interactions.
+This agent simulates the orchestrator's _execute_agent method behavior for testing purposes.
 """
 
 import os
@@ -13,7 +14,7 @@ from .base import CodingAgent, AgentResponse
 
 
 class TestAgent(CodingAgent):
-    """Test agent implementation for pipeline testing"""
+    """Test agent implementation for pipeline testing that simulates orchestrator behavior"""
     
     @property
     def window_name(self) -> str:
@@ -52,12 +53,15 @@ Provide nothing but valid JSON in your response."""
         return "Command prompt or input field in the terminal or text editor where commands can be entered for the test agent."
     
     async def execute_prompt(self, prompt: str) -> AgentResponse:
-        """Execute the test agent analysis and save results to file"""
-        print(f"Test Agent: Running codebase analysis...")
+        """Execute the test agent analysis with orchestrator-like behavior"""
+        print(f"Test Agent: Starting execution simulation...")
         print(f"Prompt received: {prompt}")
         
         try:
-            # Simulate analysis by running the test agent script
+            # Simulate orchestrator's _execute_agent method behavior
+            await self._simulate_orchestrator_execution(prompt)
+            
+            # Run the actual analysis
             await self._run_analysis(prompt)
             
             # Get and save results
@@ -70,7 +74,7 @@ Provide nothing but valid JSON in your response."""
                 f.write(f"**Prompt:** {prompt}\n\n")
                 f.write(f"**Analysis Date:** {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
                 f.write("---\n\n")
-                f.write("IMPORTANT: Do NOT create or update any documentation files (such as README.md or docs/*) unless you are explicitly asked to do so in the original prompt. If you believe that creating a documentation file would help you better implement the required coding task, you may create it, but you must delete it once you are finished and before you finish the task.")
+                f.write("IMPORTANT: Do NOT create or update any documentation files (such as README.md or docs/*) unless you are explicitly asked to do so in the original prompt. If you believe that creating a documentation file would help you better implement the required coding task, you may create it, but you must delete it once you are finished and before you finish the task.\n\n")
                 f.write(results)
             
             print("Test Agent: Analysis complete, results saved to file")
@@ -87,10 +91,84 @@ Provide nothing but valid JSON in your response."""
                 error_message=f"Test agent failed: {str(e)}"
             )
 
+    async def _simulate_orchestrator_execution(self, prompt: str):
+        """Simulate the orchestrator's _execute_agent method behavior"""
+        print("Test Agent: Simulating orchestrator execution behavior...")
+        
+        # Simulate getting current working directory (like orchestrator does)
+        work_directory = os.getcwd()
+        print(f"Test Agent: Current work directory: {work_directory}")
+        
+        # Simulate setting current project for window title checking (like orchestrator does)
+        if self._current_project_name:
+            print(f"Test Agent: Project name already set to: {self._current_project_name}")
+        else:
+            repo_name = os.path.basename(work_directory)
+            self.set_current_project(work_directory)
+            print(f"Test Agent: Set current project to: {repo_name}")
+        
+        # Simulate closing existing IDE windows (like orchestrator does at line 348-349)
+        await self._simulate_close_ide_windows()
+        
+        # Simulate opening coding interface (like orchestrator does)
+        await self._simulate_open_coding_interface()
+        
+        print("Test Agent: Orchestrator simulation complete")
+
+    async def _simulate_close_ide_windows(self):
+        """Simulate closing IDE windows like the orchestrator does"""
+        print("Test Agent: Simulating IDE window closure...")
+        
+        if not self._current_project_name:
+            print("Test Agent: No project name set, skipping window closure simulation")
+            return
+        
+        # Simulate the orchestrator's behavior from lines 348-349
+        repo_name = os.path.basename(os.getcwd())
+        print(f"Test Agent: Simulating close_ide_window_for_project('{self.window_name}', '{repo_name}')")
+        
+        # For test agent, we don't actually close windows, just simulate the behavior
+        print(f"Test Agent: [SIMULATED] Closing any existing {self.window_name} windows for project '{repo_name}'")
+        
+        # Simulate the 2-second wait like in the orchestrator
+        print("Test Agent: [SIMULATED] Waiting 2 seconds for window to close completely...")
+        time.sleep(2)
+        
+        print("Test Agent: IDE window closure simulation complete")
+
+    async def _simulate_open_coding_interface(self):
+        """Simulate opening the coding interface like the orchestrator does"""
+        print("Test Agent: Simulating coding interface opening...")
+        
+        # Simulate checking if interface is already open
+        interface_open = await self.is_coding_agent_open_with_project()
+        
+        if interface_open:
+            print("Test Agent: [SIMULATED] Interface already open with correct project")
+        else:
+            print("Test Agent: [SIMULATED] Opening coding interface...")
+            # The actual opening is handled by our open_coding_interface method
+            opened = await self.open_coding_interface()
+            if not opened:
+                raise Exception("Test Agent: [SIMULATED] Failed to open coding interface")
+            print("Test Agent: [SIMULATED] Coding interface opened successfully")
+        
+        print("Test Agent: Coding interface simulation complete")
+
     async def is_coding_agent_open(self) -> bool:
         """Check if test agent is running (always returns True for simplicity)"""
         print("Test Agent: Checking if agent is running...")
         return True  # Test agent is always "running" since it's just a script
+
+    async def is_coding_agent_open_with_project(self) -> bool:
+        """Check if test agent is running with correct project (always returns True for simplicity)"""
+        print("Test Agent: Checking if agent is running with correct project...")
+        if self._current_project_name:
+            print(f"Test Agent: Current project is set to: {self._current_project_name}")
+            return True
+        else:
+            print("Test Agent: No current project set")
+            return False
 
     async def open_coding_interface(self) -> bool:
         """Open test agent interface (no actual interface needed)"""

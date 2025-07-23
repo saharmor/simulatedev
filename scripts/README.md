@@ -10,6 +10,9 @@ Converts GitHub issues into SimulateDev tasks that create pull requests with fix
 ### 🔧 **PR to Task** (`pr_to_task.py`)  
 Processes existing pull requests with custom tasks, improving or extending them. Can also automatically address PR review comments and feedback.
 
+### 🔬 **Agent Debug Utilities**
+- `debug_agent.py` - Test and debug individual agents with custom repositories and prompts
+
 ### 🧪 **Test Utilities**
 - `test_issue_parser.py` - Test issue parsing functionality
 - `test_pr_parser.py` - Test PR parsing functionality
@@ -26,6 +29,9 @@ python scripts/pr_to_task.py --pr-url https://github.com/owner/repo/pull/456 --t
 
 # Address PR review comments automatically
 python scripts/pr_to_task.py --pr-url https://github.com/owner/repo/pull/456 --review-comments --agent cursor
+
+# Debug individual agents
+python scripts/debug_agent.py cursor https://github.com/example/repo.git "Add a README file"
 
 # Test parsing (no SimulateDev execution)
 python scripts/test_issue_parser.py https://github.com/owner/repo/issues/123
@@ -168,6 +174,153 @@ python scripts/pr_to_task.py --pr-url <PR_URL> \
   --review-comments \
   --agent cursor
 ```
+
+## Agent Debug Utilities
+
+### Features
+- **Individual Agent Testing**: Test any agent with custom repositories and prompts
+- **Repository Auto-Setup**: Automatically clones and prepares repositories for testing
+- **Comprehensive Logging**: Detailed execution logging with timing information
+- **Debug Reports**: Optional JSON reports for detailed analysis
+- **Error Handling**: Graceful error handling with detailed error messages
+- **Interface Management**: Automatic opening and closing of agent interfaces
+
+### Usage
+
+#### Debug Agent Script (`debug_agent.py`)
+
+```bash
+# Test Cursor agent with a simple task
+python scripts/debug_agent.py cursor https://github.com/example/repo.git "Add a README file"
+
+# Test Claude Code (headless) with bug fixing
+python scripts/debug_agent.py claude_code https://github.com/example/buggy-code.git "Find and fix any bugs in the codebase"
+
+# Test with report generation
+python scripts/debug_agent.py windsurf https://github.com/example/repo.git "Optimize performance" --save-report
+
+# Test without cleaning existing repo
+python scripts/debug_agent.py cursor https://github.com/example/repo.git "Add tests" --no-clean
+```
+
+#### List Agents Script (`list_agents.py`)
+
+```bash
+# Show all available agents and usage examples
+python scripts/list_agents.py
+```
+
+### Command Line Options
+
+| Option | Description | Required |
+|--------|-------------|----------|
+| `agent_name` | Name of the agent to test (cursor, windsurf, claude_code, openai_codex, test) | ✅ |
+| `repository_url` | URL of the Git repository to work with | ✅ |
+| `prompt` | Task prompt to give to the agent | ✅ |
+| `--save-report` | Save debug report to JSON file | ❌ |
+| `--no-clean` | Don't delete existing repository directory | ❌ |
+
+### Supported Agents
+
+| Agent | Type | Description |
+|-------|------|-------------|
+| `cursor` | GUI | Cursor IDE with AI integration |
+| `windsurf` | GUI | Windsurf IDE advanced development environment |
+| `claude_code` | Headless | Claude Code without GUI (fastest for automation) |
+| `openai_codex` | GUI | OpenAI Codex code generation |
+| `test` | Mock | Simple test agent for debugging |
+
+### How It Works
+
+1. **Validate Agent**: Checks if the agent name is supported
+2. **Clone Repository**: Downloads the repository to a local directory
+3. **Initialize Agent**: Creates and configures the agent instance
+4. **Open Interface**: Opens the agent's interface (for GUI agents)
+5. **Execute Prompt**: Runs the prompt and waits for completion
+6. **Capture Output**: Saves agent output to file and reads results
+7. **Clean Up**: Closes interface and returns to original directory
+8. **Generate Report**: Optionally saves detailed JSON report
+
+### Debug Report Format
+
+When using `--save-report`, a JSON file is generated with:
+
+```json
+{
+  "agent_name": "cursor",
+  "repo_url": "https://github.com/example/repo.git",
+  "prompt": "Add a README file",
+  "start_time": "2024-01-15T10:30:00",
+  "end_time": "2024-01-15T10:35:00",
+  "success": true,
+  "output": "Successfully added README.md with project description...",
+  "error_message": null,
+  "execution_time_seconds": 300.45,
+  "repo_path": "/path/to/execution_output/scanned_repos/repo"
+}
+```
+
+### Examples
+
+#### Quick Agent Test
+```bash
+# Simple test to verify agent is working
+python scripts/debug_agent.py test https://github.com/octocat/Hello-World.git "Create a simple hello function"
+```
+
+#### Complex Debugging Session
+```bash
+# Test Cursor with comprehensive task and report
+python scripts/debug_agent.py cursor https://github.com/example/complex-app.git \
+  "Analyze the codebase for security vulnerabilities, add input validation, \
+   create comprehensive tests, and optimize performance" \
+  --save-report
+```
+
+#### Headless Testing (CI/CD Friendly)
+```bash
+# Use Claude Code for automated testing (no GUI required)
+python scripts/debug_agent.py claude_code https://github.com/example/api.git \
+  "Add error handling and logging to all API endpoints" \
+  --save-report
+```
+
+#### Comparing Agent Performance
+```bash
+# Test same task with different agents
+for agent in cursor windsurf claude_code; do
+  echo "Testing with $agent..."
+  python scripts/debug_agent.py $agent https://github.com/example/repo.git \
+    "Optimize database queries and add caching" --save-report
+done
+```
+
+### Troubleshooting
+
+#### Common Issues
+
+1. **Agent Interface Won't Open**: 
+   - Ensure the IDE is installed and accessible
+   - Check if another instance is running with a different project
+
+2. **Repository Clone Fails**:
+   - Verify Git is installed and repository URL is accessible
+   - For private repos, ensure SSH keys or tokens are configured
+
+3. **Agent Execution Timeout**:
+   - Complex tasks may need more time
+   - Check agent timeout settings in config
+
+4. **Permission Issues**:
+   - Ensure write permissions in the execution output directory
+   - Check if repositories require authentication
+
+#### Debug Tips
+
+- Use the `test` agent for basic functionality verification
+- Start with simple prompts before testing complex tasks
+- Use `--save-report` to get detailed execution information
+- Test with public repositories first to isolate authentication issues
 
 ## Common Workflows
 
