@@ -1,13 +1,18 @@
-import { useState } from "react";
-import { ChevronDown, Circle, Rocket, GitPullRequest, ExternalLink, FileText, Plus, Minus } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ChevronDown, Circle, Rocket, GitPullRequest, ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "./ui/button";
+import { apiService, Repository } from "../services/apiService";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
+// Convert GitHub API types to frontend types for consistency
 interface Issue {
   id: string;
   title: string;
   number: number;
   labels: string[];
   timeAgo: string;
+  htmlUrl: string;
+  user: string;
 }
 
 interface PullRequest {
@@ -15,11 +20,9 @@ interface PullRequest {
   title: string;
   number: number;
   repo: string;
-  branch: string;
-  filesChanged: number;
-  additions: number;
-  deletions: number;
   timeAgo: string;
+  htmlUrl: string;
+  user: string;
 }
 
 type TabType = 'issues' | 'prs';
@@ -29,84 +32,101 @@ interface HomeScreenProps {
   onCommandK: () => void;
 }
 
-const mockRepos = [
-  'simulatedev',
-  'whisper-playground', 
-  'expense-tracker',
-  'code-review-analysis'
-];
-
-const mockIssues: Issue[] = [
-  {
-    id: '61',
-    title: 'Test changes to multiple files',
-    number: 61,
-    labels: [],
-    timeAgo: 'Updated Jul 6, 2025 at 11:07 AM EDT'
-  },
-  {
-    id: '60',
-    title: 'Feature/updates and fixes',
-    number: 60,
-    labels: [],
-    timeAgo: 'Updated Jul 6, 2025 at 11:07 AM EDT'
-  }
-];
-
-const mockPRs: PullRequest[] = [
-  {
-    id: '45',
-    title: 'Add new authentication flow',
-    number: 45,
-    repo: 'cbh123/narrator',
-    branch: 'feature/auth-flow',
-    filesChanged: 5,
-    additions: 234,
-    deletions: 12,
-    timeAgo: 'Updated Jul 5, 2025 at 2:30 PM EDT'
-  },
-  {
-    id: '42',
-    title: 'Implement dark mode support',
-    number: 42,
-    repo: 'cbh123/narrator',
-    branch: 'feature/dark-mode',
-    filesChanged: 8,
-    additions: 156,
-    deletions: 23,
-    timeAgo: 'Updated Jul 4, 2025 at 9:15 AM EDT'
-  },
-  {
-    id: '38',
-    title: 'Fix responsive design issues',
-    number: 38,
-    repo: 'cbh123/narrator',
-    branch: 'fix/responsive-layout',
-    filesChanged: 3,
-    additions: 67,
-    deletions: 45,
-    timeAgo: 'Updated Jul 3, 2025 at 4:45 PM EDT'
-  },
-  {
-    id: '35',
-    title: 'Optimize database queries',
-    number: 35,
-    repo: 'cbh123/narrator',
-    branch: 'perf/db-optimization',
-    filesChanged: 4,
-    additions: 89,
-    deletions: 134,
-    timeAgo: 'Updated Jul 2, 2025 at 11:20 AM EDT'
-  }
-];
-
 export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
-  const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
+  // Repository state
+  const [repositories, setRepositories] = useState<Repository[]>([]);
+  const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null);
   const [isRepoDropdownOpen, setIsRepoDropdownOpen] = useState(false);
+  const [isLoadingRepos, setIsLoadingRepos] = useState(true);
+  const [repoError, setRepoError] = useState<string | null>(null);
+
+  // Issues/PRs state
+  const [issues, setIssues] = useState<Issue[]>([]);
+  const [pullRequests, setPullRequests] = useState<PullRequest[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [dataError, setDataError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('issues');
 
+  // Fetch repositories on component mount
+  useEffect(() => {
+    const fetchRepositories = async () => {
+      console.log('[HomeScreen] Fetching repositories on mount');
+      try {
+        setIsLoadingRepos(true);
+        setRepoError(null);
+        const repos = await apiService.getRepositories();
+        console.log(`[HomeScreen] Successfully loaded ${repos.length} repositories`);
+        setRepositories(repos);
+      } catch (error) {
+        console.error('[HomeScreen] Failed to fetch repositories:', error);
+        setRepoError('Failed to load repositories');
+      } finally {
+        setIsLoadingRepos(false);
+      }
+    };
+
+    fetchRepositories();
+  }, []);
+
+  // Fetch issues and PRs when a repository is selected
+  useEffect(() => {
+    const fetchRepositoryData = async () => {
+      if (!selectedRepo) {
+        console.log('[HomeScreen] No repository selected, clearing data');
+        setIssues([]);
+        setPullRequests([]);
+        return;
+      }
+
+      console.log(`[HomeScreen] Fetching data for repository: ${selectedRepo.full_name}`);
+      try {
+        setIsLoadingData(true);
+        setDataError(null);
+
+        const response = await apiService.getRepositoryIssues(
+          selectedRepo.owner,
+          selectedRepo.name,
+          { state: 'open', per_page: 50 }
+        );
+
+        // Convert GitHub API data to frontend format
+        const convertedIssues: Issue[] = apiService.filterIssuesOnly(response.issues).map(issue => ({
+          id: issue.id.toString(),
+          title: issue.title,
+          number: issue.number,
+          labels: issue.labels.map(label => label.name),
+          timeAgo: apiService.formatTimeAgo(issue.updated_at),
+          htmlUrl: issue.html_url,
+          user: issue.user.login
+        }));
+
+        const convertedPRs: PullRequest[] = apiService.filterPullRequestsOnly(response.issues).map(pr => ({
+          id: pr.id.toString(),
+          title: pr.title,
+          number: pr.number,
+          repo: selectedRepo.full_name,
+          timeAgo: apiService.formatTimeAgo(pr.updated_at),
+          htmlUrl: pr.html_url,
+          user: pr.user.login
+        }));
+
+        console.log(`[HomeScreen] Successfully loaded ${convertedIssues.length} issues and ${convertedPRs.length} PRs`);
+        setIssues(convertedIssues);
+        setPullRequests(convertedPRs);
+
+      } catch (error) {
+        console.error(`[HomeScreen] Failed to fetch data for ${selectedRepo.full_name}:`, error);
+        setDataError('Failed to load repository data');
+      } finally {
+        setIsLoadingData(false);
+      }
+    };
+
+    fetchRepositoryData();
+  }, [selectedRepo]);
+
   // Add global keyboard shortcut for Command+K
-  useState(() => {
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
@@ -116,7 +136,7 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
     
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  });
+  }, [onCommandK]);
 
   return (
     <div className="flex-1 bg-background">
@@ -136,27 +156,59 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
               onClick={() => setIsRepoDropdownOpen(!isRepoDropdownOpen)}
               variant="outline"
               className="w-full max-w-md mx-auto flex items-center justify-between p-4 h-auto border-gray-300 hover:bg-gray-50"
+              disabled={isLoadingRepos}
             >
               <span className="text-gray-700">
-                {selectedRepo || 'Select a repository to work on'}
+                {isLoadingRepos ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Loading repositories...
+                  </span>
+                ) : repoError ? (
+                  <span className="text-red-500">{repoError}</span>
+                ) : selectedRepo ? (
+                  selectedRepo.full_name
+                ) : (
+                  'Select a repository to work on'
+                )}
               </span>
               <ChevronDown className="w-4 h-4 text-gray-500" />
             </Button>
 
-            {isRepoDropdownOpen && (
-              <div className="absolute top-full left-0 right-0 max-w-md mx-auto mt-2 bg-card border border-gray-300 rounded-lg shadow-lg z-10">
-                {mockRepos.map((repo) => (
-                  <button
-                    key={repo}
-                    onClick={() => {
-                      setSelectedRepo(repo);
-                      setIsRepoDropdownOpen(false);
-                    }}
-                    className="w-full px-4 py-3 text-left hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg"
-                  >
-                    <span className="font-mono text-sm">{repo}</span>
-                  </button>
-                ))}
+            {isRepoDropdownOpen && !isLoadingRepos && !repoError && (
+              <div className="absolute top-full left-0 right-0 max-w-md mx-auto mt-2 bg-card border border-gray-300 rounded-lg shadow-lg z-10 max-h-64 overflow-y-auto">
+                {repositories.length === 0 ? (
+                  <div className="px-4 py-3 text-gray-500 text-sm">
+                    No repositories found
+                  </div>
+                ) : (
+                  repositories.map((repo) => (
+                    <button
+                      key={repo.full_name}
+                      onClick={() => {
+                        console.log(`[HomeScreen] Selected repository: ${repo.full_name}`);
+                        setSelectedRepo(repo);
+                        setIsRepoDropdownOpen(false);
+                      }}
+                      className="w-full px-4 py-3 text-left hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg"
+                    >
+                      <div>
+                        <span className="font-mono text-sm font-medium">{repo.full_name}</span>
+                        {repo.description && (
+                          <p className="text-xs text-gray-500 mt-1 truncate">{repo.description}</p>
+                        )}
+                        <div className="flex items-center gap-3 mt-1">
+                          {repo.language && (
+                            <span className="text-xs text-gray-400">{repo.language}</span>
+                          )}
+                          {repo.private && (
+                            <span className="text-xs text-gray-400">Private</span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  ))
+                )}
               </div>
             )}
           </div>
@@ -174,7 +226,7 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-150'
                 }`}
               >
-                Issues ({mockIssues.length})
+                Issues ({isLoadingData ? '...' : issues.length})
               </button>
               <button
                 onClick={() => setActiveTab('prs')}
@@ -184,100 +236,176 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-150'
                 }`}
               >
-                Review PRs ({mockPRs.length})
+                Review PRs ({isLoadingData ? '...' : pullRequests.length})
               </button>
             </div>
 
-            <div className="space-y-3">
-              {activeTab === 'issues' && mockIssues.map((issue) => (
-                <button
-                  key={issue.id}
-                  onClick={() => onTaskStart(issue.id)}
-                  className="w-full p-4 bg-card border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+            {isLoadingData ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="flex items-center gap-3 text-gray-500">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>Loading {selectedRepo.full_name} data...</span>
+                </div>
+              </div>
+            ) : dataError ? (
+              <div className="text-center py-12">
+                <p className="text-red-500 mb-4">{dataError}</p>
+                <Button 
+                  onClick={() => {
+                    // Trigger a refetch by clearing and re-setting selectedRepo
+                    const currentRepo = selectedRepo;
+                    setSelectedRepo(null);
+                    setTimeout(() => setSelectedRepo(currentRepo), 100);
+                  }}
+                  variant="outline"
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3 flex-1">
-                      <Circle className="w-4 h-4 text-success mt-1 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-mono text-sm text-gray-600">
-                            cbh123/narrator
-                          </span>
-                          <span className="font-mono text-sm text-gray-400">
-                            #{issue.number}
-                          </span>
-                        </div>
-                        <h3 className="text-sm font-medium text-gray-900 mb-2">
-                          {issue.title}
-                        </h3>
-                        <p className="text-xs text-gray-500">
-                          {issue.timeAgo}
-                        </p>
+                  Try Again
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {activeTab === 'issues' && (
+                  <>
+                    {issues.length === 0 ? (
+                      <div className="text-center py-12 text-gray-500">
+                        No open issues found in {selectedRepo.full_name}
                       </div>
-                    </div>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="text-gray-500 hover:text-gray-700 ml-2"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // Handle external link click
-                      }}
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </button>
-              ))}
-              
-              {activeTab === 'prs' && mockPRs.map((pr) => (
-                <button
-                  key={pr.id}
-                  onClick={() => onTaskStart(pr.id)}
-                  className="w-full bg-card border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors text-left"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3 flex-1">
-                      <GitPullRequest className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-medium text-gray-900 mb-1">
-                          {pr.title}
-                        </h3>
-                        <div className="flex items-center gap-4 text-xs text-gray-600 mb-1">
-                          <span className="font-mono">{pr.branch}</span>
-                          <span className="flex items-center gap-1">
-                            <FileText className="w-3 h-3" />
-                            {pr.filesChanged} files
-                          </span>
-                          <span className="flex items-center gap-1 text-success">
-                            <Plus className="w-3 h-3" />
-                            {pr.additions}
-                          </span>
-                          <span className="flex items-center gap-1 text-error">
-                            <Minus className="w-3 h-3" />
-                            {pr.deletions}
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-500">
-                          {pr.timeAgo}
-                        </p>
+                    ) : (
+                      issues.map((issue) => (
+                        <button
+                          key={issue.id}
+                          onClick={() => {
+                            console.log(`[HomeScreen] Starting task for issue: ${issue.number}`);
+                            onTaskStart(issue.id);
+                          }}
+                          className="w-full p-4 bg-card border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-start gap-3 flex-1">
+                              <Circle className="w-4 h-4 text-success mt-1 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-mono text-sm text-gray-600">
+                                    {selectedRepo.full_name}
+                                  </span>
+                                  <span className="font-mono text-sm text-gray-400">
+                                    #{issue.number}
+                                  </span>
+                                  <span className="text-xs text-gray-400">
+                                    by {issue.user}
+                                  </span>
+                                </div>
+                                <h3 className="text-sm font-medium text-gray-900 mb-2">
+                                  {issue.title}
+                                </h3>
+                                {issue.labels.length > 0 && (
+                                  <div className="flex gap-1 mb-2">
+                                    {issue.labels.slice(0, 3).map((label) => (
+                                      <span 
+                                        key={label}
+                                        className="px-2 py-1 bg-gray-100 text-xs rounded-full text-gray-600"
+                                      >
+                                        {label}
+                                      </span>
+                                    ))}
+                                    {issue.labels.length > 3 && (
+                                      <span className="text-xs text-gray-400">
+                                        +{issue.labels.length - 3} more
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                                <p className="text-xs text-gray-500">
+                                  {issue.timeAgo}
+                                </p>
+                              </div>
+                            </div>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="text-gray-500 hover:text-gray-700 ml-2"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                console.log(`[HomeScreen] Opening external link: ${issue.htmlUrl}`);
+                                try {
+                                  await openUrl(issue.htmlUrl);
+                                } catch (error) {
+                                  console.error('Failed to open external link:', error);
+                                }
+                              }}
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </>
+                )}
+                
+                {activeTab === 'prs' && (
+                  <>
+                    {pullRequests.length === 0 ? (
+                      <div className="text-center py-12 text-gray-500">
+                        No open pull requests found in {selectedRepo.full_name}
                       </div>
-                    </div>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="text-gray-500 hover:text-gray-700 ml-2"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // Handle external link click
-                      }}
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </button>
-              ))}
-            </div>
+                    ) : (
+                      pullRequests.map((pr) => (
+                        <button
+                          key={pr.id}
+                          onClick={() => {
+                            console.log(`[HomeScreen] Starting task for PR: ${pr.number}`);
+                            onTaskStart(pr.id);
+                          }}
+                          className="w-full bg-card border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors text-left"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-start gap-3 flex-1">
+                              <GitPullRequest className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-mono text-sm text-gray-600">
+                                    {selectedRepo.full_name}
+                                  </span>
+                                  <span className="font-mono text-sm text-gray-400">
+                                    #{pr.number}
+                                  </span>
+                                  <span className="text-xs text-gray-400">
+                                    by {pr.user}
+                                  </span>
+                                </div>
+                                <h3 className="text-sm font-medium text-gray-900 mb-2">
+                                  {pr.title}
+                                </h3>
+                                <p className="text-xs text-gray-500">
+                                  {pr.timeAgo}
+                                </p>
+                              </div>
+                            </div>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="text-gray-500 hover:text-gray-700 ml-2"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                console.log(`[HomeScreen] Opening external link: ${pr.htmlUrl}`);
+                                try {
+                                  await openUrl(pr.htmlUrl);
+                                } catch (error) {
+                                  console.error('Failed to open external link:', error);
+                                }
+                              }}
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
 

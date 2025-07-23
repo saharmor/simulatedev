@@ -61,6 +61,7 @@ export class AuthService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(requestBody),
+        credentials: 'include', // Include cookies and allow setting cookies
       });
 
       console.log(`[AuthService] Session creation response status: ${response.status}`);
@@ -107,6 +108,7 @@ export class AuthService {
       
       const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
         method: 'GET',
+        credentials: 'include', // Include cookies for session authentication
       });
 
       console.log(`[AuthService] Current user response status: ${response.status}`);

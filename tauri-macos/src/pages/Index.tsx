@@ -68,48 +68,32 @@ const Index = () => {
     handleHealthCheck(result);
   };
 
-  // Handle health check results
+  // Handle health check results - ONLY updates server health state
   const handleHealthCheck = (result: HealthCheckResult) => {
     const consecutiveFailures = result.consecutiveFailures || 0;
     console.log(`[Index] Health check result: ${result.isHealthy ? 'HEALTHY' : 'UNHEALTHY'}`);
     console.log(`[Index] Consecutive failures: ${consecutiveFailures}`);
     console.log(`[Index] Current screen: ${currentScreen}, Has started up: ${hasStartedUp}`);
     
+    // Update server health state
     setIsServerHealthy(result.isHealthy);
 
-    if (
-      result.isHealthy &&
-      (currentScreen === "startup" || currentScreen === "connection-failed")
-    ) {
-      console.log('[Index] Server is healthy and app is on startup/connection-failed screen');
-      if (!hasStartedUp) {
-        console.log('[Index] Marking app as started up');
-        setHasStartedUp(true);
-      }
-      console.log('[Index] Navigating to login screen after health check success');
-      setCurrentScreen("login");
-    } else if (!result.isHealthy) {
-      console.log('[Index] Server is unhealthy');
-      // If we're in initial startup phase, show connection failed after 3 consecutive failures
-      if (
-        !hasStartedUp &&
-        currentScreen === "startup" &&
-        consecutiveFailures >= 3
-      ) {
-        console.log('[Index] Initial startup failed after 3 attempts, showing connection failed screen');
-        setCurrentScreen("connection-failed");
-      }
-      // If app has already started up and connection is lost, show startup with reconnecting message
-      else if (
-        hasStartedUp &&
-        currentScreen !== "startup" &&
-        currentScreen !== "connection-failed"
-      ) {
-        console.log('[Index] Connection lost after startup, showing reconnecting screen');
-        setCurrentScreen("startup");
-      } else {
-        console.log('[Index] Server unhealthy but no screen change needed');
-      }
+    // Mark app as started up when server becomes healthy for the first time
+    if (result.isHealthy && !hasStartedUp) {
+      console.log('[Index] Server became healthy, marking app as started up');
+      setHasStartedUp(true);
+    }
+
+    // Handle connection failure during initial startup
+    if (!result.isHealthy && !hasStartedUp && currentScreen === "startup" && consecutiveFailures >= 3) {
+      console.log('[Index] Initial startup failed after 3 attempts, showing connection failed screen');
+      setCurrentScreen("connection-failed");
+    }
+    
+    // Handle connection loss after startup
+    if (!result.isHealthy && hasStartedUp && currentScreen !== "startup" && currentScreen !== "connection-failed") {
+      console.log('[Index] Connection lost after startup, showing reconnecting screen');
+      setCurrentScreen("startup");
     }
   };
 
@@ -132,16 +116,38 @@ const Index = () => {
     };
   }, []);
 
-  // Handle health check affecting current screen
+  // App routing logic - determines appropriate screen based on state
   useEffect(() => {
-    if (
-      !isServerHealthy &&
-      currentScreen !== "startup" &&
-      currentScreen !== "connection-failed"
-    ) {
-      setCurrentScreen("startup");
-    }
-  }, [isServerHealthy, currentScreen]);
+    const determineScreen = () => {
+      console.log('[Index] Determining appropriate screen');
+      console.log(`[Index] Server healthy: ${isServerHealthy}, Has started up: ${hasStartedUp}, User: ${user?.github_username || 'none'}, Current screen: ${currentScreen}`);
+      
+      // Don't change screen if server is unhealthy (let health check handler manage startup/connection-failed)
+      if (!isServerHealthy) {
+        console.log('[Index] Server unhealthy, not changing screen');
+        return;
+      }
+      
+      // Don't change screen if app hasn't started up yet
+      if (!hasStartedUp) {
+        console.log('[Index] App not started up yet, staying on startup screen');
+        return;
+      }
+      
+      // Server is healthy and app has started up - determine appropriate screen
+      if (currentScreen === 'startup' || currentScreen === 'connection-failed') {
+        if (user) {
+          console.log(`[Index] App ready, user authenticated (${user.github_username}), navigating to home`);
+          setCurrentScreen('home');
+        } else {
+          console.log('[Index] App ready, no user authenticated, navigating to login');
+          setCurrentScreen('login');
+        }
+      }
+    };
+
+    determineScreen();
+  }, [isServerHealthy, hasStartedUp, user, currentScreen]);
 
   // Check for existing authentication on startup
   useEffect(() => {
@@ -287,6 +293,7 @@ const Index = () => {
 
     handleDeepLinkAndAuth();
   }, [deepLinkUrl, parseDeepLink, clearDeepLink, user, isServerHealthy]);
+
 
   // Get current task name for navigation
   const getCurrentTaskName = () => {
