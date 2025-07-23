@@ -1,18 +1,23 @@
 import { useState, useEffect } from "react";
 import { LoginScreen } from "../components/LoginScreen";
+import { StartupScreen } from "../components/StartupScreen";
+import { ConnectionFailedScreen } from "../components/ConnectionFailedScreen";
 import { Sidebar } from "../components/Sidebar";
 import { HomeScreen } from "../components/HomeScreen";
 import { TaskScreen } from "../components/TaskScreen";
 import { CommandPalette } from "../components/CommandPalette";
 import { NavigationHeader } from "../components/NavigationHeader";
 import { useDeepLink } from "../hooks/useDeepLink";
+import { healthCheckService, HealthCheckResult } from "../services/healthCheck";
 
-type Screen = 'login' | 'home' | 'task';
+type Screen = 'startup' | 'connection-failed' | 'login' | 'home' | 'task';
 
 const Index = () => {
-  const [currentScreen, setCurrentScreen] = useState<Screen>('login');
+  const [currentScreen, setCurrentScreen] = useState<Screen>('startup');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isServerHealthy, setIsServerHealthy] = useState(false);
+  const [hasStartedUp, setHasStartedUp] = useState(false);
   const { deepLinkUrl, parseDeepLink, clearDeepLink } = useDeepLink();
 
   const handleLogin = () => {
@@ -45,9 +50,65 @@ const Index = () => {
     setIsCommandPaletteOpen(true);
   };
 
+  // Handle retry connection
+  const handleRetryConnection = async () => {
+    setCurrentScreen('startup');
+    healthCheckService.resetFailureCount();
+    const result = await healthCheckService.checkHealth();
+    handleHealthCheck(result);
+  };
+
+  // Handle health check results
+  const handleHealthCheck = (result: HealthCheckResult) => {
+    const consecutiveFailures = result.consecutiveFailures || 0;
+    setIsServerHealthy(result.isHealthy);
+    
+    if (result.isHealthy && (currentScreen === 'startup' || currentScreen === 'connection-failed')) {
+      if (!hasStartedUp) {
+        setHasStartedUp(true);
+      }
+      setCurrentScreen('login');
+    } else if (!result.isHealthy) {
+      // If we're in initial startup phase, show connection failed after 3 consecutive failures
+      if (!hasStartedUp && currentScreen === 'startup' && consecutiveFailures >= 3) {
+        setCurrentScreen('connection-failed');
+      }
+      // If app has already started up and connection is lost, show startup with reconnecting message
+      else if (hasStartedUp && currentScreen !== 'startup' && currentScreen !== 'connection-failed') {
+        setCurrentScreen('startup');
+      }
+    }
+  };
+
+  // Initialize health checks on component mount
+  useEffect(() => {
+    const initializeHealthCheck = async () => {
+      // Perform initial health check
+      const initialResult = await healthCheckService.checkHealth();
+      handleHealthCheck(initialResult);
+      
+      // Start periodic health checks
+      healthCheckService.startPeriodicHealthChecks(handleHealthCheck);
+    };
+
+    initializeHealthCheck();
+
+    // Cleanup on unmount
+    return () => {
+      healthCheckService.stopPeriodicHealthChecks();
+    };
+  }, []);
+
+  // Handle health check affecting current screen
+  useEffect(() => {
+    if (!isServerHealthy && currentScreen !== 'startup' && currentScreen !== 'connection-failed') {
+      setCurrentScreen('startup');
+    }
+  }, [isServerHealthy, currentScreen]);
+
   // Handle deep link navigation
   useEffect(() => {
-    if (deepLinkUrl) {
+    if (deepLinkUrl && isServerHealthy) {
       const parsed = parseDeepLink(deepLinkUrl);
       if (parsed) {
         switch (parsed.path) {
@@ -74,7 +135,7 @@ const Index = () => {
       }
       clearDeepLink();
     }
-  }, [deepLinkUrl, parseDeepLink, clearDeepLink, currentScreen]);
+  }, [deepLinkUrl, parseDeepLink, clearDeepLink, currentScreen, isServerHealthy]);
 
   // Get current task name for navigation
   const getCurrentTaskName = () => {
@@ -87,6 +148,15 @@ const Index = () => {
     };
     return mockTaskData[selectedTaskId as keyof typeof mockTaskData];
   };
+
+  if (currentScreen === 'startup') {
+    const message = hasStartedUp ? "CONNECTION WITH SERVER LOST, REESTABLISHING..." : "STARTING UP...";
+    return <StartupScreen message={message} />;
+  }
+
+  if (currentScreen === 'connection-failed') {
+    return <ConnectionFailedScreen onRetry={handleRetryConnection} />;
+  }
 
   if (currentScreen === 'login') {
     return <LoginScreen onLogin={handleLogin} />;
