@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import asyncio
+from app.config import settings
 
 from app.database import create_tables
 
@@ -28,7 +29,7 @@ app = FastAPI(
 # Configure CORS properly using settings
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Temporarily allow all origins for development
+    allow_origins=[settings.frontend_url],  # Temporarily allow all origins for development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
