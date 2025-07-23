@@ -42,7 +42,7 @@ class AgentFactory:
             return CursorAgent(claude_computer_use)
         elif agent_name == "windsurf":
             return WindsurfAgent(claude_computer_use)
-        elif agent_name == "claude_code" or agent_name == "cloud_code":
+        elif agent_name == "claude_code":
             return ClaudeCodeAgent(claude_computer_use)
         elif agent_name == "openai_codex":
             return OpenAICodexAgent(claude_computer_use)
