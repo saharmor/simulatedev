@@ -27,7 +27,7 @@ const Index = () => {
     setCurrentScreen('task');
   };
 
-  const handleTaskStart = (issueId: string) => {
+  const handleTaskStart = (_issueId: string) => {
     // In a real app, this would create a new task
     // For now, just select an existing task for demo
     setSelectedTaskId('1');

@@ -1,4 +1,6 @@
 {
+  "extends": "./tsconfig.json",
+  "composite": true,
   "compilerOptions": {
     "target": "ES2020",
     "useDefineForClassFields": true,
@@ -11,7 +13,7 @@
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",
-    "noEmit": true,
+    "noEmit": false,
     "jsx": "react-jsx",
 
     /* Linting */

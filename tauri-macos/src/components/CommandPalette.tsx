@@ -14,7 +14,7 @@ const mockWorkspaces = [
   'Hyderabad', 'Tikal', 'Albany', 'Asmara', 'Bangui'
 ];
 
-export function CommandPalette({ isOpen, onClose, onTaskSelect, onHomeSelect }: CommandPaletteProps) {
+export function CommandPalette({ isOpen, onClose, onTaskSelect: _onTaskSelect, onHomeSelect }: CommandPaletteProps) {
   const [search, setSearch] = useState('');
   const { theme, setTheme } = useTheme();
   
