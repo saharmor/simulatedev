@@ -1,0 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* SimulateDev Design System - MacOS native, clean and minimalistic */
+
+@layer base {
+  :root {
+    /* Core MacOS-inspired colors */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 0%;
+    
+    /* Subtle grays for MacOS feel */
+    --gray-50: 0 0% 98%;
+    --gray-100: 0 0% 96%;
+    --gray-200: 0 0% 94%;
+    --gray-300: 0 0% 88%;
+    --gray-400: 0 0% 68%;
+    --gray-500: 0 0% 53%;
+    --gray-600: 0 0% 38%;
+    --gray-700: 0 0% 28%;
+    --gray-800: 0 0% 18%;
+    --gray-900: 0 0% 8%;
+
+    /* Component tokens */
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 8%;
+    
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 0 0% 28%;
+    
+    --border: 0 0% 94%;
+    --input: 0 0% 96%;
+    --ring: 0 0% 68%;
+    
+    /* Status colors */
+    --success: 142 76% 36%;
+    --warning: 48 96% 53%;
+    --error: 0 84% 60%;
+    
+    /* Accent for GitHub elements */
+    --github: 210 60% 98%;
+    --github-hover: 210 60% 96%;
+
+    --radius: 8px;
+  }
+
+  .dark {
+    --background: 0 0% 8%;
+    --foreground: 0 0% 98%;
+    
+    --gray-50: 0 0% 8%;
+    --gray-100: 0 0% 10%;
+    --gray-200: 0 0% 12%;
+    --gray-300: 0 0% 18%;
+    --gray-400: 0 0% 38%;
+    --gray-500: 0 0% 53%;
+    --gray-600: 0 0% 68%;
+    --gray-700: 0 0% 78%;
+    --gray-800: 0 0% 88%;
+    --gray-900: 0 0% 98%;
+
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 98%;
+    
+    --sidebar-background: 0 0% 8%;
+    --sidebar-foreground: 0 0% 78%;
+    
+    --border: 0 0% 18%;
+    --input: 0 0% 12%;
+    --ring: 0 0% 38%;
+    
+    --github: 210 60% 10%;
+    --github-hover: 210 60% 12%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
