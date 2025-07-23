@@ -203,12 +203,7 @@ python scripts/debug_agent.py windsurf https://github.com/example/repo.git "Opti
 python scripts/debug_agent.py cursor https://github.com/example/repo.git "Add tests" --no-clean
 ```
 
-#### List Agents Script (`list_agents.py`)
 
-```bash
-# Show all available agents and usage examples
-python scripts/list_agents.py
-```
 
 ### Command Line Options
 
