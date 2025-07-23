@@ -8,6 +8,7 @@ from .cursor_agent import CursorAgent
 from .windsurf_agent import WindsurfAgent
 from .claude_code_agent import ClaudeCodeAgent
 from .openai_codex_agent import OpenAICodexAgent
+from .gemini_cli_agent import GeminiCliAgent
 from .test_agent import TestAgent
 
 
@@ -25,6 +26,8 @@ class AgentFactory:
             return ClaudeCodeAgent(claude_computer_use)
         elif agent_type == CodingAgentIdeType.OPENAI_CODEX:
             return OpenAICodexAgent(claude_computer_use)
+        elif agent_type == CodingAgentIdeType.GEMINI_CLI:
+            return GeminiCliAgent(claude_computer_use)
         elif agent_type == CodingAgentIdeType.TEST:
             return TestAgent(claude_computer_use)
         else:
@@ -43,6 +46,8 @@ class AgentFactory:
             return ClaudeCodeAgent(claude_computer_use)
         elif agent_name == "openai_codex":
             return OpenAICodexAgent(claude_computer_use)
+        elif agent_name == "gemini_cli":
+            return GeminiCliAgent(claude_computer_use)
         elif agent_name == "test":
             return TestAgent(claude_computer_use)
         else:

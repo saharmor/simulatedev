@@ -160,19 +160,34 @@ class OpenAICodexAgent(WebAgent):
                 return False
             await self.page.wait_for_timeout(3000)
             current_url = self.page.url
+            
+            # Check for captcha after login button click
+            await self.solve_captcha_if_present()
         
         # Handle OpenAI auth page
         if 'auth.openai.com' in current_url:
+            # Check for captcha before clicking Google button
+            await self.solve_captcha_if_present()
+            
             if not await click_element(self.page, CodexSelectors.GOOGLE_BUTTON, "Google login button"):
                 return False
             await self.page.wait_for_timeout(3000)
             current_url = self.page.url
+            
+            # Check for captcha after Google button click
+            await self.solve_captcha_if_present()
         
         # Handle Google authentication
         if 'accounts.google.com' in current_url:
             if not await self.handle_google_login():
                 return False
             await self.page.wait_for_timeout(5000)
+            
+            # Check for captcha after Google login
+            await self.solve_captcha_if_present()
+        
+        # Final captcha check before verifying environments page
+        await self.solve_captcha_if_present()
         
         # Verify we reached environments page
         return self._is_environments_page(self.page.url)

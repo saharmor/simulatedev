@@ -20,6 +20,7 @@ class CodingAgentIdeType(Enum):
     WINDSURF = "windsurf"
     CLAUDE_CODE = "claude_code"
     OPENAI_CODEX = "openai_codex"
+    GEMINI_CLI = "gemini_cli"
     TEST = "test"
 
 
