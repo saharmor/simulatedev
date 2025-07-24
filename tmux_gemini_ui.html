@@ -23,6 +23,27 @@
             font-family: monospace;
             background: #111;
             color: #0f0;
+            overflow-y: auto;
+            height: 0; /* This forces flex item to respect container height */
+            border-left: 1px solid #333;
+        }
+        
+        /* Custom scrollbar styling for the log area */
+        #log::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        #log::-webkit-scrollbar-track {
+            background: #222;
+        }
+        
+        #log::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+        
+        #log::-webkit-scrollbar-thumb:hover {
+            background: #777;
         }
         .session {
             padding: 8px;
@@ -52,6 +73,23 @@
         }
         .stop-btn:hover {
             background: #cc0000;
+        }
+        .attach-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 5px;
+        }
+        .attach-btn:hover {
+            background: #1976D2;
+        }
+        .button-group {
+            display: flex;
+            gap: 5px;
         }
         .status-running {
             color: #4CAF50;
@@ -139,7 +177,7 @@
             <button class="create-btn" onclick="toggleCreateForm()">Create New Session</button>
         </div>
         <div id="create-form">
-            <textarea id="prompt-input" placeholder="Enter your prompt..." rows="3"></textarea>
+            <textarea id="prompt-input" placeholder="Enter your prompt..." rows="3">What time is it?</textarea>
             <input id="repo-input" placeholder="Repository URL (optional)" />
             <div class="form-buttons">
                 <button class="submit-btn" onclick="createSession()">Create</button>
@@ -148,7 +186,7 @@
         </div>
         <div id="list" style="flex: 1; overflow-y: auto;">Loading sessions...</div>
     </div>
-    <div id="log">Select a session to view logs</div>
+    <div id="log" style="height: 100%;">Select a session to view logs</div>
     
     <script>
         async function getSessions() {
@@ -259,6 +297,21 @@
             textContainer.appendChild(promptText);
             info.appendChild(textContainer);
             
+            // Create button group for actions
+            const buttonGroup = document.createElement('div');
+            buttonGroup.className = 'button-group';
+            
+            // Add attach button for all sessions (not just running ones)
+            const attachBtn = document.createElement('button');
+            attachBtn.className = 'attach-btn';
+            attachBtn.textContent = 'Copy Attach';
+            attachBtn.title = 'Copy tmux attach command to clipboard';
+            attachBtn.onclick = async (e) => {
+                e.stopPropagation();
+                await copyAttachCommand(s.session_id);
+            };
+            buttonGroup.appendChild(attachBtn);
+            
             // Add stop button for running sessions
             if (s.status === 'RUNNING') {
                 const stopBtn = document.createElement('button');
@@ -268,11 +321,41 @@
                     e.stopPropagation();
                     await stopSession(s.session_id);
                 };
-                info.appendChild(stopBtn);
+                buttonGroup.appendChild(stopBtn);
             }
             
+            info.appendChild(buttonGroup);
             d.appendChild(info);
             return d;
+        }
+        
+        async function copyAttachCommand(sessionId) {
+            const command = `tmux attach-session -t gemini_manager`;
+            const fullInstructions = `${command}
+# Then use Ctrl+B + arrow keys to navigate to the ${sessionId} pane
+# Or use: tmux select-pane -t gemini_manager:controller -P | grep "${sessionId}"`;
+            
+            try {
+                await navigator.clipboard.writeText(fullInstructions);
+                
+                // Show temporary feedback
+                const attachBtn = event.target;
+                const originalText = attachBtn.textContent;
+                attachBtn.textContent = 'Copied!';
+                attachBtn.style.background = '#4CAF50';
+                
+                setTimeout(() => {
+                    attachBtn.textContent = originalText;
+                    attachBtn.style.background = '#2196F3';
+                }, 1500);
+                
+                console.log(`Copied to clipboard: ${fullInstructions}`);
+            } catch (err) {
+                console.error('Failed to copy to clipboard:', err);
+                
+                // Fallback: show alert with command
+                alert(`Copy this command:\n${fullInstructions}`);
+            }
         }
         
         async function stopSession(id) {
@@ -309,8 +392,13 @@
             sock.onmessage = e => {
                 const logDiv = document.getElementById('log');
                 logDiv.textContent += e.data + '\n';
-                // Auto-scroll to bottom
+                
+                // Auto-scroll to bottom with smooth behavior
                 logDiv.scrollTop = logDiv.scrollHeight;
+                // Force scroll if needed
+                setTimeout(() => {
+                    logDiv.scrollTop = logDiv.scrollHeight;
+                }, 10);
             };
             
             sock.onerror = e => {

@@ -47,7 +47,6 @@ class SessionInfo:
     status: str  # SPAWNING, RUNNING, DONE, STOPPED
     start_time: float
     end_time: Optional[float] = None
-    sleep_duration: Optional[int] = None
 
 # ---------------------------- Manager ----------------------------------------
 class TmuxGeminiManager:
@@ -99,7 +98,8 @@ class TmuxGeminiManager:
 
     def _pipe_log(self, pane_target: str, session_id: str):
         log_path = self.logs_dir / f"{session_id}.log"
-        self._run(["tmux", "pipe-pane", "-o", "-t", pane_target, f"cat >> {log_path}"], check=False)
+        # Try using pipe-pane with both input and output capture
+        self._run(["tmux", "pipe-pane", "-IO", "-t", pane_target, f"cat >> {log_path}"], check=False)
 
     def create_session(self, prompt: str, repo_url: Optional[str] = None):
         repo_url = repo_url or self.default_repo
@@ -113,39 +113,55 @@ class TmuxGeminiManager:
         pane = self._new_pane(sid)
         self._pipe_log(pane, sid)
         
-        # Random duration between 1-10 minutes (60-600 seconds)
-        total_duration = random.randint(60, 600)
-        # Random message interval between 10-30 seconds
-        msg_interval = random.randint(10, 30)
+        # Start the real Gemini CLI
+        project_path = os.getcwd()
+        startup_cmd = f"cd '{project_path}' && gemini"
         
-        # Create a script that prints messages periodically
-        mock_script = f"""
-echo 'Prompt: {prompt[:50]}...'
-echo 'Repo: {repo_url}'
-echo 'Session will run for {total_duration} seconds ({total_duration//60} minutes {total_duration%60} seconds)'
-echo 'Messages every {msg_interval} seconds'
-echo '---'
-
-elapsed=0
-while [ $elapsed -lt {total_duration} ]; do
-    echo "[$(date '+%H:%M:%S')] I'm here! Progress: $elapsed/{total_duration} seconds"
-    sleep {msg_interval}
-    elapsed=$((elapsed + {msg_interval}))
-done
-
-echo '✅ GEMINI_TASK_COMPLETED'
-echo "Session completed after {total_duration} seconds"
-        """
+        # Send the startup command
+        self._run(["tmux", "send-keys", "-t", pane, startup_cmd, "C-m"])
         
-        # Write script to temp file and execute it
-        script_path = f"/tmp/gemini_session_{sid}.sh"
-        with open(script_path, 'w') as f:
-            f.write(mock_script)
+        # Give Gemini time to start up and become ready
+        time.sleep(3)
         
-        self._run(["tmux", "send-keys", "-t", pane, f"bash {script_path}", "C-m"])
-        info.sleep_duration = total_duration; info.status = "RUNNING"
+        # Wait for Gemini to be ready (look for "Type your message" indicator)
+        max_wait = 10  # seconds
+        wait_count = 0
+        ready = False
+        
+        while wait_count < max_wait:
+            try:
+                output = self._run(["tmux", "capture-pane", "-p", "-t", pane]).stdout
+                if "Type your message" in output:
+                    ready = True
+                    break
+            except subprocess.CalledProcessError:
+                pass
+            time.sleep(1)
+            wait_count += 1
+        
+        if not ready:
+            print(f"⚠️  Gemini failed to start properly for session {sid}")
+            info.status = "DONE"
+            info.end_time = time.time()
+            return
+        
+        # Enable YOLO mode with Ctrl+Y (for autonomous execution)
+        self._run(["tmux", "send-keys", "-t", pane, "C-y"])
+        time.sleep(2)  # Increased delay to ensure YOLO mode is activated
+        
+        # Use the predefined prompt if none provided, otherwise use the custom prompt
+        if not prompt or prompt.strip() == "":
+            actual_prompt = "Write a script that runs for a random time between 1-3 minutes, printing hello world every 6 seconds"
+        else:
+            actual_prompt = prompt
+        
+        # Send the prompt to Gemini
+        self._run(["tmux", "send-keys", "-t", pane, actual_prompt, "C-m"])
+        time.sleep(1)  # Add delay after sending prompt
+        
+        info.status = "RUNNING"
         self._rename_pane(pane, f"RUNNING‑{sid}")
-        print(f"🔥 Started {sid} in pane {pane} (duration: {total_duration}s, messages every {msg_interval}s)")
+        print(f"🔥 Started real Gemini session {sid} in pane {pane} with prompt: {actual_prompt[:50]}...")
 
     # ---------- status upkeep ----------
     def _check_done(self, sid: str):
@@ -155,7 +171,29 @@ echo "Session completed after {total_duration} seconds"
         # Check if pane still exists (it might have been killed when stopped)
         try:
             out = self._run(["tmux", "capture-pane", "-p", "-t", pane]).stdout
-            return "GEMINI_TASK_COMPLETED" in out
+            
+            # The most reliable indicator: Gemini returns to "Type your message" prompt
+            # after completing a task, indicating it's ready for the next input
+            lines = out.split('\n')
+            recent_lines = lines[-10:]  # Check last 10 lines for the prompt
+            
+            # Look for the "Type your message" prompt in recent output
+            has_type_message = any("Type your message" in line for line in recent_lines)
+            
+            if has_type_message:
+                # Make sure this isn't the initial prompt by checking if we have
+                # substantial content before it (indicating work was done)
+                if len(out) > 1000:  # Arbitrary threshold for "substantial content"
+                    return True
+            
+            # Fallback: Check if Gemini process has exited (back to shell prompt)
+            for line in recent_lines:
+                if line.strip().endswith('% ') or line.strip().endswith('$ '):
+                    # Back to shell prompt, Gemini has exited
+                    return True
+            
+            return False
+            
         except subprocess.CalledProcessError:
             # Pane no longer exists (was killed), consider it done
             return True
@@ -167,8 +205,25 @@ echo "Session completed after {total_duration} seconds"
                 pane = self.pane_mapping.get(sid)
                 if pane:
                     try:
+                        # Stop pipe-pane logging first
+                        self._run(["tmux", "pipe-pane", "-t", pane], check=False)
+                        
+                        # Send Ctrl+C to stop any running processes, then exit Gemini
+                        self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
+                        time.sleep(0.5)
+                        self._run(["tmux", "send-keys", "-t", pane, "exit", "C-m"], check=False)
+                        time.sleep(0.5)
+                        
+                        # Write completion message to log file
+                        log_path = self.logs_dir / f"{sid}.log"
+                        with open(log_path, 'a') as f:
+                            f.write("✅ Gemini session completed and closed\n")
+                        
+                        # Rename pane to show completion
                         self._rename_pane(pane, f"DONE‑{sid}")
-                        self._run(["tmux", "send-keys", "-t", pane, "echo '🔔 Done!'", "C-m"], check=False)
+                        
+                        print(f"✅ Session {sid} completed and Gemini CLI closed")
+                        
                     except subprocess.CalledProcessError:
                         # Pane no longer exists, clean up mapping
                         if sid in self.pane_mapping:
@@ -214,12 +269,49 @@ echo "Session completed after {total_duration} seconds"
         
         return False
 
+    def capture_logs(self):
+        """Supplement pipe-pane with periodic capture to ensure we get all output"""
+        for sid, info in self.sessions.items():
+            if info.status in ("RUNNING", "SPAWNING"):
+                pane = self.pane_mapping.get(sid)
+                if pane:
+                    try:
+                        # Capture the entire pane content
+                        result = self._run(["tmux", "capture-pane", "-p", "-t", pane, "-S", "-"])
+                        if result.returncode == 0:
+                            log_path = self.logs_dir / f"{sid}.log"
+                            # Append any new content that pipe-pane might have missed
+                            # Read existing content first
+                            existing_content = ""
+                            if log_path.exists():
+                                with open(log_path, 'r') as f:
+                                    existing_content = f.read()
+                            
+                            # If captured content is longer and contains existing content, append the new part
+                            captured = result.stdout
+                            if len(captured) > len(existing_content) and existing_content in captured:
+                                # Find the new content
+                                idx = captured.find(existing_content) + len(existing_content)
+                                new_content = captured[idx:]
+                                if new_content.strip():
+                                    with open(log_path, 'a') as f:
+                                        f.write(new_content)
+                            elif not existing_content and captured:
+                                # First capture
+                                with open(log_path, 'w') as f:
+                                    f.write(captured)
+                    except subprocess.CalledProcessError:
+                        pass  # Pane might have been killed
+
     def save_status(self):
         self.status_file.write_text(json.dumps({sid: asdict(s) for sid, s in self.sessions.items()}, indent=2))
 
     async def ticker(self):
         while self.running:
-            self.update(); self.save_status(); await asyncio.sleep(3)
+            self.update()
+            self.capture_logs()  # Add periodic log capture
+            self.save_status()
+            await asyncio.sleep(1)  # Reduced to 1 second for more frequent captures
 
 # ---------------------------- UI Layer ---------------------------------------
 app = FastAPI()
@@ -279,60 +371,44 @@ async def tail_ws(ws: WebSocket, sid: str):
     terminal_sequences = re.compile(r'\x1b\[[0-9;]*[mGKHJF]|\x1b\[[\?0-9]*[hl]|\x07|\r')
     
     def clean_line(line):
-        # Skip lines that are just shell prompts or tmux commands
-        if line.strip().endswith('% ') or line.strip().startswith('bash /tmp/'):
-            return ''
-        if 'saharmor@' in line and ('scripts %' in line or '% ' in line):
-            return ''
-        
-        # Skip lines that are just prompt artifacts
-        stripped = line.strip()
-        if stripped in ['%', '%%', '$', '#', '> ', '$ ', '% ', '# ']:
-            return ''
-        
-        # Skip lines that contain only shell prompt patterns
-        if re.match(r'^[%$#>\s]*$', stripped):
-            return ''
-        
-        # Skip lines that look like command echoing (bash script execution artifacts)
-        if stripped.startswith('bash /tmp/gemini_session_') and stripped.endswith('.sh'):
-            return ''
-        
-        # Skip tmux command output
-        if 'tmux' in stripped and ('send-keys' in stripped or 'select-pane' in stripped):
-            return ''
-        
-        # Remove ANSI escape codes
+        # Remove ANSI escape codes and terminal control sequences first
         line = ansi_escape.sub('', line)
-        # Remove other terminal sequences
         line = terminal_sequences.sub('', line)
-        # Remove non-printable characters except newline
-        line = ''.join(char for char in line if char.isprintable() or char == '\n')
+        
+        # Remove non-printable characters except newline and tab
+        line = ''.join(char for char in line if char.isprintable() or char in '\n\t')
+        
         # Clean up any remaining escape sequences
         line = re.sub(r'\[[\?0-9]*[KJhl]', '', line)
-        line = line.strip()
         
-        # Final check for artifacts after cleaning
-        if line in ['%', '%%', '$', '#', '', ' ']:
+        stripped = line.strip()
+        
+        # Only filter out very specific shell artifacts, be much less aggressive
+        if stripped in ['%', '%%', '$', '#', '']:
             return ''
         
-        # Skip very short lines that are likely artifacts
-        if len(line) <= 2 and line in ['.', '..', '.sh', 'sh']:
+        # Skip obvious shell prompts but allow other content
+        if stripped.endswith('% ') or stripped.endswith('$ '):
             return ''
         
-        # Skip lines that are just the script name being typed
-        if line.endswith('.sh') and len(line) < 10:
+        # Skip the startup command echo
+        if stripped.startswith('cd ') and stripped.endswith('&& gemini'):
             return ''
-            
-        return line
+        
+        return line.rstrip()  # Remove trailing whitespace but keep the content
     
-    await ws.accept(); log_path = manager.logs_dir / f"{sid}.log"
-    while not log_path.exists(): await asyncio.sleep(0.2)
+    await ws.accept()
+    log_path = manager.logs_dir / f"{sid}.log"
+    
+    # Wait for log file to exist
+    while not log_path.exists():
+        await asyncio.sleep(0.2)
+    
+    # Open file and follow it like tail -f
     with log_path.open("r") as f:
-        # First, send the last 50 lines of existing content
-        lines = f.readlines()
-        recent_lines = lines[-50:] if len(lines) > 50 else lines
-        for line in recent_lines:
+        # First, send existing content
+        content = f.read()
+        for line in content.split('\n'):
             cleaned = clean_line(line)
             if cleaned:  # Only send non-empty lines
                 try:
@@ -341,20 +417,19 @@ async def tail_ws(ws: WebSocket, sid: str):
                     return
         
         # Then continue tailing new content
-        f.seek(0, os.SEEK_END)
         try:
             while True:
                 line = f.readline()
                 if line:
-                    cleaned = clean_line(line)
+                    cleaned = clean_line(line.rstrip('\n'))
                     if cleaned:  # Only send non-empty lines
                         try:
                             await ws.send_text(cleaned)
                         except Exception:
-                            # WebSocket connection closed, exit gracefully
                             return
-                else: 
-                    await asyncio.sleep(0.3)
+                else:
+                    await asyncio.sleep(0.1)  # Reduced sleep for faster updates
+                    
         except (WebSocketDisconnect, Exception):
             # Handle any WebSocket disconnection or error
             return
@@ -390,22 +465,16 @@ async def interactive_loop():
 
 async def demo_loop():
     """Create demo sessions automatically"""
-    test_prompts = [
-        "Create a simple hello world function",
-        "Write a Python script to read a CSV file", 
-        "Implement a basic REST API with FastAPI",
-        "Create a React component for a todo list"
-    ]
+    # Use the predefined prompt for real Gemini testing
+    test_prompt = "Write a script that runs for a random time between 1-3 minutes, printing hello world every 6 seconds"
     
-    print("🚀 Creating demo sessions...")
-    for i, prompt in enumerate(test_prompts):
-        print(f"Creating session {i+1}: {prompt[:30]}...")
-        manager.create_session(prompt)
-        await asyncio.sleep(2)  # Space out the creation
+    print("🚀 Creating Gemini session with predefined prompt...")
+    print(f"Prompt: {test_prompt}")
+    manager.create_session(test_prompt)
     
-    print("✅ All demo sessions created!")
+    print("✅ Gemini session created!")
     print("🌐 Visit http://localhost:8000 to see the UI")
-    print("📱 Sessions will update automatically as they complete")
+    print("📱 Session will update automatically as Gemini executes the task")
     print("\n⏳ Manager running... Press Ctrl+C to stop")
     
     try:
@@ -428,6 +497,16 @@ async def main(max_sessions: int = 50, attach: bool = False, ui: bool = False, d
     
     if demo:
         await demo_loop()
+    elif ui and not demo:
+        # Just keep the UI server running without interactive prompt
+        print("🎯 UI server is running. Use the web interface at http://localhost:8000")
+        print("⏹️  Press Ctrl+C to stop")
+        try:
+            while manager.running:
+                await asyncio.sleep(1)
+        except KeyboardInterrupt:
+            print("\n🛑 Stopping UI server...")
+            manager.running = False
     else:
         await interactive_loop()
 
