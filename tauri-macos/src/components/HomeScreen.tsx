@@ -308,9 +308,6 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                                   <span className="font-mono text-sm text-gray-400">
                                     #{issue.number}
                                   </span>
-                                  <span className="text-xs text-gray-400">
-                                    by {issue.user}
-                                  </span>
                                 </div>
                                 <h3 className="text-sm font-medium text-gray-900 mb-2">
                                   {issue.title}
