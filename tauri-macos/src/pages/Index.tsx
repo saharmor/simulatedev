@@ -29,14 +29,16 @@ const Index = () => {
   };
 
   const handleLogout = () => {
-    console.log('[Index] User logout initiated');
-    console.log(`[Index] Clearing auth data for user: ${user?.github_username}`);
+    console.log("[Index] User logout initiated");
+    console.log(
+      `[Index] Clearing auth data for user: ${user?.github_username}`
+    );
     authService.clearAuthData();
     setUser(null);
-    console.log('[Index] Navigating to login screen after logout');
+    console.log("[Index] Navigating to login screen after logout");
     setCurrentScreen("login");
     setSelectedTaskId(null);
-    console.log('[Index] Logout completed successfully');
+    console.log("[Index] Logout completed successfully");
   };
 
   const handleTaskSelect = (taskId: string) => {
@@ -71,28 +73,48 @@ const Index = () => {
   // Handle health check results - ONLY updates server health state
   const handleHealthCheck = (result: HealthCheckResult) => {
     const consecutiveFailures = result.consecutiveFailures || 0;
-    console.log(`[Index] Health check result: ${result.isHealthy ? 'HEALTHY' : 'UNHEALTHY'}`);
+    console.log(
+      `[Index] Health check result: ${
+        result.isHealthy ? "HEALTHY" : "UNHEALTHY"
+      }`
+    );
     console.log(`[Index] Consecutive failures: ${consecutiveFailures}`);
-    console.log(`[Index] Current screen: ${currentScreen}, Has started up: ${hasStartedUp}`);
-    
+    console.log(
+      `[Index] Current screen: ${currentScreen}, Has started up: ${hasStartedUp}`
+    );
+
     // Update server health state
     setIsServerHealthy(result.isHealthy);
 
     // Mark app as started up when server becomes healthy for the first time
     if (result.isHealthy && !hasStartedUp) {
-      console.log('[Index] Server became healthy, marking app as started up');
+      console.log("[Index] Server became healthy, marking app as started up");
       setHasStartedUp(true);
     }
 
     // Handle connection failure during initial startup
-    if (!result.isHealthy && !hasStartedUp && currentScreen === "startup" && consecutiveFailures >= 3) {
-      console.log('[Index] Initial startup failed after 3 attempts, showing connection failed screen');
+    if (
+      !result.isHealthy &&
+      !hasStartedUp &&
+      currentScreen === "startup" &&
+      consecutiveFailures >= 3
+    ) {
+      console.log(
+        "[Index] Initial startup failed after 3 attempts, showing connection failed screen"
+      );
       setCurrentScreen("connection-failed");
     }
-    
+
     // Handle connection loss after startup
-    if (!result.isHealthy && hasStartedUp && currentScreen !== "startup" && currentScreen !== "connection-failed") {
-      console.log('[Index] Connection lost after startup, showing reconnecting screen');
+    if (
+      !result.isHealthy &&
+      hasStartedUp &&
+      currentScreen !== "startup" &&
+      currentScreen !== "connection-failed"
+    ) {
+      console.log(
+        "[Index] Connection lost after startup, showing reconnecting screen"
+      );
       setCurrentScreen("startup");
     }
   };
@@ -119,29 +141,42 @@ const Index = () => {
   // App routing logic - determines appropriate screen based on state
   useEffect(() => {
     const determineScreen = () => {
-      console.log('[Index] Determining appropriate screen');
-      console.log(`[Index] Server healthy: ${isServerHealthy}, Has started up: ${hasStartedUp}, User: ${user?.github_username || 'none'}, Current screen: ${currentScreen}`);
-      
+      console.log("[Index] Determining appropriate screen");
+      console.log(
+        `[Index] Server healthy: ${isServerHealthy}, Has started up: ${hasStartedUp}, User: ${
+          user?.github_username || "none"
+        }, Current screen: ${currentScreen}`
+      );
+
       // Don't change screen if server is unhealthy (let health check handler manage startup/connection-failed)
       if (!isServerHealthy) {
-        console.log('[Index] Server unhealthy, not changing screen');
+        console.log("[Index] Server unhealthy, not changing screen");
         return;
       }
-      
+
       // Don't change screen if app hasn't started up yet
       if (!hasStartedUp) {
-        console.log('[Index] App not started up yet, staying on startup screen');
+        console.log(
+          "[Index] App not started up yet, staying on startup screen"
+        );
         return;
       }
-      
+
       // Server is healthy and app has started up - determine appropriate screen
-      if (currentScreen === 'startup' || currentScreen === 'connection-failed') {
+      if (
+        currentScreen === "startup" ||
+        currentScreen === "connection-failed"
+      ) {
         if (user) {
-          console.log(`[Index] App ready, user authenticated (${user.github_username}), navigating to home`);
-          setCurrentScreen('home');
+          console.log(
+            `[Index] App ready, user authenticated (${user.github_username}), navigating to home`
+          );
+          setCurrentScreen("home");
         } else {
-          console.log('[Index] App ready, no user authenticated, navigating to login');
-          setCurrentScreen('login');
+          console.log(
+            "[Index] App ready, no user authenticated, navigating to login"
+          );
+          setCurrentScreen("login");
         }
       }
     };
@@ -152,106 +187,157 @@ const Index = () => {
   // Check for existing authentication on startup
   useEffect(() => {
     const checkAuthentication = async () => {
-      console.log('[Index] Checking authentication on startup');
-      console.log(`[Index] Server healthy: ${isServerHealthy}, Has started up: ${hasStartedUp}`);
-      
+      console.log("[Index] Checking authentication on startup");
+      console.log(
+        `[Index] Server healthy: ${isServerHealthy}, Has started up: ${hasStartedUp}`
+      );
+
       if (isServerHealthy && hasStartedUp) {
-        console.log('[Index] Server is healthy and app has started up, checking for existing session');
+        console.log(
+          "[Index] Server is healthy and app has started up, checking for existing session"
+        );
         const currentUser = await authService.getCurrentUser();
-        
+
         if (currentUser) {
-          console.log(`[Index] Found authenticated user: ${currentUser.github_username}`);
-          console.log('[Index] Setting user state and navigating to home screen');
+          console.log(
+            `[Index] Found authenticated user: ${currentUser.github_username}`
+          );
+          console.log(
+            "[Index] Setting user state and navigating to home screen"
+          );
           setUser(currentUser);
           setCurrentScreen("home");
-          console.log('[Index] Successfully authenticated user on startup');
+          console.log("[Index] Successfully authenticated user on startup");
         } else if (currentScreen === "startup") {
-          console.log('[Index] No authenticated user found, navigating to login screen');
+          console.log(
+            "[Index] No authenticated user found, navigating to login screen"
+          );
           setCurrentScreen("login");
         } else {
-          console.log(`[Index] No authenticated user found, but current screen is ${currentScreen}, not changing`);
+          console.log(
+            `[Index] No authenticated user found, but current screen is ${currentScreen}, not changing`
+          );
         }
       } else {
-        console.log('[Index] Skipping authentication check - server not healthy or app not started up');
+        console.log(
+          "[Index] Skipping authentication check - server not healthy or app not started up"
+        );
       }
     };
 
     checkAuthentication();
   }, [isServerHealthy, hasStartedUp]);
 
-
   // Handle deep link navigation and GitHub OAuth callback
   useEffect(() => {
     const handleDeepLinkAndAuth = async () => {
-      console.log('[Index] Checking deep link navigation and auth callback');
-      console.log(`[Index] Deep link URL: ${deepLinkUrl}, Server healthy: ${isServerHealthy}`);
-      console.log(`[Index] User authenticated: ${!!user}, Username: ${user?.github_username}`);
-      
+      console.log("[Index] Checking deep link navigation and auth callback");
+      console.log(
+        `[Index] Deep link URL: ${deepLinkUrl}, Server healthy: ${isServerHealthy}`
+      );
+      console.log(
+        `[Index] User authenticated: ${!!user}, Username: ${
+          user?.github_username
+        }`
+      );
+
       if (deepLinkUrl && isServerHealthy) {
         console.log(`[Index] Processing deep link: ${deepLinkUrl}`);
         const parsed = parseDeepLink(deepLinkUrl);
-        
+
         if (parsed) {
-          console.log(`[Index] Parsed deep link - Path: ${parsed.path}, Params:`, parsed.params);
-          
+          console.log(
+            `[Index] Parsed deep link - Path: ${parsed.path}, Params:`,
+            parsed.params
+          );
+
           // FIRST PRIORITY: Check for GitHub OAuth callback parameters
           const authSuccess = parsed.params.auth_success;
           const sessionCode = parsed.params.session_code;
           const error = parsed.params.error;
 
           if (error === "oauth_failed") {
-            console.log('[Index] OAuth failed detected in deep link parameters');
-            console.log('[Index] Setting auth error and navigating to login screen');
+            console.log(
+              "[Index] OAuth failed detected in deep link parameters"
+            );
+            console.log(
+              "[Index] Setting auth error and navigating to login screen"
+            );
             setAuthError("oauth_failed");
             setCurrentScreen("login");
           } else if (authSuccess === "true" && sessionCode) {
-            console.log('[Index] Successful OAuth callback detected in deep link');
-            console.log(`[Index] Processing session code: ${sessionCode.substring(0, 8)}...`);
-            
+            console.log(
+              "[Index] Successful OAuth callback detected in deep link"
+            );
+            console.log(
+              `[Index] Processing session code: ${sessionCode.substring(
+                0,
+                8
+              )}...`
+            );
+
             try {
-              console.log('[Index] Creating session with received session code');
+              console.log(
+                "[Index] Creating session with received session code"
+              );
               const sessionData = await authService.createSession(sessionCode);
-              
-              console.log(`[Index] Successfully created session for user: ${sessionData.user.github_username}`);
+
+              console.log(
+                `[Index] Successfully created session for user: ${sessionData.user.github_username}`
+              );
               setUser(sessionData.user);
               setAuthError(null);
 
               // Add smooth transition to home screen
-              console.log('[Index] Starting smooth transition to home screen');
+              console.log("[Index] Starting smooth transition to home screen");
               setIsTransitioning(true);
               setTimeout(() => {
-                console.log('[Index] Completing transition to home screen');
+                console.log("[Index] Completing transition to home screen");
                 setCurrentScreen("home");
                 setIsTransitioning(false);
-                console.log('[Index] Successfully navigated to home screen after OAuth');
+                console.log(
+                  "[Index] Successfully navigated to home screen after OAuth"
+                );
               }, 300);
             } catch (error) {
               console.error("[Index] Failed to create session:", error);
-              console.log('[Index] Setting session_failed error and navigating to login');
+              console.log(
+                "[Index] Setting session_failed error and navigating to login"
+              );
               setAuthError("session_failed");
               setCurrentScreen("login");
             }
           } else {
             // SECOND PRIORITY: Handle regular deep link navigation
-            console.log('[Index] No OAuth callback detected, processing as regular navigation');
-            
+            console.log(
+              "[Index] No OAuth callback detected, processing as regular navigation"
+            );
+
             // Only allow navigation to login if not authenticated
             // Authenticated users can't be sent back to login via deep link
             switch (parsed.path) {
               case "/login":
                 if (!user) {
-                  console.log('[Index] Deep link to login - user not authenticated, navigating to login');
+                  console.log(
+                    "[Index] Deep link to login - user not authenticated, navigating to login"
+                  );
                   setCurrentScreen("login");
                 } else {
-                  console.log('[Index] Deep link to login - user authenticated, ignoring navigation');
+                  console.log(
+                    "[Index] Deep link to login - user authenticated, ignoring navigation"
+                  );
                 }
                 break;
               case "/home":
                 if (user) {
-                  console.log('[Index] Deep link to home - user authenticated, navigating to home');
+                  console.log(
+                    "[Index] Deep link to home - user authenticated, navigating to home"
+                  );
                   setCurrentScreen("home");
                 } else {
-                  console.log('[Index] Deep link to home - user not authenticated, redirecting to login');
+                  console.log(
+                    "[Index] Deep link to home - user not authenticated, redirecting to login"
+                  );
                   setCurrentScreen("login");
                 }
                 break;
@@ -259,15 +345,21 @@ const Index = () => {
                 if (user) {
                   const taskId = parsed.params.id;
                   if (taskId) {
-                    console.log(`[Index] Deep link to task - user authenticated, navigating to task: ${taskId}`);
+                    console.log(
+                      `[Index] Deep link to task - user authenticated, navigating to task: ${taskId}`
+                    );
                     setSelectedTaskId(taskId);
                     setCurrentScreen("task");
                   } else {
-                    console.log('[Index] Deep link to task - no task ID, navigating to home');
+                    console.log(
+                      "[Index] Deep link to task - no task ID, navigating to home"
+                    );
                     setCurrentScreen("home");
                   }
                 } else {
-                  console.log('[Index] Deep link to task - user not authenticated, redirecting to login');
+                  console.log(
+                    "[Index] Deep link to task - user not authenticated, redirecting to login"
+                  );
                   setCurrentScreen("login");
                 }
                 break;
@@ -275,25 +367,28 @@ const Index = () => {
                 console.log(`[Index] Unknown deep link path: ${parsed.path}`);
                 // Unknown path, redirect based on auth state
                 const targetScreen = user ? "home" : "login";
-                console.log(`[Index] Redirecting to ${targetScreen} based on auth state`);
+                console.log(
+                  `[Index] Redirecting to ${targetScreen} based on auth state`
+                );
                 setCurrentScreen(targetScreen);
                 break;
             }
           }
         } else {
-          console.log('[Index] Failed to parse deep link URL');
+          console.log("[Index] Failed to parse deep link URL");
         }
-        
-        console.log('[Index] Clearing deep link after processing');
+
+        console.log("[Index] Clearing deep link after processing");
         clearDeepLink();
       } else if (deepLinkUrl) {
-        console.log('[Index] Deep link present but server not healthy, skipping navigation');
+        console.log(
+          "[Index] Deep link present but server not healthy, skipping navigation"
+        );
       }
     };
 
     handleDeepLinkAndAuth();
   }, [deepLinkUrl, parseDeepLink, clearDeepLink, user, isServerHealthy]);
-
 
   // Get current task name for navigation
   const getCurrentTaskName = () => {

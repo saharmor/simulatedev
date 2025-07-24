@@ -3,7 +3,6 @@ import { fetch } from "@tauri-apps/plugin-http";
 const API_BASE_URL = "http://localhost:8000";
 
 export interface Repository {
-  owner: string;
   name: string;
   full_name: string;
   url: string;
@@ -21,22 +20,8 @@ export interface GitHubIssue {
   state: "open" | "closed";
   created_at: string;
   updated_at: string;
-  labels: Array<{
-    name: string;
-    color: string;
-  }>;
-  user: {
-    login: string;
-    avatar_url: string;
-  };
+  user_login: string;
   html_url: string;
-  pull_request?: {
-    url: string;
-  };
-}
-
-export interface RepositoriesResponse {
-  repositories: Repository[];
 }
 
 export interface IssuesResponse {
@@ -51,7 +36,7 @@ export class ApiService {
   async getRepositories(): Promise<Repository[]> {
     console.log("[ApiService] Fetching user repositories");
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/repositories`, {
+      const response = await fetch(`${API_BASE_URL}/api/github/repositories`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -71,12 +56,13 @@ export class ApiService {
         throw new Error(`Failed to fetch repositories: ${response.status}`);
       }
 
-      const data: RepositoriesResponse = await response.json();
+      const data: Repository[] = await response.json();
+      console.log(data);
       console.log(
-        `[ApiService] Successfully fetched ${data.repositories.length} repositories`
+        `[ApiService] Successfully fetched ${data.length} repositories`
       );
 
-      return data.repositories;
+      return data;
     } catch (error) {
       console.error("[ApiService] Error fetching repositories:", error);
       throw error;
@@ -84,7 +70,6 @@ export class ApiService {
   }
 
   async getRepositoryIssues(
-    owner: string,
     repo: string,
     options: {
       state?: "open" | "closed" | "all";
@@ -93,7 +78,7 @@ export class ApiService {
       search?: string;
     } = {}
   ): Promise<IssuesResponse> {
-    console.log(`[ApiService] Fetching issues for ${owner}/${repo}`);
+    console.log(`[ApiService] Fetching issues for ${repo}`);
     console.log(`[ApiService] Options:`, options);
 
     try {
@@ -104,7 +89,7 @@ export class ApiService {
         params.append("per_page", options.per_page.toString());
       if (options.search) params.append("search", options.search);
 
-      const url = `${API_BASE_URL}/api/github/repositories/${owner}/${repo}/issues?${params.toString()}`;
+      const url = `${API_BASE_URL}/api/github/repositories/${repo}/issues?${params.toString()}`;
       console.log(`[ApiService] Making request to: ${url}`);
 
       const response = await fetch(url, {
@@ -126,38 +111,17 @@ export class ApiService {
       }
 
       const data: IssuesResponse = await response.json();
+      console.log(data);
       console.log(
         `[ApiService] Successfully fetched ${data.issues.length} issues (total: ${data.total_count})`
       );
 
       return data;
     } catch (error) {
-      console.error(
-        `[ApiService] Error fetching issues for ${owner}/${repo}:`,
-        error
-      );
+      console.error(`[ApiService] Error fetching issues for ${repo}:`, error);
       throw error;
     }
   }
-
-  // Helper method to filter issues vs pull requests
-  filterIssuesOnly(issues: GitHubIssue[]): GitHubIssue[] {
-    const filtered = issues.filter((issue) => !issue.pull_request);
-    console.log(
-      `[ApiService] Filtered ${filtered.length} issues from ${issues.length} total items`
-    );
-    return filtered;
-  }
-
-  // Helper method to filter pull requests only
-  filterPullRequestsOnly(issues: GitHubIssue[]): GitHubIssue[] {
-    const filtered = issues.filter((issue) => !!issue.pull_request);
-    console.log(
-      `[ApiService] Filtered ${filtered.length} pull requests from ${issues.length} total items`
-    );
-    return filtered;
-  }
-
   // Helper method to format time ago (simple implementation)
   formatTimeAgo(dateString: string): string {
     const date = new Date(dateString);

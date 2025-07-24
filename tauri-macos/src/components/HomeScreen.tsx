@@ -1,5 +1,12 @@
 import { useState, useEffect } from "react";
-import { ChevronDown, Circle, Rocket, GitPullRequest, ExternalLink, Loader2 } from "lucide-react";
+import {
+  ChevronDown,
+  Circle,
+  Rocket,
+  GitPullRequest,
+  ExternalLink,
+  Loader2,
+} from "lucide-react";
 import { Button } from "./ui/button";
 import { apiService, Repository } from "../services/apiService";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -9,7 +16,6 @@ interface Issue {
   id: string;
   title: string;
   number: number;
-  labels: string[];
   timeAgo: string;
   htmlUrl: string;
   user: string;
@@ -25,7 +31,7 @@ interface PullRequest {
   user: string;
 }
 
-type TabType = 'issues' | 'prs';
+type TabType = "issues" | "prs";
 
 interface HomeScreenProps {
   onTaskStart: (issueId: string) => void;
@@ -45,21 +51,23 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
   const [pullRequests, setPullRequests] = useState<PullRequest[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabType>('issues');
+  const [activeTab, setActiveTab] = useState<TabType>("issues");
 
   // Fetch repositories on component mount
   useEffect(() => {
     const fetchRepositories = async () => {
-      console.log('[HomeScreen] Fetching repositories on mount');
+      console.log("[HomeScreen] Fetching repositories on mount");
       try {
         setIsLoadingRepos(true);
         setRepoError(null);
         const repos = await apiService.getRepositories();
-        console.log(`[HomeScreen] Successfully loaded ${repos.length} repositories`);
+        console.log(
+          `[HomeScreen] Successfully loaded ${repos.length} repositories`
+        );
         setRepositories(repos);
       } catch (error) {
-        console.error('[HomeScreen] Failed to fetch repositories:', error);
-        setRepoError('Failed to load repositories');
+        console.error("[HomeScreen] Failed to fetch repositories:", error);
+        setRepoError("Failed to load repositories");
       } finally {
         setIsLoadingRepos(false);
       }
@@ -72,51 +80,48 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
   useEffect(() => {
     const fetchRepositoryData = async () => {
       if (!selectedRepo) {
-        console.log('[HomeScreen] No repository selected, clearing data');
+        console.log("[HomeScreen] No repository selected, clearing data");
         setIssues([]);
         setPullRequests([]);
         return;
       }
 
-      console.log(`[HomeScreen] Fetching data for repository: ${selectedRepo.full_name}`);
+      console.log(
+        `[HomeScreen] Fetching data for repository: ${selectedRepo.full_name}`
+      );
       try {
         setIsLoadingData(true);
         setDataError(null);
+        console.log(selectedRepo);
 
         const response = await apiService.getRepositoryIssues(
-          selectedRepo.owner,
-          selectedRepo.name,
-          { state: 'open', per_page: 50 }
+          selectedRepo.full_name,
+          { state: "open", per_page: 50 }
         );
 
         // Convert GitHub API data to frontend format
-        const convertedIssues: Issue[] = apiService.filterIssuesOnly(response.issues).map(issue => ({
+        const convertedIssues: Issue[] = response.issues.map((issue) => ({
           id: issue.id.toString(),
           title: issue.title,
           number: issue.number,
-          labels: issue.labels.map(label => label.name),
           timeAgo: apiService.formatTimeAgo(issue.updated_at),
           htmlUrl: issue.html_url,
-          user: issue.user.login
+          user: issue.user_login,
         }));
 
-        const convertedPRs: PullRequest[] = apiService.filterPullRequestsOnly(response.issues).map(pr => ({
-          id: pr.id.toString(),
-          title: pr.title,
-          number: pr.number,
-          repo: selectedRepo.full_name,
-          timeAgo: apiService.formatTimeAgo(pr.updated_at),
-          htmlUrl: pr.html_url,
-          user: pr.user.login
-        }));
+        const convertedPRs: PullRequest[] = [];
 
-        console.log(`[HomeScreen] Successfully loaded ${convertedIssues.length} issues and ${convertedPRs.length} PRs`);
+        console.log(
+          `[HomeScreen] Successfully loaded ${convertedIssues.length} issues and ${convertedPRs.length} PRs`
+        );
         setIssues(convertedIssues);
         setPullRequests(convertedPRs);
-
       } catch (error) {
-        console.error(`[HomeScreen] Failed to fetch data for ${selectedRepo.full_name}:`, error);
-        setDataError('Failed to load repository data');
+        console.error(
+          `[HomeScreen] Failed to fetch data for ${selectedRepo.full_name}:`,
+          error
+        );
+        setDataError("Failed to load repository data");
       } finally {
         setIsLoadingData(false);
       }
@@ -128,14 +133,14 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
   // Add global keyboard shortcut for Command+K
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         onCommandK();
       }
     };
-    
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onCommandK]);
 
   return (
@@ -169,7 +174,7 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                 ) : selectedRepo ? (
                   selectedRepo.full_name
                 ) : (
-                  'Select a repository to work on'
+                  "Select a repository to work on"
                 )}
               </span>
               <ChevronDown className="w-4 h-4 text-gray-500" />
@@ -186,23 +191,33 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                     <button
                       key={repo.full_name}
                       onClick={() => {
-                        console.log(`[HomeScreen] Selected repository: ${repo.full_name}`);
+                        console.log(
+                          `[HomeScreen] Selected repository: ${repo.full_name}`
+                        );
                         setSelectedRepo(repo);
                         setIsRepoDropdownOpen(false);
                       }}
                       className="w-full px-4 py-3 text-left hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg"
                     >
                       <div>
-                        <span className="font-mono text-sm font-medium">{repo.full_name}</span>
+                        <span className="font-mono text-sm font-medium">
+                          {repo.full_name}
+                        </span>
                         {repo.description && (
-                          <p className="text-xs text-gray-500 mt-1 truncate">{repo.description}</p>
+                          <p className="text-xs text-gray-500 mt-1 truncate">
+                            {repo.description}
+                          </p>
                         )}
                         <div className="flex items-center gap-3 mt-1">
                           {repo.language && (
-                            <span className="text-xs text-gray-400">{repo.language}</span>
+                            <span className="text-xs text-gray-400">
+                              {repo.language}
+                            </span>
                           )}
                           {repo.private && (
-                            <span className="text-xs text-gray-400">Private</span>
+                            <span className="text-xs text-gray-400">
+                              Private
+                            </span>
                           )}
                         </div>
                       </div>
@@ -219,24 +234,24 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
           <div className="max-w-4xl mx-auto">
             <div className="flex gap-2 mb-6 justify-center">
               <button
-                onClick={() => setActiveTab('issues')}
+                onClick={() => setActiveTab("issues")}
                 className={`rounded-lg px-6 py-3 text-sm font-medium transition-colors ${
-                  activeTab === 'issues'
-                    ? 'bg-gray-200 text-gray-900'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-150'
+                  activeTab === "issues"
+                    ? "bg-gray-200 text-gray-900"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-150"
                 }`}
               >
-                Issues ({isLoadingData ? '...' : issues.length})
+                Issues ({isLoadingData ? "..." : issues.length})
               </button>
               <button
-                onClick={() => setActiveTab('prs')}
+                onClick={() => setActiveTab("prs")}
                 className={`rounded-lg px-6 py-3 text-sm font-medium transition-colors ${
-                  activeTab === 'prs'
-                    ? 'bg-gray-200 text-gray-900'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-150'
+                  activeTab === "prs"
+                    ? "bg-gray-200 text-gray-900"
+                    : "bg-gray-100 text-gray-700 hover:bg-gray-150"
                 }`}
               >
-                Review PRs ({isLoadingData ? '...' : pullRequests.length})
+                Review PRs ({isLoadingData ? "..." : pullRequests.length})
               </button>
             </div>
 
@@ -250,7 +265,7 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
             ) : dataError ? (
               <div className="text-center py-12">
                 <p className="text-red-500 mb-4">{dataError}</p>
-                <Button 
+                <Button
                   onClick={() => {
                     // Trigger a refetch by clearing and re-setting selectedRepo
                     const currentRepo = selectedRepo;
@@ -264,7 +279,7 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
               </div>
             ) : (
               <div className="space-y-3">
-                {activeTab === 'issues' && (
+                {activeTab === "issues" && (
                   <>
                     {issues.length === 0 ? (
                       <div className="text-center py-12 text-gray-500">
@@ -275,7 +290,9 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                         <button
                           key={issue.id}
                           onClick={() => {
-                            console.log(`[HomeScreen] Starting task for issue: ${issue.number}`);
+                            console.log(
+                              `[HomeScreen] Starting task for issue: ${issue.number}`
+                            );
                             onTaskStart(issue.id);
                           }}
                           className="w-full p-4 bg-card border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
@@ -298,39 +315,27 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                                 <h3 className="text-sm font-medium text-gray-900 mb-2">
                                   {issue.title}
                                 </h3>
-                                {issue.labels.length > 0 && (
-                                  <div className="flex gap-1 mb-2">
-                                    {issue.labels.slice(0, 3).map((label) => (
-                                      <span 
-                                        key={label}
-                                        className="px-2 py-1 bg-gray-100 text-xs rounded-full text-gray-600"
-                                      >
-                                        {label}
-                                      </span>
-                                    ))}
-                                    {issue.labels.length > 3 && (
-                                      <span className="text-xs text-gray-400">
-                                        +{issue.labels.length - 3} more
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
                                 <p className="text-xs text-gray-500">
                                   {issue.timeAgo}
                                 </p>
                               </div>
                             </div>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               className="text-gray-500 hover:text-gray-700 ml-2"
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                console.log(`[HomeScreen] Opening external link: ${issue.htmlUrl}`);
+                                console.log(
+                                  `[HomeScreen] Opening external link: ${issue.htmlUrl}`
+                                );
                                 try {
                                   await openUrl(issue.htmlUrl);
                                 } catch (error) {
-                                  console.error('Failed to open external link:', error);
+                                  console.error(
+                                    "Failed to open external link:",
+                                    error
+                                  );
                                 }
                               }}
                             >
@@ -342,8 +347,8 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                     )}
                   </>
                 )}
-                
-                {activeTab === 'prs' && (
+
+                {activeTab === "prs" && (
                   <>
                     {pullRequests.length === 0 ? (
                       <div className="text-center py-12 text-gray-500">
@@ -354,7 +359,9 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                         <button
                           key={pr.id}
                           onClick={() => {
-                            console.log(`[HomeScreen] Starting task for PR: ${pr.number}`);
+                            console.log(
+                              `[HomeScreen] Starting task for PR: ${pr.number}`
+                            );
                             onTaskStart(pr.id);
                           }}
                           className="w-full bg-card border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors text-left"
@@ -382,17 +389,22 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                                 </p>
                               </div>
                             </div>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               className="text-gray-500 hover:text-gray-700 ml-2"
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                console.log(`[HomeScreen] Opening external link: ${pr.htmlUrl}`);
+                                console.log(
+                                  `[HomeScreen] Opening external link: ${pr.htmlUrl}`
+                                );
                                 try {
                                   await openUrl(pr.htmlUrl);
                                 } catch (error) {
-                                  console.error('Failed to open external link:', error);
+                                  console.error(
+                                    "Failed to open external link:",
+                                    error
+                                  );
                                 }
                               }}
                             >
@@ -412,7 +424,11 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
         {/* Command+K hint */}
         <div className="text-center mt-12">
           <p className="text-sm text-gray-500">
-            Press <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">⌘K</kbd> to search tasks
+            Press{" "}
+            <kbd className="px-2 py-1 bg-gray-100 rounded text-xs font-mono">
+              ⌘K
+            </kbd>{" "}
+            to search tasks
           </p>
         </div>
       </div>
