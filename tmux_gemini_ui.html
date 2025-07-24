@@ -103,6 +103,10 @@
         .status-spawning {
             color: #9C27B0;
         }
+        .status-requires_user_input {
+            color: #E91E63;
+            font-weight: bold;
+        }
         .session-prompt {
             font-size: 11px;
             color: #666;
@@ -168,6 +172,88 @@
             background: #f44336;
             color: white;
         }
+        
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            border-radius: 8px;
+            width: 80%;
+            max-width: 600px;
+            max-height: 80%;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .close:hover {
+            color: black;
+        }
+        
+        .options-display {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            margin-bottom: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+        }
+        
+        .input-section {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .input-section input {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .send-response-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .send-response-btn:hover {
+            background: #45a049;
+        }
     </style>
 </head>
 <body>
@@ -175,6 +261,7 @@
         <div class="header">🚀 Gemini Session Manager</div>
         <div class="controls">
             <button class="create-btn" onclick="toggleCreateForm()">Create New Session</button>
+            <button class="create-btn" onclick="runTestSessions()" style="background: #FF9800; margin-top: 10px;">Run Test Sessions</button>
         </div>
         <div id="create-form">
             <textarea id="prompt-input" placeholder="Enter your prompt..." rows="3">What time is it?</textarea>
@@ -187,6 +274,21 @@
         <div id="list" style="flex: 1; overflow-y: auto;">Loading sessions...</div>
     </div>
     <div id="log" style="height: 100%;">Select a session to view logs</div>
+    
+    <!-- Input Options Modal -->
+    <div id="optionsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Gemini is waiting for your input</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div id="optionsDisplay" class="options-display"></div>
+            <div class="input-section">
+                <input type="text" id="responseInput" placeholder="Enter your choice (e.g., 1, 2, 3, or y/n)">
+                <button class="send-response-btn" onclick="sendResponseFromModal()">Send Response</button>
+            </div>
+        </div>
+    </div>
     
     <script>
         async function getSessions() {
@@ -219,11 +321,27 @@
             }
             
             // Separate sessions by status
-            const activeSessions = list.filter(s => s.status !== 'STOPPED' && s.status !== 'DONE');
+            const userInputSessions = list.filter(s => s.status === 'REQUIRES_USER_INPUT');
+            const activeSessions = list.filter(s => s.status !== 'STOPPED' && s.status !== 'DONE' && s.status !== 'REQUIRES_USER_INPUT');
             const stoppedSessions = list.filter(s => s.status === 'STOPPED');
             const completedSessions = list.filter(s => s.status === 'DONE');
             
             ul.innerHTML = '';
+            
+            // User input required sessions section (most important)
+            if (userInputSessions.length > 0) {
+                const userInputHeader = document.createElement('div');
+                userInputHeader.innerHTML = '<strong>⚠️ Requires User Input</strong>';
+                userInputHeader.style.padding = '10px';
+                userInputHeader.style.background = '#ffebee';
+                userInputHeader.style.borderBottom = '1px solid #ccc';
+                userInputHeader.style.color = '#E91E63';
+                ul.appendChild(userInputHeader);
+                
+                userInputSessions.forEach(s => {
+                    ul.appendChild(createSessionElement(s));
+                });
+            }
             
             // Active sessions section
             if (activeSessions.length > 0) {
@@ -232,6 +350,7 @@
                 activeHeader.style.padding = '10px';
                 activeHeader.style.background = '#f0f0f0';
                 activeHeader.style.borderBottom = '1px solid #ccc';
+                activeHeader.style.marginTop = userInputSessions.length > 0 ? '10px' : '0';
                 ul.appendChild(activeHeader);
                 
                 activeSessions.forEach(s => {
@@ -312,8 +431,21 @@
             };
             buttonGroup.appendChild(attachBtn);
             
-            // Add stop button for running sessions
-            if (s.status === 'RUNNING') {
+            // Add input button for sessions requiring user input
+            if (s.status === 'REQUIRES_USER_INPUT') {
+                const inputBtn = document.createElement('button');
+                inputBtn.className = 'attach-btn';
+                inputBtn.style.background = '#E91E63';
+                inputBtn.textContent = 'View Options';
+                inputBtn.onclick = async (e) => {
+                    e.stopPropagation();
+                    await showInputOptions(s.session_id);
+                };
+                buttonGroup.appendChild(inputBtn);
+            }
+            
+            // Add stop button for running sessions and those requiring user input
+            if (s.status === 'RUNNING' || s.status === 'REQUIRES_USER_INPUT') {
                 const stopBtn = document.createElement('button');
                 stopBtn.className = 'stop-btn';
                 stopBtn.textContent = 'Stop';
@@ -333,7 +465,8 @@
             const command = `tmux attach-session -t gemini_manager`;
             const fullInstructions = `${command}
 # Then use Ctrl+B + arrow keys to navigate to the ${sessionId} pane
-# Or use: tmux select-pane -t gemini_manager:controller -P | grep "${sessionId}"`;
+# Or find the pane with: tmux list-panes -t gemini_manager -F "#{pane_id}: #{pane_title}" | grep "${sessionId}"
+# Then select it with: tmux select-pane -t gemini_manager:<pane_number>`;
             
             try {
                 await navigator.clipboard.writeText(fullInstructions);
@@ -371,6 +504,95 @@
                 }
             } catch (error) {
                 console.error('Error stopping session:', error);
+            }
+        }
+        
+        let currentSessionForInput = null;
+        
+        async function showInputOptions(sessionId) {
+            try {
+                const response = await fetch(`/api/sessions/${sessionId}/options`);
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Display the options in the modal
+                    const optionsDisplay = document.getElementById('optionsDisplay');
+                    optionsDisplay.textContent = data.full_output.join('\n');
+                    
+                    // Store the session ID for when user sends response
+                    currentSessionForInput = sessionId;
+                    
+                    // Show the modal
+                    const modal = document.getElementById('optionsModal');
+                    modal.style.display = 'block';
+                    
+                    // Focus on the input field
+                    document.getElementById('responseInput').focus();
+                } else {
+                    console.error('Failed to get options:', await response.text());
+                    alert('Failed to get input options');
+                }
+            } catch (error) {
+                console.error('Error getting options:', error);
+                alert('Error getting input options');
+            }
+        }
+        
+        async function sendResponseFromModal() {
+            const responseInput = document.getElementById('responseInput');
+            const userResponse = responseInput.value.trim();
+            
+            if (!userResponse) {
+                alert('Please enter a response');
+                return;
+            }
+            
+            if (!currentSessionForInput) {
+                alert('No session selected');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/sessions/${currentSessionForInput}/input?response=${encodeURIComponent(userResponse)}`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    console.log(`Input sent to session ${currentSessionForInput}`);
+                    
+                    // Close the modal
+                    document.getElementById('optionsModal').style.display = 'none';
+                    responseInput.value = '';
+                    currentSessionForInput = null;
+                    
+                    // Refresh the session list
+                    const sessions = await getSessions();
+                    render(sessions);
+                } else {
+                    console.error('Failed to send input:', await response.text());
+                    alert('Failed to send input');
+                }
+            } catch (error) {
+                console.error('Error sending input:', error);
+                alert('Error sending input');
+            }
+        }
+        
+        async function sendInput(sessionId, userResponse) {
+            try {
+                const response = await fetch(`/api/sessions/${sessionId}/input?response=${encodeURIComponent(userResponse)}`, {
+                    method: 'POST'
+                });
+                if (response.ok) {
+                    console.log(`Input sent to session ${sessionId}`);
+                    // Refresh the session list
+                    const sessions = await getSessions();
+                    render(sessions);
+                } else {
+                    console.error('Failed to send input:', await response.text());
+                }
+            } catch (error) {
+                console.error('Error sending input:', error);
             }
         }
         
@@ -451,6 +673,43 @@
             }
         }
         
+        async function runTestSessions() {
+            const button = event.target;
+            const originalText = button.textContent;
+            button.textContent = 'Creating...';
+            button.disabled = true;
+            
+            try {
+                // Test Session 1: German hello world with delays
+                const session1Prompt = "Write a Python script that prints hello_world in German twice, with a 10-second sleep delay between each call";
+                
+                // Test Session 2: Generate Hallo multiple times
+                const session2Prompt = "Write a Python script that generates the word 'Hallo' 20 times with 5 seconds between each time";
+                
+                console.log('Creating test session 1...');
+                const response1 = await fetch('/api/sessions/create?' + new URLSearchParams({ prompt: session1Prompt }), { method: 'POST' });
+                
+                console.log('Creating test session 2...');
+                const response2 = await fetch('/api/sessions/create?' + new URLSearchParams({ prompt: session2Prompt }), { method: 'POST' });
+                
+                if (response1.ok && response2.ok) {
+                    console.log('Both test sessions created successfully');
+                    // Refresh the list
+                    const sessions = await getSessions();
+                    render(sessions);
+                } else {
+                    console.error('Failed to create one or both test sessions');
+                    alert('Failed to create test sessions');
+                }
+            } catch (error) {
+                console.error('Error creating test sessions:', error);
+                alert('Error creating test sessions');
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
         // Initialize
         (async () => {
             try {
@@ -465,12 +724,44 @@
             }
         })();
         
+        // Modal close functionality
+        const modal = document.getElementById('optionsModal');
+        const closeBtn = document.querySelector('.close');
+        const responseInput = document.getElementById('responseInput');
+        
+        // Close modal when clicking the X
+        closeBtn.onclick = function() {
+            modal.style.display = 'none';
+            responseInput.value = '';
+            currentSessionForInput = null;
+        }
+        
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                modal.style.display = 'none';
+                responseInput.value = '';
+                currentSessionForInput = null;
+            }
+        }
+        
+        // Send response when pressing Enter in the input field
+        responseInput.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                sendResponseFromModal();
+            }
+        });
+        
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 const form = document.getElementById('create-form');
                 if (form.style.display !== 'none') {
                     toggleCreateForm();
+                } else if (modal.style.display === 'block') {
+                    modal.style.display = 'none';
+                    responseInput.value = '';
+                    currentSessionForInput = null;
                 }
             }
         });

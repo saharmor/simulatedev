@@ -28,6 +28,7 @@ import sys
 import os
 import signal
 import threading
+import logging
 from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
 from datetime import datetime
@@ -44,7 +45,7 @@ class SessionInfo:
     session_id: str
     prompt: str
     repo_url: str
-    status: str  # SPAWNING, RUNNING, DONE, STOPPED
+    status: str  # SPAWNING, RUNNING, DONE, STOPPED, REQUIRES_USER_INPUT
     start_time: float
     end_time: Optional[float] = None
 
@@ -62,6 +63,19 @@ class TmuxGeminiManager:
         self.next_pane_index = 0
         self.logs_dir = Path("logs"); self.logs_dir.mkdir(exist_ok=True)
         self.status_file = Path("tmux_sessions_status.json")
+        
+        # Setup debug logging
+        debug_log_file = self.logs_dir / "debug.log"
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(debug_log_file),
+                logging.StreamHandler()
+            ]
+        )
+        self.logger = logging.getLogger(__name__)
+        self.logger.info("TmuxGeminiManager initialized")
 
     # ---------- low‑level helpers ----------
     def _run(self, cmd: List[str], check: bool = True) -> subprocess.CompletedProcess:
@@ -103,116 +117,249 @@ class TmuxGeminiManager:
 
     def create_session(self, prompt: str, repo_url: Optional[str] = None):
         repo_url = repo_url or self.default_repo
-        if sum(1 for s in self.sessions.values() if s.status in ("SPAWNING", "RUNNING")) >= self.max_sessions:
+        if sum(1 for s in self.sessions.values() if s.status in ("SPAWNING", "RUNNING", "REQUIRES_USER_INPUT")) >= self.max_sessions:
+            self.logger.warning(f"Max sessions ({self.max_sessions}) reached")
             print("⚠️  Max sessions reached"); return
         sid = self._generate_id(prompt, repo_url)
         if sid in self.sessions and self.sessions[sid].status != "DONE":
+            self.logger.warning(f"Session {sid} already exists with status {self.sessions[sid].status}")
             print("⚠️  Session already running for that prompt + repo"); return
+        
         info = SessionInfo(sid, prompt, repo_url, "SPAWNING", time.time())
         self.sessions[sid] = info
+        self.logger.info(f"Created session {sid} with status SPAWNING")
+        
         pane = self._new_pane(sid)
-        self._pipe_log(pane, sid)
+        self.logger.debug(f"Created pane {pane} for session {sid}")
         
-        # Start the real Gemini CLI
+        # Use Gemini in non-interactive mode with direct input/output
         project_path = os.getcwd()
-        startup_cmd = f"cd '{project_path}' && gemini"
+        log_path = self.logs_dir / f"{sid}.log"
         
-        # Send the startup command
-        self._run(["tmux", "send-keys", "-t", pane, startup_cmd, "C-m"])
-        
-        # Give Gemini time to start up and become ready
-        time.sleep(3)
-        
-        # Wait for Gemini to be ready (look for "Type your message" indicator)
-        max_wait = 10  # seconds
-        wait_count = 0
-        ready = False
-        
-        while wait_count < max_wait:
-            try:
-                output = self._run(["tmux", "capture-pane", "-p", "-t", pane]).stdout
-                if "Type your message" in output:
-                    ready = True
-                    break
-            except subprocess.CalledProcessError:
-                pass
-            time.sleep(1)
-            wait_count += 1
-        
-        if not ready:
-            print(f"⚠️  Gemini failed to start properly for session {sid}")
-            info.status = "DONE"
-            info.end_time = time.time()
-            return
-        
-        # Enable YOLO mode with Ctrl+Y (for autonomous execution)
-        self._run(["tmux", "send-keys", "-t", pane, "C-y"])
-        time.sleep(2)  # Increased delay to ensure YOLO mode is activated
-        
-        # Use the predefined prompt if none provided, otherwise use the custom prompt
+        # Determine the actual prompt to use
         if not prompt or prompt.strip() == "":
             actual_prompt = "Write a script that runs for a random time between 1-3 minutes, printing hello world every 6 seconds"
         else:
             actual_prompt = prompt
         
-        # Send the prompt to Gemini
-        self._run(["tmux", "send-keys", "-t", pane, actual_prompt, "C-m"])
-        time.sleep(1)  # Add delay after sending prompt
+        self.logger.info(f"Session {sid} using prompt: {actual_prompt[:100]}...")
         
-        info.status = "RUNNING"
-        self._rename_pane(pane, f"RUNNING‑{sid}")
-        print(f"🔥 Started real Gemini session {sid} in pane {pane} with prompt: {actual_prompt[:50]}...")
+        # Run Gemini with direct execution and better output capture
+        escaped_prompt = actual_prompt.replace("'", "'\"'\"'")
+        
+        # First, start Gemini interactively
+        gemini_start_cmd = f"cd '{project_path}' && gemini 2>&1 | tee -a {log_path}"
+        self._run(["tmux", "send-keys", "-t", pane, gemini_start_cmd, "C-m"])
+        self.logger.debug(f"Started Gemini interactively in pane {pane}")
+        
+        # Store the prompt so we can send it after Gemini is ready
+        self.session_prompts = getattr(self, 'session_prompts', {})
+        self.session_prompts[sid] = actual_prompt
+        self.logger.debug(f"Stored prompt for session {sid}, will send when Gemini is ready")
+        
+        # Keep in SPAWNING status until we detect Gemini is ready
+        self.logger.debug(f"Session {sid} created in SPAWNING status, will check for Gemini readiness")
+        self._rename_pane(pane, f"SPAWNING‑{sid}")
+        print(f"🔥 Started Gemini session {sid} in pane {pane} with prompt: {actual_prompt[:50]}...")
 
     # ---------- status upkeep ----------
+    def _check_gemini_ready(self, sid: str) -> bool:
+        """Check if Gemini has loaded and is ready to receive input"""
+        pane = self.pane_mapping.get(sid)
+        if not pane:
+            self.logger.debug(f"Session {sid}: No pane mapping found for readiness check")
+            return False
+        
+        try:
+            out = self._run(["tmux", "capture-pane", "-p", "-t", pane]).stdout
+            lines = out.split('\n')
+            recent_lines = lines[-10:]  # Check more lines for readiness indicators
+            
+            self.logger.debug(f"Session {sid}: Checking readiness in recent lines: {recent_lines}")
+            
+            # Look for indicators that Gemini has loaded and is processing
+            for line in recent_lines:
+                line_clean = line.strip()
+                if ("Loaded cached credentials" in line_clean or 
+                    "Loading Gemini" in line_clean or
+                    line_clean.startswith("Command:") or
+                    "Type your message" in line_clean):
+                    self.logger.debug(f"Session {sid}: Found Gemini readiness indicator: '{line_clean}'")
+                    return True
+            
+            return False
+            
+        except subprocess.CalledProcessError as e:
+            self.logger.debug(f"Session {sid}: Pane capture failed during readiness check: {e}")
+            return False
+
+    def _check_requires_user_input(self, sid: str) -> bool:
+        """Check if Gemini is waiting for user confirmation/input"""
+        pane = self.pane_mapping.get(sid)
+        if not pane:
+            return False
+        
+        try:
+            out = self._run(["tmux", "capture-pane", "-p", "-t", pane]).stdout
+            
+            # Check the entire output, not just after "context left)"
+            # as the waiting indicator might appear anywhere
+            self.logger.debug(f"Session {sid}: Checking full output for user input requirement")
+            
+            # Look for patterns indicating user input is required
+            user_input_indicators = [
+                "Apply this change?",
+                "Waiting for user confirmation",
+                "● 1. Yes, allow once",
+                "● 2. Yes, allow always", 
+                "4. No (esc)",
+                "WriteFile Writing to",
+                "⠏ Waiting for",
+                "Press any key to continue",
+                "Would you like to",
+                "Continue? (y/n)",
+                "Confirm? (yes/no)"
+            ]
+            
+            for indicator in user_input_indicators:
+                if indicator in out:
+                    self.logger.debug(f"Session {sid}: Found user input indicator: '{indicator}'")
+                    return True
+            
+            return False
+            
+        except subprocess.CalledProcessError as e:
+            self.logger.debug(f"Session {sid}: Pane capture failed during user input check: {e}")
+            return False
+
     def _check_done(self, sid: str):
         pane = self.pane_mapping.get(sid)
-        if not pane: return True
+        if not pane: 
+            self.logger.debug(f"Session {sid}: No pane mapping found, considering done")
+            return True
         
         # Check if pane still exists (it might have been killed when stopped)
         try:
             out = self._run(["tmux", "capture-pane", "-p", "-t", pane]).stdout
             
-            # The most reliable indicator: Gemini returns to "Type your message" prompt
-            # after completing a task, indicating it's ready for the next input
+            # Log a snippet of the captured output for debugging
             lines = out.split('\n')
-            recent_lines = lines[-10:]  # Check last 10 lines for the prompt
+            recent_lines = lines[-10:]  # Check more lines for completion indicators
+            self.logger.debug(f"Session {sid}: Recent lines captured: {recent_lines}")
             
-            # Look for the "Type your message" prompt in recent output
-            has_type_message = any("Type your message" in line for line in recent_lines)
+            # For interactive Gemini, look for "Type your message" appearing again after response
+            # But only after we've had time for Gemini to process and respond
+            prompt_sent_time = getattr(self, 'prompt_sent_time', {}).get(sid, 0)
+            time_since_prompt = time.time() - prompt_sent_time
             
-            if has_type_message:
-                # Make sure this isn't the initial prompt by checking if we have
-                # substantial content before it (indicating work was done)
-                if len(out) > 1000:  # Arbitrary threshold for "substantial content"
-                    return True
+            # Only check for completion if enough time has passed since we sent the prompt
+            # AND we're not waiting for user input
+            if time_since_prompt > 10:  # At least 10 seconds for Gemini to process
+                # Check if we're NOT in a waiting state
+                if not self._check_requires_user_input(sid):
+                    for line in recent_lines:
+                        stripped_line = line.strip()
+                        if "Type your message" in stripped_line:
+                            self.logger.debug(f"Session {sid}: Found 'Type your message' after {time_since_prompt:.1f}s, marking as done: '{stripped_line}'")
+                            return True
+            else:
+                self.logger.debug(f"Session {sid}: Only {time_since_prompt:.1f}s since prompt sent, waiting longer before checking completion")
             
-            # Fallback: Check if Gemini process has exited (back to shell prompt)
+            # Also check for shell prompt as fallback (in case Gemini exited)
+            # But be more specific to avoid false positives from Gemini UI
             for line in recent_lines:
-                if line.strip().endswith('% ') or line.strip().endswith('$ '):
-                    # Back to shell prompt, Gemini has exited
+                stripped_line = line.strip()
+                # Check if it's a macOS/Linux shell prompt pattern
+                # Look for username@hostname patterns or just % at the end
+                if stripped_line and (
+                    # Standard shell prompt endings
+                    (stripped_line.endswith('%') or stripped_line.endswith('$')) and
+                    # Must not be part of Gemini UI
+                    'gemini-' not in stripped_line and
+                    'sandbox' not in stripped_line and
+                    # Either short prompt or contains @ (user@host pattern)
+                    (len(stripped_line) < 50 or '@' in stripped_line)
+                ):
+                    self.logger.debug(f"Session {sid}: Found actual shell prompt, marking as done: '{stripped_line}'")
                     return True
             
+            self.logger.debug(f"Session {sid}: No completion indicators found, still running")
             return False
             
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as e:
             # Pane no longer exists (was killed), consider it done
+            self.logger.debug(f"Session {sid}: Pane capture failed (pane killed?): {e}")
             return True
 
     def update(self):
         for sid, info in list(self.sessions.items()):
-            if info.status == "RUNNING" and self._check_done(sid):
+            # Handle SPAWNING -> RUNNING transition
+            if info.status == "SPAWNING" and self._check_gemini_ready(sid):
+                info.status = "RUNNING"
+                self.logger.info(f"Session {sid} status changed: SPAWNING -> RUNNING")
+                
+                # Now send the stored prompt to Gemini
+                if hasattr(self, 'session_prompts') and sid in self.session_prompts:
+                    pane = self.pane_mapping.get(sid)
+                    if pane:
+                        prompt = self.session_prompts[sid]
+                        # Send the prompt using literal mode to handle special characters
+                        self._run(["tmux", "send-keys", "-t", pane, "-l", prompt])
+                        # Add a small delay to let Gemini process the pasted text before sending Enter
+                        time.sleep(0.5)
+                        self._run(["tmux", "send-keys", "-t", pane, "C-m"])
+                        self.logger.debug(f"Sent prompt to Gemini: {prompt[:100]}...")
+                        
+                        # Mark when we sent the prompt so we can distinguish from initial ready state
+                        self.prompt_sent_time = getattr(self, 'prompt_sent_time', {})
+                        self.prompt_sent_time[sid] = time.time()
+                        
+                        self._rename_pane(pane, f"RUNNING‑{sid}")
+                        
+                        # Clean up the stored prompt
+                        del self.session_prompts[sid]
+                    
+            # Handle RUNNING -> REQUIRES_USER_INPUT transition
+            elif info.status == "RUNNING" and self._check_requires_user_input(sid):
+                info.status = "REQUIRES_USER_INPUT"
+                self.logger.info(f"Session {sid} status changed: RUNNING -> REQUIRES_USER_INPUT")
+                pane = self.pane_mapping.get(sid)
+                if pane:
+                    self._rename_pane(pane, f"INPUT‑{sid}")
+                    
+            # Handle REQUIRES_USER_INPUT -> RUNNING or DONE transitions
+            elif info.status == "REQUIRES_USER_INPUT":
+                if self._check_done(sid):
+                    info.status = "DONE"; info.end_time = time.time()
+                    self.logger.info(f"Session {sid} status changed: REQUIRES_USER_INPUT -> DONE")
+                elif not self._check_requires_user_input(sid):
+                    # User provided input, back to running
+                    info.status = "RUNNING"
+                    self.logger.info(f"Session {sid} status changed: REQUIRES_USER_INPUT -> RUNNING")
+                    pane = self.pane_mapping.get(sid)
+                    if pane:
+                        self._rename_pane(pane, f"RUNNING‑{sid}")
+                        
+            # Handle RUNNING -> DONE transition  
+            elif info.status == "RUNNING" and self._check_done(sid):
                 info.status = "DONE"; info.end_time = time.time()
+                self.logger.info(f"Session {sid} status changed: RUNNING -> DONE")
+                
                 pane = self.pane_mapping.get(sid)
                 if pane:
                     try:
                         # Stop pipe-pane logging first
                         self._run(["tmux", "pipe-pane", "-t", pane], check=False)
+                        self.logger.debug(f"Session {sid}: Stopped pipe-pane logging")
                         
-                        # Send Ctrl+C to stop any running processes, then exit Gemini
+                        # For interactive Gemini, send Ctrl+D to exit gracefully, then Ctrl+C as backup
+                        self._run(["tmux", "send-keys", "-t", pane, "C-d"], check=False)
+                        time.sleep(0.5)
                         self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
                         time.sleep(0.5)
                         self._run(["tmux", "send-keys", "-t", pane, "exit", "C-m"], check=False)
                         time.sleep(0.5)
+                        self.logger.debug(f"Session {sid}: Sent exit commands to pane")
                         
                         # Write completion message to log file
                         log_path = self.logs_dir / f"{sid}.log"
@@ -223,29 +370,42 @@ class TmuxGeminiManager:
                         self._rename_pane(pane, f"DONE‑{sid}")
                         
                         print(f"✅ Session {sid} completed and Gemini CLI closed")
+                        self.logger.info(f"Session {sid} cleanup completed")
                         
-                    except subprocess.CalledProcessError:
+                    except subprocess.CalledProcessError as e:
                         # Pane no longer exists, clean up mapping
+                        self.logger.debug(f"Session {sid}: Cleanup failed, pane may be gone: {e}")
                         if sid in self.pane_mapping:
                             del self.pane_mapping[sid]
 
     def stop_session(self, sid: str) -> bool:
         """Stop a running session"""
         if sid not in self.sessions:
+            self.logger.warning(f"Attempted to stop non-existent session {sid}")
             return False
         
         info = self.sessions[sid]
-        if info.status != "RUNNING":
+        if info.status not in ("RUNNING", "REQUIRES_USER_INPUT"):
+            self.logger.warning(f"Attempted to stop session {sid} with status {info.status}")
             return False
+        
+        self.logger.info(f"Stopping session {sid}")
         
         pane = self.pane_mapping.get(sid)
         if pane:
             # Stop pipe-pane logging first to prevent capturing shell artifacts
             self._run(["tmux", "pipe-pane", "-t", pane], check=False)
+            self.logger.debug(f"Session {sid}: Stopped pipe-pane logging for manual stop")
             
-            # Send Ctrl+C to stop the running script
+            # For interactive Gemini, send Ctrl+D to exit gracefully, then Ctrl+C as backup
+            self._run(["tmux", "send-keys", "-t", pane, "C-d"], check=False)
+            time.sleep(0.5)
             self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
             time.sleep(0.5)
+            # Exit shell if needed
+            self._run(["tmux", "send-keys", "-t", pane, "exit", "C-m"], check=False)
+            time.sleep(0.5)
+            self.logger.debug(f"Session {sid}: Sent stop and exit commands")
             
             # Write final message directly to log file instead of through tmux
             log_path = self.logs_dir / f"{sid}.log"
@@ -256,6 +416,7 @@ class TmuxGeminiManager:
             time.sleep(0.5)
             pane_id = pane.split(".")[-1]  # Extract pane ID (e.g., '%14')
             self._run(["tmux", "kill-pane", "-t", pane_id], check=False)
+            self.logger.debug(f"Session {sid}: Killed pane {pane_id}")
             
             # Clean up pane mapping
             del self.pane_mapping[sid]
@@ -263,10 +424,12 @@ class TmuxGeminiManager:
             # Update status
             info.status = "STOPPED"
             info.end_time = time.time()
+            self.logger.info(f"Session {sid} status changed: RUNNING -> STOPPED")
             
             print(f"🛑 Stopped session {sid}")
             return True
         
+        self.logger.warning(f"Session {sid}: No pane mapping found for stop")
         return False
 
     def capture_logs(self):
@@ -333,6 +496,77 @@ async def stop_session(sid: str):
         return {"status": "stopped", "session_id": sid}
     else:
         return {"error": "Session not found or not running"}, 404
+
+@app.get("/api/sessions/{sid}/options")
+async def get_input_options(sid: str):
+    """Get the current input options for a session that requires user input"""
+    if sid not in manager.sessions:
+        return {"error": "Session not found"}, 404
+    
+    info = manager.sessions[sid]
+    if info.status != "REQUIRES_USER_INPUT":
+        return {"error": "Session is not waiting for input"}, 400
+    
+    pane = manager.pane_mapping.get(sid)
+    if not pane:
+        return {"error": "Session pane not found"}, 500
+    
+    # Capture the current pane content to show options
+    try:
+        result = manager._run(["tmux", "capture-pane", "-p", "-t", pane])
+        output = result.stdout
+        
+        # Extract the last meaningful section (usually the options)
+        lines = output.split('\n')
+        # Find the last section with options (look for numbered items)
+        options_section = []
+        in_options = False
+        
+        for line in reversed(lines):
+            if line.strip():
+                options_section.insert(0, line)
+                # Look for numbered options or confirmation prompts
+                if any(pattern in line for pattern in ['● 1.', '● 2.', '1)', '2)', 'Apply this change?', 'Continue?']):
+                    in_options = True
+                # Stop if we hit a clear boundary
+                elif in_options and ('╭' in line or '╰' in line or 'context left)' in line):
+                    break
+            elif in_options:
+                # Empty line in options section
+                options_section.insert(0, line)
+        
+        return {
+            "session_id": sid,
+            "status": "waiting_for_input", 
+            "options": options_section[-20:],  # Last 20 lines to show context
+            "full_output": output.split('\n')[-30:]  # Last 30 lines for full context
+        }
+        
+    except subprocess.CalledProcessError as e:
+        return {"error": f"Failed to capture options: {e}"}, 500
+
+@app.post("/api/sessions/{sid}/input")
+async def send_input(sid: str, response: str):
+    """Send input to a session that's waiting for user confirmation"""
+    if sid not in manager.sessions:
+        return {"error": "Session not found"}, 404
+    
+    info = manager.sessions[sid]
+    if info.status != "REQUIRES_USER_INPUT":
+        return {"error": "Session is not waiting for input"}, 400
+    
+    pane = manager.pane_mapping.get(sid)
+    if not pane:
+        return {"error": "Session pane not found"}, 500
+    
+    # Send the user's response
+    manager._run(["tmux", "send-keys", "-t", pane, response])
+    # Add a small delay to let Gemini process the input before sending Enter
+    time.sleep(0.3)
+    manager._run(["tmux", "send-keys", "-t", pane, "C-m"])
+    manager.logger.info(f"Sent user input '{response}' to session {sid}")
+    
+    return {"status": "input_sent", "session_id": sid, "response": response}
 
 @app.post("/api/sessions/create")
 async def create_session_api(prompt: str, repo_url: Optional[str] = None):
