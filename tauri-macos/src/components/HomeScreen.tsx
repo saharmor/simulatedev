@@ -34,7 +34,7 @@ interface PullRequest {
 type TabType = "issues" | "prs";
 
 interface HomeScreenProps {
-  onTaskStart: (issueId: string) => void;
+  onTaskStart: (issue: Issue, repository?: Repository) => void;
   onCommandK: () => void;
 }
 
@@ -94,13 +94,19 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
         setDataError(null);
         console.log(selectedRepo);
 
-        const response = await apiService.getRepositoryIssues(
-          selectedRepo.full_name,
-          { state: "open", per_page: 50 }
-        );
+        const [issuesResponse, prsResponse] = await Promise.all([
+          apiService.getRepositoryIssues(selectedRepo.full_name, {
+            state: "open",
+            per_page: 50,
+          }),
+          apiService.getRepositoryPullRequests(selectedRepo.full_name, {
+            state: "open",
+            per_page: 50,
+          }),
+        ]);
 
         // Convert GitHub API data to frontend format
-        const convertedIssues: Issue[] = response.issues.map((issue) => ({
+        const convertedIssues: Issue[] = issuesResponse.issues.map((issue) => ({
           id: issue.id.toString(),
           title: issue.title,
           number: issue.number,
@@ -109,7 +115,17 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
           user: issue.user_login,
         }));
 
-        const convertedPRs: PullRequest[] = [];
+        const convertedPRs: PullRequest[] = prsResponse.pull_requests.map(
+          (pr) => ({
+            id: pr.id.toString(),
+            title: pr.title,
+            number: pr.number,
+            repo: selectedRepo.full_name,
+            timeAgo: apiService.formatTimeAgo(pr.updated_at),
+            htmlUrl: pr.html_url,
+            user: pr.user_login,
+          })
+        );
 
         console.log(
           `[HomeScreen] Successfully loaded ${convertedIssues.length} issues and ${convertedPRs.length} PRs`
@@ -144,7 +160,7 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
   }, [onCommandK]);
 
   return (
-    <div className="flex-1 bg-background">
+    <div className="flex-1 bg-background overflow-y-auto">
       <div className="max-w-4xl mx-auto py-32 px-8">
         {/* Logo */}
         <div className="text-center mb-12">
@@ -293,7 +309,7 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                             console.log(
                               `[HomeScreen] Starting task for issue: ${issue.number}`
                             );
-                            onTaskStart(issue.id);
+                            onTaskStart(issue, selectedRepo);
                           }}
                           className="w-full p-4 bg-card border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
                         >
@@ -359,7 +375,16 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                             console.log(
                               `[HomeScreen] Starting task for PR: ${pr.number}`
                             );
-                            onTaskStart(pr.id);
+                            // Convert PR to Issue-like object for now
+                            const prAsIssue: Issue = {
+                              id: pr.id,
+                              title: pr.title,
+                              number: pr.number,
+                              timeAgo: pr.timeAgo,
+                              htmlUrl: pr.htmlUrl,
+                              user: pr.user
+                            };
+                            onTaskStart(prAsIssue, selectedRepo);
                           }}
                           className="w-full bg-card border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors text-left"
                         >
@@ -373,9 +398,6 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                                   </span>
                                   <span className="font-mono text-sm text-gray-400">
                                     #{pr.number}
-                                  </span>
-                                  <span className="text-xs text-gray-400">
-                                    by {pr.user}
                                   </span>
                                 </div>
                                 <h3 className="text-sm font-medium text-gray-900 mb-2">

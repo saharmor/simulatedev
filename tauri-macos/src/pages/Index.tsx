@@ -13,9 +13,22 @@ import { authService, User } from "../services/authService";
 
 type Screen = "startup" | "connection-failed" | "login" | "home" | "task";
 
+interface Task {
+  id: string;
+  name: string;
+  status: "ongoing" | "pending_pr" | "merged" | "rejected";
+  branch: string;
+  repo: string;
+  isRunning?: boolean;
+  issueId?: string;
+  issueNumber?: number;
+  createdAt: Date;
+}
+
 const Index = () => {
   const [currentScreen, setCurrentScreen] = useState<Screen>("startup");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isServerHealthy, setIsServerHealthy] = useState(false);
   const [hasStartedUp, setHasStartedUp] = useState(false);
@@ -46,11 +59,33 @@ const Index = () => {
     setCurrentScreen("task");
   };
 
-  const handleTaskStart = (_issueId: string) => {
-    // In a real app, this would create a new task
-    // For now, just select an existing task for demo
-    setSelectedTaskId("1");
+  const handleTaskStart = (issue: { id: string; title: string; number: number; htmlUrl: string; user: string }, repository?: { name: string; full_name: string }) => {
+    console.log(`[Index] Creating task for issue: ${issue.title}`);
+    
+    // Generate a unique task ID
+    const taskId = `task-${Date.now()}-${issue.id}`;
+    
+    // Create a new task from the issue data
+    const newTask: Task = {
+      id: taskId,
+      name: issue.title,
+      status: "ongoing",
+      branch: `feature/issue-${issue.number}`,
+      repo: repository?.name || "current-repo",
+      isRunning: true,
+      issueId: issue.id,
+      issueNumber: issue.number,
+      createdAt: new Date()
+    };
+    
+    // Add the task to the tasks array
+    setTasks(prevTasks => [...prevTasks, newTask]);
+    
+    // Select this task and navigate to task screen
+    setSelectedTaskId(taskId);
     setCurrentScreen("task");
+    
+    console.log(`[Index] Task created with ID: ${taskId}`);
   };
 
   const handleHomeSelect = () => {
@@ -393,6 +428,12 @@ const Index = () => {
   // Get current task name for navigation
   const getCurrentTaskName = () => {
     if (!selectedTaskId) return undefined;
+    
+    // Try to find the task in the real tasks array first
+    const realTask = tasks.find(t => t.id === selectedTaskId);
+    if (realTask) return realTask.name;
+    
+    // Fall back to mock data for existing mock tasks
     const mockTaskData = {
       "1": "Implement Playwright best practices for robust web automation",
       "2": "Improve README formatting",
@@ -427,12 +468,12 @@ const Index = () => {
 
   return (
     <div
-      className={`flex min-h-screen bg-background transition-opacity duration-300 ${
+      className={`flex h-screen bg-background transition-opacity duration-300 ${
         isTransitioning ? "opacity-0" : "opacity-100"
       }`}
     >
       <Sidebar
-        tasks={[]}
+        tasks={tasks}
         onTaskSelect={handleTaskSelect}
         onLogout={handleLogout}
         selectedTaskId={selectedTaskId}
@@ -453,7 +494,10 @@ const Index = () => {
         )}
 
         {currentScreen === "task" && selectedTaskId && (
-          <TaskScreen taskId={selectedTaskId} />
+          <TaskScreen 
+            taskId={selectedTaskId} 
+            task={tasks.find(t => t.id === selectedTaskId)}
+          />
         )}
       </div>
 

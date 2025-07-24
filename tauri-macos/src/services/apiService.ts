@@ -32,6 +32,29 @@ export interface IssuesResponse {
   has_next: boolean;
 }
 
+export interface GitHubPullRequest {
+  id: number;
+  number: number;
+  title: string;
+  body?: string;
+  state: "open" | "closed";
+  created_at: string;
+  updated_at: string;
+  user_login: string;
+  html_url: string;
+  head_ref: string;
+  base_ref: string;
+  draft: boolean;
+}
+
+export interface PullRequestsResponse {
+  pull_requests: GitHubPullRequest[];
+  total_count: number;
+  page: number;
+  per_page: number;
+  has_more: boolean;
+}
+
 export class ApiService {
   async getRepositories(): Promise<Repository[]> {
     console.log("[ApiService] Fetching user repositories");
@@ -122,6 +145,61 @@ export class ApiService {
       throw error;
     }
   }
+
+  async getRepositoryPullRequests(
+    repo: string,
+    options: {
+      state?: "open" | "closed" | "all";
+      page?: number;
+      per_page?: number;
+      search?: string;
+    } = {}
+  ): Promise<PullRequestsResponse> {
+    console.log(`[ApiService] Fetching pull requests for ${repo}`);
+    console.log(`[ApiService] Options:`, options);
+
+    try {
+      const params = new URLSearchParams();
+      if (options.state) params.append("state", options.state);
+      if (options.page) params.append("page", options.page.toString());
+      if (options.per_page)
+        params.append("per_page", options.per_page.toString());
+      if (options.search) params.append("search", options.search);
+
+      const url = `${API_BASE_URL}/api/github/repositories/${repo}/pulls?${params.toString()}`;
+      console.log(`[ApiService] Making request to: ${url}`);
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include", // Include cookies for session authentication
+      });
+
+      console.log(`[ApiService] Pull requests response status: ${response.status}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `[ApiService] Pull requests request failed: ${response.status} - ${errorText}`
+        );
+        throw new Error(`Failed to fetch pull requests: ${response.status}`);
+      }
+
+      const data: PullRequestsResponse = await response.json();
+      console.log(data);
+      console.log(
+        `[ApiService] Successfully fetched ${data.pull_requests.length} pull requests (total: ${data.total_count})`
+      );
+
+      return data;
+    } catch (error) {
+      console.error(`[ApiService] Error fetching pull requests for ${repo}:`, error);
+      throw error;
+    }
+  }
+
   // Helper method to format time ago (simple implementation)
   formatTimeAgo(dateString: string): string {
     const date = new Date(dateString);

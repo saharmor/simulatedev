@@ -56,6 +56,31 @@ class RepositoryIssues(BaseModel):
     has_more: bool
 
 
+class PullRequestInfo(BaseModel):
+    """Schema for GitHub pull request information"""
+    id: int
+    number: int
+    title: str
+    body: Optional[str] = None
+    state: str
+    created_at: str
+    updated_at: str
+    html_url: str
+    user_login: str
+    head_ref: str
+    base_ref: str
+    draft: bool = False
+
+
+class RepositoryPullRequests(BaseModel):
+    """Schema for paginated GitHub pull request list"""
+    pull_requests: List[PullRequestInfo]
+    total_count: int
+    page: int
+    per_page: int
+    has_more: bool
+
+
 # Keep legacy schemas for backward compatibility
 class GitHubRepository(BaseModel):
     """Legacy schema for GitHub repository information"""

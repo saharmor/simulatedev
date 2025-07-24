@@ -1,9 +1,23 @@
 import { useState, useEffect } from "react";
-import { ExternalLink, FileText, Plus, Minus, GitPullRequest, GitMerge, X } from "lucide-react";
+import { ExternalLink, FileText, Plus, Minus, GitPullRequest, GitMerge, X, Rocket } from "lucide-react";
 import { Button } from "./ui/button";
 
 interface TaskScreenProps {
   taskId: string;
+  task?: {
+    id: string;
+    name: string;
+    status: "ongoing" | "pending_pr" | "merged" | "rejected";
+    branch: string;
+    repo: string;
+    isRunning?: boolean;
+    issueId?: string;
+    issueNumber?: number;
+    createdAt: Date;
+    // Mock task properties for compatibility
+    startTime?: number;
+    pr?: any;
+  };
 }
 
 interface PRData {
@@ -98,9 +112,14 @@ function PRComponent({ pr }: { pr: PRData }) {
   );
 }
 
-export function TaskScreen({ taskId }: TaskScreenProps) {
+export function TaskScreen({ taskId, task: passedTask }: TaskScreenProps) {
   const [currentTime, setCurrentTime] = useState(Date.now());
-  const task = mockTaskData[taskId as keyof typeof mockTaskData];
+  
+  // Use passed task data if available, otherwise fall back to mock data
+  const task = passedTask || mockTaskData[taskId as keyof typeof mockTaskData];
+  
+  // For real tasks, calculate duration from createdAt, for mock tasks use startTime
+  const startTime = passedTask ? passedTask.createdAt.getTime() : (task as any)?.startTime;
 
   useEffect(() => {
     if (task?.isRunning) {
@@ -113,16 +132,16 @@ export function TaskScreen({ taskId }: TaskScreenProps) {
 
   if (!task) {
     return (
-      <div className="flex-1 bg-background flex items-center justify-center">
+      <div className="flex-1 bg-background overflow-y-auto flex items-center justify-center">
         <p className="text-gray-500">Task not found</p>
       </div>
     );
   }
 
-  const duration = currentTime - task.startTime;
+  const duration = startTime ? currentTime - startTime : 0;
 
   return (
-    <div className="flex-1 bg-background">
+    <div className="flex-1 bg-background overflow-y-auto">
       <div className="max-w-4xl mx-auto py-8 px-8">
         {/* Task Header */}
         <div className="mb-8">
@@ -140,24 +159,20 @@ export function TaskScreen({ taskId }: TaskScreenProps) {
 
         {/* Status */}
         {task.isRunning ? (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center">
-            <div className="flex items-center justify-center gap-3 mb-2">
-              <div className="flex space-x-1">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-              </div>
-              <span className="text-sm text-gray-600">Agent is working on this task...</span>
+          <div className="flex items-center gap-3">
+            <Rocket className="w-6 h-6 text-foreground animate-pulse" />
+            <div>
+              <span className="text-sm text-foreground">Agent is working...</span>
+              <p className="text-xs text-gray-500 mt-1">
+                Duration: {formatDuration(duration)}
+              </p>
             </div>
-            <p className="text-xs text-gray-500">
-              Duration: {formatDuration(duration)}
-            </p>
           </div>
         ) : (
-          task.pr && (
+          (task as any)?.pr && (
             <div>
               <h2 className="text-lg font-medium text-gray-900 mb-4">Pull Request</h2>
-              <PRComponent pr={task.pr} />
+              <PRComponent pr={(task as any).pr} />
             </div>
           )
         )}
