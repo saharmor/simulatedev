@@ -4,180 +4,511 @@
     <meta charset="utf-8">
     <title>Gemini Sessions</title>
     <style>
+        * {
+            box-sizing: border-box;
+        }
+        
         body {
-            font-family: sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             margin: 0;
             height: 100vh;
             display: flex;
-        }
-        #list {
-            width: 35%;
-            border-right: 1px solid #ccc;
-            overflow-y: auto;
-            padding: 10px;
-        }
-        #log {
-            flex: 1;
-            padding: 10px;
-            white-space: pre-wrap;
-            font-family: monospace;
-            background: #111;
-            color: #0f0;
-            overflow-y: auto;
-            height: 0; /* This forces flex item to respect container height */
-            border-left: 1px solid #333;
+            background: #f8f9fa;
+            color: #2c3e50;
         }
         
-        /* Custom scrollbar styling for the log area */
-        #log::-webkit-scrollbar {
-            width: 8px;
+        /* Responsive layout */
+        .main-container {
+            display: flex;
+            width: 100%;
+            height: 100vh;
+        }
+        
+        .sessions-panel {
+            width: 100%;
+            max-width: 400px;
+            min-width: 320px;
+            background: white;
+            border-right: 1px solid #e1e8ed;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.08);
+            z-index: 10;
+        }
+        
+        .log-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0; /* Allows flex item to shrink */
+        }
+        
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+            
+            .sessions-panel {
+                max-width: none;
+                width: 100%;
+                height: 40vh;
+                border-right: none;
+                border-bottom: 1px solid #e1e8ed;
+            }
+            
+            .log-panel {
+                height: 60vh;
+            }
+            
+            #list {
+                max-height: none;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .sessions-panel {
+                height: 35vh;
+            }
+            
+            .log-panel {
+                height: 65vh;
+            }
+        }
+        
+        #list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0;
+        }
+        
+        #log {
+            flex: 1;
+            padding: 20px;
+            white-space: pre-wrap;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+            background: #1a1a1a;
+            color: #00ff41;
+            overflow-y: auto;
+            height: 0; /* This forces flex item to respect container height */
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        
+        #log-content {
+            flex: 1;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            line-height: 1.4;
+        }
+        
+        #input-panel {
+            display: none;
+            background: #2a2a2a;
+            border-top: 2px solid #dc3545;
+            padding: 15px;
+            margin-top: 10px;
+            border-radius: 8px;
+        }
+        
+        #input-panel.show {
+            display: block;
+        }
+        
+        /* Buffering indicator */
+        .buffering-indicator {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: rgba(108, 117, 125, 0.9);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            opacity: 0;
+            transition: all 0.3s ease;
+            pointer-events: none;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+        }
+        
+        .buffering-indicator.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .input-panel-header {
+            color: #dc3545;
+            font-weight: 600;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+        
+        .quick-input-container {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .quick-input-field {
+            flex: 1;
+            padding: 10px 14px;
+            background: #3a3a3a;
+            border: 1px solid #555;
+            border-radius: 6px;
+            color: #fff;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        
+        .quick-input-field:focus {
+            outline: none;
+            border-color: #6c757d;
+            box-shadow: 0 0 0 3px rgba(108, 117, 125, 0.2);
+        }
+        
+        /* Modern button styles */
+        .btn {
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            padding: 8px 16px;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            text-decoration: none;
+        }
+        
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn-primary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5a6268;
+        }
+        
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #218838;
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+        
+        .btn-warning:hover {
+            background: #e0a800;
+        }
+        
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+        
+        .btn-info:hover {
+            background: #138496;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        
+        .btn-lg {
+            padding: 12px 24px;
+            font-size: 16px;
+        }
+        
+        /* Custom scrollbar */
+        #log::-webkit-scrollbar, #list::-webkit-scrollbar {
+            width: 6px;
         }
         
         #log::-webkit-scrollbar-track {
-            background: #222;
+            background: #2a2a2a;
         }
         
         #log::-webkit-scrollbar-thumb {
             background: #555;
-            border-radius: 4px;
+            border-radius: 3px;
         }
         
         #log::-webkit-scrollbar-thumb:hover {
             background: #777;
         }
+        
+        #list::-webkit-scrollbar-track {
+            background: #f8f9fa;
+        }
+        
+        #list::-webkit-scrollbar-thumb {
+            background: #dee2e6;
+            border-radius: 3px;
+        }
+        
+        #list::-webkit-scrollbar-thumb:hover {
+            background: #adb5bd;
+        }
+        
+        /* Session cards */
         .session {
-            padding: 8px;
+            margin: 8px 12px;
+            padding: 16px;
             cursor: pointer;
-            border-bottom: 1px solid #eee;
+            border-radius: 8px;
+            background: white;
+            border: 1px solid #e1e8ed;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
+        
         .session:hover {
-            background: #f0f0f0;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            border-color: #d1d9e0;
         }
+        
+        .session:active {
+            transform: translateY(0);
+        }
+        
+        .session.selected {
+            border-color: #6c757d;
+            box-shadow: 0 4px 12px rgba(108, 117, 125, 0.15);
+        }
+        
         .error {
-            color: red;
-            padding: 10px;
+            color: #dc3545;
+            padding: 20px;
+            text-align: center;
+            background: #f8d7da;
+            border-radius: 8px;
+            margin: 12px;
         }
+        
         .session-info {
             display: flex;
             justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        
+        .session-content {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .session-id {
+            font-weight: 700;
+            font-size: 14px;
+            margin-bottom: 4px;
+            color: #2c3e50;
+        }
+        
+        .session-status {
+            display: inline-flex;
             align-items: center;
-        }
-        .stop-btn {
-            background: #ff4444;
-            color: white;
-            border: none;
+            gap: 4px;
             padding: 4px 8px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-        }
-        .stop-btn:hover {
-            background: #cc0000;
-        }
-        .attach-btn {
-            background: #2196F3;
-            color: white;
-            border: none;
-            padding: 4px 8px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-            margin-left: 5px;
-        }
-        .attach-btn:hover {
-            background: #1976D2;
-        }
-        .button-group {
-            display: flex;
-            gap: 5px;
-        }
-        .status-running {
-            color: #4CAF50;
-        }
-        .status-done {
-            color: #2196F3;
-        }
-        .status-stopped {
-            color: #FF9800;
-        }
-        .status-spawning {
-            color: #9C27B0;
-        }
-        .status-requires_user_input {
-            color: #E91E63;
-            font-weight: bold;
-        }
-        .session-prompt {
+            border-radius: 12px;
             font-size: 11px;
-            color: #666;
-            margin-top: 4px;
-            white-space: normal;
-            word-wrap: break-word;
-            line-height: 1.3;
-            max-height: 3.9em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .status-running {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-done {
+            background: #cdf0ff;
+            color: #0c5460;
+        }
+        
+        .status-stopped {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status-spawning {
+            background: #e2e3e5;
+            color: #41464b;
+        }
+        
+        .status-requires_user_input {
+            background: #f8d7da;
+            color: #721c24;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .session-prompt {
+            font-size: 13px;
+            color: #6c757d;
+            margin-top: 8px;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
             overflow: hidden;
         }
+        
+        .session-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            align-items: flex-end;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        
+        /* Header styles */
         .header {
-            background: #333;
+            background: #495057;
             color: white;
-            padding: 10px;
+            padding: 20px;
             text-align: center;
-            font-weight: bold;
+            font-weight: 700;
+            font-size: 18px;
+            letter-spacing: 0.5px;
         }
+        
         .controls {
-            padding: 10px;
-            border-bottom: 1px solid #ccc;
+            padding: 16px;
+            border-bottom: 1px solid #e1e8ed;
+            background: #f8f9fa;
         }
-        .create-btn {
-            background: #4CAF50;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            width: 100%;
+        
+        .controls-grid {
+            display: grid;
+            gap: 8px;
+            grid-template-columns: 1fr 1fr;
         }
-        .create-btn:hover {
-            background: #45a049;
+        
+        @media (max-width: 480px) {
+            .controls-grid {
+                grid-template-columns: 1fr;
+            }
         }
+        
         #create-form {
             display: none;
-            padding: 10px;
-            background: #f5f5f5;
-            border-bottom: 1px solid #ccc;
+            padding: 16px;
+            background: white;
+            border-bottom: 1px solid #e1e8ed;
         }
+        
         #create-form input, #create-form textarea {
             width: 100%;
-            margin-bottom: 10px;
-            padding: 5px;
-            border: 1px solid #ddd;
-            border-radius: 3px;
+            margin-bottom: 12px;
+            padding: 12px;
+            border: 1px solid #e1e8ed;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
         }
+        
+        #create-form input:focus, #create-form textarea:focus {
+            outline: none;
+            border-color: #6c757d;
+            box-shadow: 0 0 0 3px rgba(108, 117, 125, 0.2);
+        }
+        
         .form-buttons {
             display: flex;
-            gap: 10px;
+            gap: 8px;
         }
+        
         .form-buttons button {
             flex: 1;
-            padding: 5px 10px;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
         }
-        .submit-btn {
-            background: #4CAF50;
-            color: white;
+        
+        /* Section headers */
+        .section-header {
+            padding: 12px 16px;
+            font-weight: 700;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid #e1e8ed;
+            position: sticky;
+            top: 0;
+            z-index: 5;
         }
-        .cancel-btn {
-            background: #f44336;
+        
+        .section-header.user-input {
+            background: #dc3545;
             color: white;
         }
         
-        /* Modal styles */
+        .section-header.active {
+            background: #28a745;
+            color: white;
+        }
+        
+        .section-header.completed {
+            background: #17a2b8;
+            color: white;
+        }
+        
+        .section-header.stopped {
+            background: #ffc107;
+            color: #212529;
+        }
+        
+        /* Modal improvements */
         .modal {
             display: none;
             position: fixed;
-            z-index: 1000;
+            z-index: 2000;
             left: 0;
             top: 0;
             width: 100%;
@@ -186,94 +517,157 @@
         }
         
         .modal-content {
-            background-color: #fefefe;
+            background-color: white;
             margin: 5% auto;
-            padding: 20px;
-            border: 1px solid #888;
+            padding: 0;
+            border: none;
             border-radius: 8px;
-            width: 80%;
+            width: 90%;
             max-width: 600px;
             max-height: 80%;
-            overflow-y: auto;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
         }
         
         .modal-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #ddd;
+            padding: 20px;
+            background: #495057;
+            color: white;
+        }
+        
+        .modal-header h3 {
+            margin: 0;
+            font-weight: 600;
         }
         
         .close {
-            color: #aaa;
-            font-size: 28px;
+            color: rgba(255,255,255,0.8);
+            font-size: 24px;
             font-weight: bold;
             cursor: pointer;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.2s ease;
         }
         
         .close:hover {
-            color: black;
+            color: white;
+            background: rgba(255,255,255,0.1);
+        }
+        
+        .modal-body {
+            padding: 20px;
         }
         
         .options-display {
-            background: #f5f5f5;
-            padding: 15px;
-            border-radius: 5px;
-            font-family: monospace;
+            background: #f8f9fa;
+            padding: 16px;
+            border-radius: 6px;
+            font-family: 'SF Mono', Monaco, monospace;
             white-space: pre-wrap;
-            margin-bottom: 15px;
+            margin-bottom: 16px;
             max-height: 300px;
             overflow-y: auto;
-            border: 1px solid #ddd;
+            border: 1px solid #e1e8ed;
+            font-size: 13px;
+            line-height: 1.4;
         }
         
         .input-section {
             display: flex;
-            gap: 10px;
+            gap: 12px;
             align-items: center;
         }
         
         .input-section input {
             flex: 1;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            padding: 12px;
+            border: 1px solid #e1e8ed;
+            border-radius: 6px;
+            font-size: 14px;
         }
         
-        .send-response-btn {
-            background: #4CAF50;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
+        .input-section input:focus {
+            outline: none;
+            border-color: #6c757d;
+            box-shadow: 0 0 0 3px rgba(108, 117, 125, 0.2);
         }
         
-        .send-response-btn:hover {
-            background: #45a049;
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .session {
+                margin: 6px 8px;
+                padding: 12px;
+            }
+            
+            .session-info {
+                flex-direction: column;
+                gap: 8px;
+            }
+            
+            .session-actions {
+                align-items: flex-start;
+            }
+            
+            .action-buttons {
+                justify-content: flex-start;
+            }
+            
+            .header {
+                padding: 16px;
+                font-size: 16px;
+            }
+            
+            .controls {
+                padding: 12px;
+            }
         }
     </style>
 </head>
 <body>
-    <div style="width: 35%; display: flex; flex-direction: column;">
-        <div class="header">🚀 Gemini Session Manager</div>
-        <div class="controls">
-            <button class="create-btn" onclick="toggleCreateForm()">Create New Session</button>
-            <button class="create-btn" onclick="runTestSessions()" style="background: #FF9800; margin-top: 10px;">Run Test Sessions</button>
+    <div class="main-container">
+        <div class="sessions-panel">
+            <div class="header">🚀 Gemini Session Manager</div>
+            <div class="controls">
+                <div class="controls-grid">
+                    <button class="btn btn-success btn-sm" onclick="toggleCreateForm()">✨ New Session</button>
+                    <button class="btn btn-warning btn-sm" onclick="runTestSessions()">🧪 Test Sessions</button>
+                </div>
+                <button class="btn btn-danger btn-sm" onclick="cleanPreviousSessions()" style="width: 100%; margin-top: 8px;">🗑️ Clean Previous Sessions</button>
+            </div>
+            <div id="create-form">
+                <textarea id="prompt-input" placeholder="Enter your prompt..." rows="3">What time is it?</textarea>
+                <input id="repo-input" placeholder="Repository URL (optional)" />
+                <div class="form-buttons">
+                    <button class="btn btn-success" onclick="createSession()">Create</button>
+                    <button class="btn btn-secondary" onclick="toggleCreateForm()">Cancel</button>
+                </div>
+            </div>
+            <div id="list" style="flex: 1; overflow-y: auto;">Loading sessions...</div>
         </div>
-        <div id="create-form">
-            <textarea id="prompt-input" placeholder="Enter your prompt..." rows="3">What time is it?</textarea>
-            <input id="repo-input" placeholder="Repository URL (optional)" />
-            <div class="form-buttons">
-                <button class="submit-btn" onclick="createSession()">Create</button>
-                <button class="cancel-btn" onclick="toggleCreateForm()">Cancel</button>
+        
+        <div class="log-panel">
+            <div id="log" style="height: 100%; position: relative;">
+                <div class="buffering-indicator" id="buffering-indicator">📦 Buffering...</div>
+                <div id="log-content">Select a session to view logs</div>
+                <div id="input-panel">
+                    <div class="input-panel-header">⚠️ Session requires your input:</div>
+                    <div class="quick-input-container">
+                        <input type="text" id="quick-input-field" class="quick-input-field" placeholder="Enter your response (e.g., 1, 2, y, n)">
+                        <button id="quick-send-btn" class="btn btn-primary btn-sm" onclick="sendQuickInput()">Send</button>
+                        <button class="btn btn-secondary btn-sm" onclick="hideInputPanel()">Close</button>
+                    </div>
+                </div>
             </div>
         </div>
-        <div id="list" style="flex: 1; overflow-y: auto;">Loading sessions...</div>
     </div>
-    <div id="log" style="height: 100%;">Select a session to view logs</div>
     
     <!-- Input Options Modal -->
     <div id="optionsModal" class="modal">
@@ -282,15 +676,23 @@
                 <h3>Gemini is waiting for your input</h3>
                 <span class="close">&times;</span>
             </div>
-            <div id="optionsDisplay" class="options-display"></div>
-            <div class="input-section">
-                <input type="text" id="responseInput" placeholder="Enter your choice (e.g., 1, 2, 3, or y/n)">
-                <button class="send-response-btn" onclick="sendResponseFromModal()">Send Response</button>
+            <div class="modal-body">
+                <div id="optionsDisplay" class="options-display"></div>
+                <div class="input-section">
+                    <input type="text" id="responseInput" placeholder="Enter your choice (e.g., 1, 2, 3, or y/n)">
+                    <button class="btn btn-success" onclick="sendResponseFromModal()">Send Response</button>
+                </div>
             </div>
         </div>
     </div>
     
     <script>
+        let currentSelectedSession = null;
+        let refreshTimeout = null;
+        let lastRefreshTime = 0;
+        const REFRESH_DEBOUNCE_DELAY = 500; // ms - wait 500ms before refreshing after user actions
+        const MIN_REFRESH_INTERVAL = 1000; // ms - minimum time between refreshes
+        
         async function getSessions() {
             try {
                 const response = await fetch('/api/sessions');
@@ -299,6 +701,39 @@
             } catch (error) {
                 console.error('Error fetching sessions:', error);
                 return [];
+            }
+        }
+        
+        // Debounced refresh function to prevent excessive updates
+        async function refreshSessions(immediate = false) {
+            const now = Date.now();
+            
+            // If immediate refresh requested and enough time has passed, do it now
+            if (immediate && (now - lastRefreshTime) >= MIN_REFRESH_INTERVAL) {
+                await doRefresh();
+                return;
+            }
+            
+            // Clear any pending refresh
+            if (refreshTimeout) {
+                clearTimeout(refreshTimeout);
+            }
+            
+            // Schedule a debounced refresh
+            refreshTimeout = setTimeout(async () => {
+                await doRefresh();
+                refreshTimeout = null;
+            }, REFRESH_DEBOUNCE_DELAY);
+        }
+        
+        async function doRefresh() {
+            try {
+                const sessions = await getSessions();
+                render(sessions);
+                sessionStorage.setItem('cachedSessions', JSON.stringify(sessions));
+                lastRefreshTime = Date.now();
+            } catch (error) {
+                console.error('Error refreshing sessions:', error);
             }
         }
         
@@ -323,19 +758,16 @@
             // Separate sessions by status
             const userInputSessions = list.filter(s => s.status === 'REQUIRES_USER_INPUT');
             const activeSessions = list.filter(s => s.status !== 'STOPPED' && s.status !== 'DONE' && s.status !== 'REQUIRES_USER_INPUT');
-            const stoppedSessions = list.filter(s => s.status === 'STOPPED');
             const completedSessions = list.filter(s => s.status === 'DONE');
+            const stoppedSessions = list.filter(s => s.status === 'STOPPED');
             
             ul.innerHTML = '';
             
             // User input required sessions section (most important)
             if (userInputSessions.length > 0) {
                 const userInputHeader = document.createElement('div');
-                userInputHeader.innerHTML = '<strong>⚠️ Requires User Input</strong>';
-                userInputHeader.style.padding = '10px';
-                userInputHeader.style.background = '#ffebee';
-                userInputHeader.style.borderBottom = '1px solid #ccc';
-                userInputHeader.style.color = '#E91E63';
+                userInputHeader.className = 'section-header user-input';
+                userInputHeader.innerHTML = `⚠️ Requires User Input (${userInputSessions.length})`;
                 ul.appendChild(userInputHeader);
                 
                 userInputSessions.forEach(s => {
@@ -346,11 +778,8 @@
             // Active sessions section
             if (activeSessions.length > 0) {
                 const activeHeader = document.createElement('div');
-                activeHeader.innerHTML = '<strong>🔄 Active Sessions</strong>';
-                activeHeader.style.padding = '10px';
-                activeHeader.style.background = '#f0f0f0';
-                activeHeader.style.borderBottom = '1px solid #ccc';
-                activeHeader.style.marginTop = userInputSessions.length > 0 ? '10px' : '0';
+                activeHeader.className = 'section-header active';
+                activeHeader.innerHTML = `🔄 Active Sessions (${activeSessions.length})`;
                 ul.appendChild(activeHeader);
                 
                 activeSessions.forEach(s => {
@@ -361,11 +790,8 @@
             // Completed sessions section
             if (completedSessions.length > 0) {
                 const completedHeader = document.createElement('div');
-                completedHeader.innerHTML = '<strong>✅ Completed Sessions</strong>';
-                completedHeader.style.padding = '10px';
-                completedHeader.style.background = '#e8f5e8';
-                completedHeader.style.borderBottom = '1px solid #ccc';
-                completedHeader.style.marginTop = '10px';
+                completedHeader.className = 'section-header completed';
+                completedHeader.innerHTML = `✅ Completed Sessions (${completedSessions.length})`;
                 ul.appendChild(completedHeader);
                 
                 completedSessions.forEach(s => {
@@ -376,11 +802,8 @@
             // Stopped sessions section
             if (stoppedSessions.length > 0) {
                 const stoppedHeader = document.createElement('div');
-                stoppedHeader.innerHTML = '<strong>🛑 Stopped Sessions</strong>';
-                stoppedHeader.style.padding = '10px';
-                stoppedHeader.style.background = '#fff3cd';
-                stoppedHeader.style.borderBottom = '1px solid #ccc';
-                stoppedHeader.style.marginTop = '10px';
+                stoppedHeader.className = 'section-header stopped';
+                stoppedHeader.innerHTML = `🛑 Stopped Sessions (${stoppedSessions.length})`;
                 ul.appendChild(stoppedHeader);
                 
                 stoppedSessions.forEach(s => {
@@ -392,73 +815,98 @@
         function createSessionElement(s) {
             const d = document.createElement('div');
             d.className = 'session';
+            if (currentSelectedSession === s.session_id) {
+                d.classList.add('selected');
+            }
             
             const info = document.createElement('div');
             info.className = 'session-info';
             
-            const textContainer = document.createElement('div');
-            textContainer.style.flex = '1';
-            textContainer.style.cursor = 'pointer';
-            textContainer.onclick = () => openLog(s.session_id);
+            const content = document.createElement('div');
+            content.className = 'session-content';
+            content.onclick = () => selectSession(s.session_id);
             
-            const statusText = document.createElement('div');
-            statusText.innerHTML = `<strong>${s.session_id}</strong> [<span class="${getStatusClass(s.status)}">${s.status}</span>]`;
-            if (s.sleep_duration) {
-                statusText.innerHTML += ` (${formatDuration(s.sleep_duration)})`;
-            }
+            const sessionId = document.createElement('div');
+            sessionId.className = 'session-id';
+            sessionId.textContent = s.session_id;
+            
+            const status = document.createElement('span');
+            status.className = `session-status ${getStatusClass(s.status)}`;
+            status.textContent = s.status;
             
             const promptText = document.createElement('div');
             promptText.className = 'session-prompt';
             promptText.textContent = s.prompt;
             promptText.title = s.prompt; // Show full prompt on hover
             
-            textContainer.appendChild(statusText);
-            textContainer.appendChild(promptText);
-            info.appendChild(textContainer);
+            content.appendChild(sessionId);
+            content.appendChild(status);
+            content.appendChild(promptText);
             
-            // Create button group for actions
-            const buttonGroup = document.createElement('div');
-            buttonGroup.className = 'button-group';
+            // Create actions section
+            const actions = document.createElement('div');
+            actions.className = 'session-actions';
             
-            // Add attach button for all sessions (not just running ones)
+            const actionButtons = document.createElement('div');
+            actionButtons.className = 'action-buttons';
+            
+            // Add attach button for all sessions
             const attachBtn = document.createElement('button');
-            attachBtn.className = 'attach-btn';
-            attachBtn.textContent = 'Copy Attach';
+            attachBtn.className = 'btn btn-info btn-sm';
+            attachBtn.innerHTML = '📎 Attach';
             attachBtn.title = 'Copy tmux attach command to clipboard';
             attachBtn.onclick = async (e) => {
                 e.stopPropagation();
                 await copyAttachCommand(s.session_id);
             };
-            buttonGroup.appendChild(attachBtn);
+            actionButtons.appendChild(attachBtn);
             
             // Add input button for sessions requiring user input
             if (s.status === 'REQUIRES_USER_INPUT') {
+                const quickInputBtn = document.createElement('button');
+                quickInputBtn.className = 'btn btn-danger btn-sm';
+                quickInputBtn.innerHTML = '⚡ Quick Input';
+                quickInputBtn.onclick = async (e) => {
+                    e.stopPropagation();
+                    await showQuickInputPanel(s.session_id);
+                };
+                actionButtons.appendChild(quickInputBtn);
+                
                 const inputBtn = document.createElement('button');
-                inputBtn.className = 'attach-btn';
-                inputBtn.style.background = '#E91E63';
-                inputBtn.textContent = 'View Options';
+                inputBtn.className = 'btn btn-warning btn-sm';
+                inputBtn.innerHTML = '👁️ Options';
                 inputBtn.onclick = async (e) => {
                     e.stopPropagation();
                     await showInputOptions(s.session_id);
                 };
-                buttonGroup.appendChild(inputBtn);
+                actionButtons.appendChild(inputBtn);
             }
             
             // Add stop button for running sessions and those requiring user input
             if (s.status === 'RUNNING' || s.status === 'REQUIRES_USER_INPUT') {
                 const stopBtn = document.createElement('button');
-                stopBtn.className = 'stop-btn';
-                stopBtn.textContent = 'Stop';
+                stopBtn.className = 'btn btn-danger btn-sm';
+                stopBtn.innerHTML = '🛑 Stop';
                 stopBtn.onclick = async (e) => {
                     e.stopPropagation();
                     await stopSession(s.session_id);
                 };
-                buttonGroup.appendChild(stopBtn);
+                actionButtons.appendChild(stopBtn);
             }
             
-            info.appendChild(buttonGroup);
+            actions.appendChild(actionButtons);
+            info.appendChild(content);
+            info.appendChild(actions);
             d.appendChild(info);
             return d;
+        }
+        
+        function selectSession(sessionId) {
+            currentSelectedSession = sessionId;
+            openLog(sessionId);
+            // Re-render to update selected state
+            const currentSessions = JSON.parse(sessionStorage.getItem('cachedSessions') || '[]');
+            render(currentSessions);
         }
         
         async function copyAttachCommand(sessionId) {
@@ -491,14 +939,31 @@
             }
         }
         
+        async function cleanPreviousSessions() {
+            if (confirm('Are you sure you want to clean all previous sessions? This action cannot be undone.')) {
+                try {
+                    const response = await fetch('/api/sessions/clean', { method: 'POST' });
+                    if (response.ok) {
+                        alert('Previous sessions cleaned successfully!');
+                        await refreshSessions(true); // Immediate refresh for user action
+                    } else {
+                        const error = await response.text();
+                        alert(`Failed to clean sessions: ${error}`);
+                    }
+                } catch (error) {
+                    console.error('Error cleaning sessions:', error);
+                    alert('Error cleaning sessions');
+                }
+            }
+        }
+        
         async function stopSession(id) {
             try {
                 const response = await fetch(`/api/sessions/${id}/stop`, { method: 'POST' });
                 if (response.ok) {
                     console.log(`Session ${id} stopped`);
                     // Refresh the list
-                    const sessions = await getSessions();
-                    render(sessions);
+                    await refreshSessions();
                 } else {
                     console.error('Failed to stop session');
                 }
@@ -508,6 +973,89 @@
         }
         
         let currentSessionForInput = null;
+        let quickInputSessionId = null;
+        
+        async function showQuickInputPanel(sessionId) {
+            // First, select the session to show its logs
+            selectSession(sessionId);
+            
+            // Store the session ID for quick input
+            quickInputSessionId = sessionId;
+            
+            // Show the input panel
+            const inputPanel = document.getElementById('input-panel');
+            inputPanel.classList.add('show');
+            
+            // Focus on the input field
+            document.getElementById('quick-input-field').focus();
+            
+            console.log(`Quick input panel opened for session ${sessionId}`);
+        }
+        
+        async function hideInputPanel() {
+            const inputPanel = document.getElementById('input-panel');
+            inputPanel.classList.remove('show');
+            
+            // Clear the input field
+            document.getElementById('quick-input-field').value = '';
+            quickInputSessionId = null;
+            
+            console.log('Quick input panel closed');
+        }
+        
+        async function sendQuickInput() {
+            const inputField = document.getElementById('quick-input-field');
+            const userResponse = inputField.value.trim();
+            
+            if (!userResponse) {
+                alert('Please enter a response');
+                inputField.focus();
+                return;
+            }
+            
+            if (!quickInputSessionId) {
+                alert('No session selected for input');
+                return;
+            }
+            
+            // Disable the send button while processing
+            const sendBtn = document.getElementById('quick-send-btn');
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Sending...';
+            
+            try {
+                const response = await fetch(`/api/sessions/${quickInputSessionId}/input?response=${encodeURIComponent(userResponse)}`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    console.log(`Quick input sent to session ${quickInputSessionId}: ${userResponse}`);
+                    
+                    // Clear the input field and hide the panel
+                    inputField.value = '';
+                    hideInputPanel();
+                    
+                    // Refresh the session list
+                    await refreshSessions();
+                    
+                    // Show success message in the log
+                    const logDiv = document.getElementById('log-content');
+                    logDiv.textContent += `\n>>> Input sent: ${userResponse}\n`;
+                    logDiv.scrollTop = logDiv.scrollHeight;
+                } else {
+                    console.error('Failed to send quick input:', await response.text());
+                    alert('Failed to send input. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error sending quick input:', error);
+                alert('Error sending input. Please try again.');
+            } finally {
+                // Re-enable the send button
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send';
+                inputField.focus();
+            }
+        }
         
         async function showInputOptions(sessionId) {
             try {
@@ -566,8 +1114,7 @@
                     currentSessionForInput = null;
                     
                     // Refresh the session list
-                    const sessions = await getSessions();
-                    render(sessions);
+                    await refreshSessions();
                 } else {
                     console.error('Failed to send input:', await response.text());
                     alert('Failed to send input');
@@ -586,8 +1133,7 @@
                 if (response.ok) {
                     console.log(`Input sent to session ${sessionId}`);
                     // Refresh the session list
-                    const sessions = await getSessions();
-                    render(sessions);
+                    await refreshSessions();
                 } else {
                     console.error('Failed to send input:', await response.text());
                 }
@@ -599,43 +1145,173 @@
         let sock;
         let currentSessionId = null;
         
-        function openLog(id) {
+        // Message batching for smoother UI updates
+        let messageBuffer = [];
+        let bufferFlushTimer = null;
+        let lastFlushTime = 0;
+        
+        // Configuration for batching behavior - adjust these values as needed
+        const BATCH_DELAY = 250; // ms - how long to wait before flushing buffer (250ms = good balance)
+        const MAX_IMMEDIATE_INTERVAL = 1000; // ms - if no updates for this long, next update is immediate
+        const MAX_BUFFER_SIZE = 50; // max messages to buffer before force flush (prevents memory buildup)
+        
+        function flushMessageBuffer() {
+            if (messageBuffer.length === 0) return;
+            
+            const logDiv = document.getElementById('log-content');
+            const bufferedContent = messageBuffer.join('\n') + '\n';
+            const messageCount = messageBuffer.length;
+            const bufferingIndicator = document.getElementById('buffering-indicator');
+            
+            // Add all buffered content at once
+            logDiv.textContent += bufferedContent;
+            
+            // Auto-scroll to bottom with smooth behavior
+            logDiv.scrollTop = logDiv.scrollHeight;
+            
+            // Hide buffering indicator
+            bufferingIndicator.classList.remove('show');
+            
+            // Clear the buffer and update flush time
+            messageBuffer = [];
+            lastFlushTime = Date.now();
+            bufferFlushTimer = null;
+            
+            if (messageCount > 1) {
+                console.log(`📦 Flushed ${messageCount} buffered messages (batching saved ${messageCount - 1} DOM updates)`);
+            }
+        }
+        
+        function addMessageToBuffer(message) {
+            messageBuffer.push(message);
+            
+            const now = Date.now();
+            const timeSinceLastFlush = now - lastFlushTime;
+            const bufferingIndicator = document.getElementById('buffering-indicator');
+            
+            // Force flush if buffer is getting too large (prevents memory buildup)
+            if (messageBuffer.length >= MAX_BUFFER_SIZE) {
+                if (bufferFlushTimer) {
+                    clearTimeout(bufferFlushTimer);
+                }
+                flushMessageBuffer();
+                return;
+            }
+            
+            // If it's been a while since last update, flush immediately for responsiveness
+            if (timeSinceLastFlush > MAX_IMMEDIATE_INTERVAL) {
+                if (bufferFlushTimer) {
+                    clearTimeout(bufferFlushTimer);
+                }
+                flushMessageBuffer();
+                return;
+            }
+            
+            // Otherwise, schedule a batched flush if not already scheduled
+            if (!bufferFlushTimer) {
+                bufferFlushTimer = setTimeout(flushMessageBuffer, BATCH_DELAY);
+                // Show buffering indicator when we start buffering messages
+                bufferingIndicator.classList.add('show');
+            }
+            
+            // Update buffering indicator with message count
+            bufferingIndicator.textContent = `📦 Buffering... (${messageBuffer.length})`;
+        }
+        
+        async function openLog(id) {
             currentSessionId = id;
+            
+            // Clear any pending buffer flushes
+            if (bufferFlushTimer) {
+                clearTimeout(bufferFlushTimer);
+                bufferFlushTimer = null;
+            }
+            messageBuffer = [];
+            
+            // Hide buffering indicator
+            document.getElementById('buffering-indicator').classList.remove('show');
+            
             if (sock) {
                 sock.close();
             }
-            document.getElementById('log').textContent = `Loading logs for ${id}...\n`;
-            sock = new WebSocket(`ws://${location.host}/ws/${id}`);
             
-            sock.onopen = () => {
-                console.log(`WebSocket connected for session ${id}`);
-            };
+            document.getElementById('log-content').textContent = `Loading logs for ${id}...\n`;
             
-            sock.onmessage = e => {
-                const logDiv = document.getElementById('log');
-                logDiv.textContent += e.data + '\n';
+            try {
+                // First, get session metadata to check status
+                const response = await fetch(`/api/sessions/${id}`);
+                if (!response.ok) {
+                    document.getElementById('log-content').textContent = `Error: Session ${id} not found\n`;
+                    return;
+                }
                 
-                // Auto-scroll to bottom with smooth behavior
-                logDiv.scrollTop = logDiv.scrollHeight;
-                // Force scroll if needed
-                setTimeout(() => {
-                    logDiv.scrollTop = logDiv.scrollHeight;
-                }, 10);
-            };
-            
-            sock.onerror = e => {
-                document.getElementById('log').textContent += '\nError connecting to WebSocket\n';
-            };
-            
-            sock.onclose = () => {
-                console.log(`WebSocket closed for session ${id}`);
-            };
+                const sessionInfo = await response.json();
+                
+                // If session is completed (DONE), load output from saved JSON file
+                if (sessionInfo.status === 'DONE') {
+                    console.log(`Loading completed session ${id} from saved output`);
+                    
+                    try {
+                        const outputResponse = await fetch(`/api/sessions/${id}/output`);
+                        if (outputResponse.ok) {
+                            const outputData = await outputResponse.json();
+                            
+                            // Display the saved output directly
+                            const logContent = document.getElementById('log-content');
+                            logContent.textContent = outputData.output || '';
+                            logContent.scrollTop = logContent.scrollHeight;
+                            
+                            console.log(`Loaded ${outputData.output?.length || 0} characters of saved output for session ${id}`);
+                        } else {
+                            document.getElementById('log-content').textContent = `Error loading saved output for session ${id}: ${outputResponse.statusText}\n`;
+                        }
+                    } catch (error) {
+                        console.error(`Failed to load saved output for session ${id}:`, error);
+                        document.getElementById('log-content').textContent = `Error loading saved output: ${error.message}\n`;
+                    }
+                } else {
+                    // For non-completed sessions (RUNNING, SPAWNING, etc.), use WebSocket for real-time streaming
+                    console.log(`Streaming live session ${id} via WebSocket (status: ${sessionInfo.status})`);
+                    
+                    sock = new WebSocket(`ws://${location.host}/ws/${id}`);
+                    
+                    sock.onopen = () => {
+                        console.log(`WebSocket connected for session ${id}`);
+                        lastFlushTime = Date.now(); // Reset flush timer
+                    };
+                    
+                    sock.onmessage = e => {
+                        // Add message to buffer instead of immediate DOM update
+                        addMessageToBuffer(e.data);
+                    };
+                    
+                    sock.onerror = e => {
+                        // Error messages should be immediate
+                        document.getElementById('log-content').textContent += '\nError connecting to WebSocket\n';
+                    };
+                    
+                    sock.onclose = () => {
+                        console.log(`WebSocket closed for session ${id}`);
+                        // Flush any remaining buffered messages on close
+                        if (bufferFlushTimer) {
+                            clearTimeout(bufferFlushTimer);
+                            flushMessageBuffer();
+                        }
+                    };
+                }
+            } catch (error) {
+                console.error(`Error loading session ${id}:`, error);
+                document.getElementById('log-content').textContent = `Error loading session: ${error.message}\n`;
+            }
         }
         
         function toggleCreateForm() {
             const form = document.getElementById('create-form');
-            form.style.display = form.style.display === 'none' ? 'block' : 'none';
-            if (form.style.display === 'block') {
+            const isHidden = form.style.display === 'none' || getComputedStyle(form).display === 'none';
+            
+            form.style.display = isHidden ? 'block' : 'none';
+            
+            if (isHidden) {
                 document.getElementById('prompt-input').focus();
             }
         }
@@ -655,14 +1331,21 @@
                 
                 const response = await fetch(`/api/sessions/create?${params}`, { method: 'POST' });
                 if (response.ok) {
+                    const result = await response.json();
+                    
                     // Clear form and hide it
                     document.getElementById('prompt-input').value = '';
                     document.getElementById('repo-input').value = '';
                     toggleCreateForm();
                     
                     // Refresh the list
-                    const sessions = await getSessions();
-                    render(sessions);
+                    await refreshSessions(true); // Immediate refresh for user action
+                    
+                    // Auto-select the newly created session
+                    if (result.session_id) {
+                        console.log(`Auto-selecting newly created session: ${result.session_id}`);
+                        selectSession(result.session_id);
+                    }
                 } else {
                     const error = await response.text();
                     alert(`Failed to create session: ${error}`);
@@ -694,9 +1377,19 @@
                 
                 if (response1.ok && response2.ok) {
                     console.log('Both test sessions created successfully');
+                    
+                    // Get session IDs from responses
+                    const result1 = await response1.json();
+                    const result2 = await response2.json();
+                    
                     // Refresh the list
-                    const sessions = await getSessions();
-                    render(sessions);
+                    await refreshSessions(true); // Immediate refresh for user action
+                    
+                    // Auto-select the first test session
+                    if (result1.session_id) {
+                        console.log(`Auto-selecting first test session: ${result1.session_id}`);
+                        selectSession(result1.session_id);
+                    }
                 } else {
                     console.error('Failed to create one or both test sessions');
                     alert('Failed to create test sessions');
@@ -713,11 +1406,15 @@
         // Initialize
         (async () => {
             try {
-                const sessions = await getSessions();
-                render(sessions);
+                // Initial load
+                await doRefresh();
+                
+                // Set up automatic refresh every 3 seconds
                 setInterval(async () => {
-                    const sessions = await getSessions();
-                    render(sessions);
+                    // Only auto-refresh if no user action is pending
+                    if (!refreshTimeout) {
+                        await doRefresh();
+                    }
                 }, 3000);
             } catch (error) {
                 document.getElementById('list').innerHTML = '<div class="error">Error loading sessions</div>';
@@ -752,16 +1449,28 @@
             }
         });
         
+        // Quick input keyboard support
+        const quickInputField = document.getElementById('quick-input-field');
+        quickInputField.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                sendQuickInput();
+            }
+        });
+        
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 const form = document.getElementById('create-form');
+                const inputPanel = document.getElementById('input-panel');
+                
                 if (form.style.display !== 'none') {
                     toggleCreateForm();
                 } else if (modal.style.display === 'block') {
                     modal.style.display = 'none';
                     responseInput.value = '';
                     currentSessionForInput = null;
+                } else if (inputPanel.classList.contains('show')) {
+                    hideInputPanel();
                 }
             }
         });
