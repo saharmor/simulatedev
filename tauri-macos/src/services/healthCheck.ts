@@ -1,6 +1,7 @@
+import { fetch } from "@tauri-apps/plugin-http";
+
 const API_BASE_URL = 'http://localhost:8000';
 const HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
-const MAX_CONSECUTIVE_FAILURES = 3;
 
 export interface HealthCheckResult {
   isHealthy: boolean;
@@ -20,7 +21,6 @@ export class HealthCheckService {
         headers: {
           'Content-Type': 'application/json',
         },
-        timeout: 5000, // 5 second timeout
       });
 
       if (response.ok) {

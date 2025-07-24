@@ -4,14 +4,22 @@ import { authService } from "../services/authService";
 
 interface LoginScreenProps {
   onLogin: () => void;
+  authError?: string | null;
 }
 
-export function LoginScreen({ onLogin }: LoginScreenProps) {
+export function LoginScreen({ authError }: LoginScreenProps) {
+  console.log('[LoginScreen] Rendering login screen');
+  console.log(`[LoginScreen] Auth error present: ${!!authError}, Error type: ${authError}`);
+  
   const handleGitHubLogin = async () => {
+    console.log('[LoginScreen] GitHub login button clicked');
     try {
+      console.log('[LoginScreen] Initiating GitHub OAuth flow');
       await authService.initiateGitHubOAuth();
+      console.log('[LoginScreen] GitHub OAuth initiation completed successfully');
     } catch (error) {
-      console.error("GitHub login failed:", error);
+      console.error("[LoginScreen] GitHub login failed:", error);
+      console.log('[LoginScreen] User will remain on login screen due to OAuth error');
     }
   };
   return (
@@ -44,6 +52,18 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           <Github className="w-4 h-4" />
           Sign in with GitHub
         </Button>
+
+        {/* Error message */}
+        {authError === 'oauth_failed' && (() => {
+          console.log('[LoginScreen] Displaying AUTHENTICATION FAILED error message');
+          return (
+            <div className="mt-4">
+              <p className="text-red-500 text-4xl font-mono font-semibold tracking-tight">
+                AUTHENTICATION FAILED
+              </p>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

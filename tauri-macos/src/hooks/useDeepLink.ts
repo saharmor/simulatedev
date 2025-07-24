@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { onOpenUrl } from '@tauri-apps/plugin-deep-link';
+import { useEffect, useState } from "react";
+import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 
 export function useDeepLink() {
   const [deepLinkUrl, setDeepLinkUrl] = useState<string | null>(null);
@@ -13,7 +13,7 @@ export function useDeepLink() {
     });
 
     return () => {
-      unlisten.then(fn => fn());
+      unlisten.then((fn) => fn());
     };
   }, []);
 
@@ -22,13 +22,13 @@ export function useDeepLink() {
       const parsedUrl = new URL(url);
       const path = parsedUrl.pathname;
       const searchParams = new URLSearchParams(parsedUrl.search);
-      
+
       return {
         path,
-        params: Object.fromEntries(searchParams.entries())
+        params: Object.fromEntries(searchParams.entries()),
       };
     } catch (error) {
-      console.error('Failed to parse deep link URL:', error);
+      console.error("Failed to parse deep link URL:", error);
       return null;
     }
   };
@@ -40,6 +40,6 @@ export function useDeepLink() {
   return {
     deepLinkUrl,
     parseDeepLink,
-    clearDeepLink
+    clearDeepLink,
   };
 }
