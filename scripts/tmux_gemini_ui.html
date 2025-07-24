@@ -1,0 +1,391 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Gemini Sessions</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+        }
+        #list {
+            width: 35%;
+            border-right: 1px solid #ccc;
+            overflow-y: auto;
+            padding: 10px;
+        }
+        #log {
+            flex: 1;
+            padding: 10px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            background: #111;
+            color: #0f0;
+        }
+        .session {
+            padding: 8px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+        }
+        .session:hover {
+            background: #f0f0f0;
+        }
+        .error {
+            color: red;
+            padding: 10px;
+        }
+        .session-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .stop-btn {
+            background: #ff4444;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .stop-btn:hover {
+            background: #cc0000;
+        }
+        .status-running {
+            color: #4CAF50;
+        }
+        .status-done {
+            color: #2196F3;
+        }
+        .status-stopped {
+            color: #FF9800;
+        }
+        .status-spawning {
+            color: #9C27B0;
+        }
+        .session-prompt {
+            font-size: 11px;
+            color: #666;
+            margin-top: 4px;
+            white-space: normal;
+            word-wrap: break-word;
+            line-height: 1.3;
+            max-height: 3.9em;
+            overflow: hidden;
+        }
+        .header {
+            background: #333;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .controls {
+            padding: 10px;
+            border-bottom: 1px solid #ccc;
+        }
+        .create-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .create-btn:hover {
+            background: #45a049;
+        }
+        #create-form {
+            display: none;
+            padding: 10px;
+            background: #f5f5f5;
+            border-bottom: 1px solid #ccc;
+        }
+        #create-form input, #create-form textarea {
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+        .form-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        .form-buttons button {
+            flex: 1;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .submit-btn {
+            background: #4CAF50;
+            color: white;
+        }
+        .cancel-btn {
+            background: #f44336;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div style="width: 35%; display: flex; flex-direction: column;">
+        <div class="header">🚀 Gemini Session Manager</div>
+        <div class="controls">
+            <button class="create-btn" onclick="toggleCreateForm()">Create New Session</button>
+        </div>
+        <div id="create-form">
+            <textarea id="prompt-input" placeholder="Enter your prompt..." rows="3"></textarea>
+            <input id="repo-input" placeholder="Repository URL (optional)" />
+            <div class="form-buttons">
+                <button class="submit-btn" onclick="createSession()">Create</button>
+                <button class="cancel-btn" onclick="toggleCreateForm()">Cancel</button>
+            </div>
+        </div>
+        <div id="list" style="flex: 1; overflow-y: auto;">Loading sessions...</div>
+    </div>
+    <div id="log">Select a session to view logs</div>
+    
+    <script>
+        async function getSessions() {
+            try {
+                const response = await fetch('/api/sessions');
+                const data = await response.json();
+                return data.sessions;
+            } catch (error) {
+                console.error('Error fetching sessions:', error);
+                return [];
+            }
+        }
+        
+        function getStatusClass(status) {
+            return `status-${status.toLowerCase()}`;
+        }
+        
+        function formatDuration(seconds) {
+            if (!seconds) return '';
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins}m ${secs}s`;
+        }
+        
+        function render(list) {
+            const ul = document.getElementById('list');
+            if (!list || list.length === 0) {
+                ul.innerHTML = '<div class="error">No sessions found</div>';
+                return;
+            }
+            
+            // Separate sessions by status
+            const activeSessions = list.filter(s => s.status !== 'STOPPED' && s.status !== 'DONE');
+            const stoppedSessions = list.filter(s => s.status === 'STOPPED');
+            const completedSessions = list.filter(s => s.status === 'DONE');
+            
+            ul.innerHTML = '';
+            
+            // Active sessions section
+            if (activeSessions.length > 0) {
+                const activeHeader = document.createElement('div');
+                activeHeader.innerHTML = '<strong>🔄 Active Sessions</strong>';
+                activeHeader.style.padding = '10px';
+                activeHeader.style.background = '#f0f0f0';
+                activeHeader.style.borderBottom = '1px solid #ccc';
+                ul.appendChild(activeHeader);
+                
+                activeSessions.forEach(s => {
+                    ul.appendChild(createSessionElement(s));
+                });
+            }
+            
+            // Completed sessions section
+            if (completedSessions.length > 0) {
+                const completedHeader = document.createElement('div');
+                completedHeader.innerHTML = '<strong>✅ Completed Sessions</strong>';
+                completedHeader.style.padding = '10px';
+                completedHeader.style.background = '#e8f5e8';
+                completedHeader.style.borderBottom = '1px solid #ccc';
+                completedHeader.style.marginTop = '10px';
+                ul.appendChild(completedHeader);
+                
+                completedSessions.forEach(s => {
+                    ul.appendChild(createSessionElement(s));
+                });
+            }
+            
+            // Stopped sessions section
+            if (stoppedSessions.length > 0) {
+                const stoppedHeader = document.createElement('div');
+                stoppedHeader.innerHTML = '<strong>🛑 Stopped Sessions</strong>';
+                stoppedHeader.style.padding = '10px';
+                stoppedHeader.style.background = '#fff3cd';
+                stoppedHeader.style.borderBottom = '1px solid #ccc';
+                stoppedHeader.style.marginTop = '10px';
+                ul.appendChild(stoppedHeader);
+                
+                stoppedSessions.forEach(s => {
+                    ul.appendChild(createSessionElement(s));
+                });
+            }
+        }
+        
+        function createSessionElement(s) {
+            const d = document.createElement('div');
+            d.className = 'session';
+            
+            const info = document.createElement('div');
+            info.className = 'session-info';
+            
+            const textContainer = document.createElement('div');
+            textContainer.style.flex = '1';
+            textContainer.style.cursor = 'pointer';
+            textContainer.onclick = () => openLog(s.session_id);
+            
+            const statusText = document.createElement('div');
+            statusText.innerHTML = `<strong>${s.session_id}</strong> [<span class="${getStatusClass(s.status)}">${s.status}</span>]`;
+            if (s.sleep_duration) {
+                statusText.innerHTML += ` (${formatDuration(s.sleep_duration)})`;
+            }
+            
+            const promptText = document.createElement('div');
+            promptText.className = 'session-prompt';
+            promptText.textContent = s.prompt;
+            promptText.title = s.prompt; // Show full prompt on hover
+            
+            textContainer.appendChild(statusText);
+            textContainer.appendChild(promptText);
+            info.appendChild(textContainer);
+            
+            // Add stop button for running sessions
+            if (s.status === 'RUNNING') {
+                const stopBtn = document.createElement('button');
+                stopBtn.className = 'stop-btn';
+                stopBtn.textContent = 'Stop';
+                stopBtn.onclick = async (e) => {
+                    e.stopPropagation();
+                    await stopSession(s.session_id);
+                };
+                info.appendChild(stopBtn);
+            }
+            
+            d.appendChild(info);
+            return d;
+        }
+        
+        async function stopSession(id) {
+            try {
+                const response = await fetch(`/api/sessions/${id}/stop`, { method: 'POST' });
+                if (response.ok) {
+                    console.log(`Session ${id} stopped`);
+                    // Refresh the list
+                    const sessions = await getSessions();
+                    render(sessions);
+                } else {
+                    console.error('Failed to stop session');
+                }
+            } catch (error) {
+                console.error('Error stopping session:', error);
+            }
+        }
+        
+        let sock;
+        let currentSessionId = null;
+        
+        function openLog(id) {
+            currentSessionId = id;
+            if (sock) {
+                sock.close();
+            }
+            document.getElementById('log').textContent = `Loading logs for ${id}...\n`;
+            sock = new WebSocket(`ws://${location.host}/ws/${id}`);
+            
+            sock.onopen = () => {
+                console.log(`WebSocket connected for session ${id}`);
+            };
+            
+            sock.onmessage = e => {
+                const logDiv = document.getElementById('log');
+                logDiv.textContent += e.data + '\n';
+                // Auto-scroll to bottom
+                logDiv.scrollTop = logDiv.scrollHeight;
+            };
+            
+            sock.onerror = e => {
+                document.getElementById('log').textContent += '\nError connecting to WebSocket\n';
+            };
+            
+            sock.onclose = () => {
+                console.log(`WebSocket closed for session ${id}`);
+            };
+        }
+        
+        function toggleCreateForm() {
+            const form = document.getElementById('create-form');
+            form.style.display = form.style.display === 'none' ? 'block' : 'none';
+            if (form.style.display === 'block') {
+                document.getElementById('prompt-input').focus();
+            }
+        }
+        
+        async function createSession() {
+            const prompt = document.getElementById('prompt-input').value.trim();
+            const repo = document.getElementById('repo-input').value.trim();
+            
+            if (!prompt) {
+                alert('Please enter a prompt');
+                return;
+            }
+            
+            try {
+                const params = new URLSearchParams({ prompt });
+                if (repo) params.append('repo_url', repo);
+                
+                const response = await fetch(`/api/sessions/create?${params}`, { method: 'POST' });
+                if (response.ok) {
+                    // Clear form and hide it
+                    document.getElementById('prompt-input').value = '';
+                    document.getElementById('repo-input').value = '';
+                    toggleCreateForm();
+                    
+                    // Refresh the list
+                    const sessions = await getSessions();
+                    render(sessions);
+                } else {
+                    const error = await response.text();
+                    alert(`Failed to create session: ${error}`);
+                }
+            } catch (error) {
+                console.error('Error creating session:', error);
+                alert('Error creating session');
+            }
+        }
+        
+        // Initialize
+        (async () => {
+            try {
+                const sessions = await getSessions();
+                render(sessions);
+                setInterval(async () => {
+                    const sessions = await getSessions();
+                    render(sessions);
+                }, 3000);
+            } catch (error) {
+                document.getElementById('list').innerHTML = '<div class="error">Error loading sessions</div>';
+            }
+        })();
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const form = document.getElementById('create-form');
+                if (form.style.display !== 'none') {
+                    toggleCreateForm();
+                }
+            }
+        });
+    </script>
+</body>
+</html> 
