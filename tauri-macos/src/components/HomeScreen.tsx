@@ -34,7 +34,7 @@ interface PullRequest {
 type TabType = "issues" | "prs";
 
 interface HomeScreenProps {
-  onTaskStart: (issueId: string) => void;
+  onTaskStart: (issue: Issue, repository?: Repository) => void;
   onCommandK: () => void;
 }
 
@@ -309,7 +309,7 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                             console.log(
                               `[HomeScreen] Starting task for issue: ${issue.number}`
                             );
-                            onTaskStart(issue.id);
+                            onTaskStart(issue, selectedRepo);
                           }}
                           className="w-full p-4 bg-card border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
                         >
@@ -375,7 +375,16 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                             console.log(
                               `[HomeScreen] Starting task for PR: ${pr.number}`
                             );
-                            onTaskStart(pr.id);
+                            // Convert PR to Issue-like object for now
+                            const prAsIssue: Issue = {
+                              id: pr.id,
+                              title: pr.title,
+                              number: pr.number,
+                              timeAgo: pr.timeAgo,
+                              htmlUrl: pr.htmlUrl,
+                              user: pr.user
+                            };
+                            onTaskStart(prAsIssue, selectedRepo);
                           }}
                           className="w-full bg-card border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors text-left"
                         >
