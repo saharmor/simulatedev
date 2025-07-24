@@ -3,19 +3,27 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 import sys
 import os
+import importlib
 
 # Add parent directory to path for SimulateDev imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
-try:
-    from src.github_integration import GitHubIntegration
-except ImportError:
-    GitHubIntegration = None
+# temp fix for dynamic import of GitHubIntegration
+module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..", "src/github_integration.py"))
+spec = importlib.util.spec_from_file_location("github_integration", module_path)
+github_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(github_module)
+GitHubIntegration = github_module.GitHubIntegration
+
+# try:
+#     from src.github_integration import GitHubIntegration
+# except ImportError:
+#     GitHubIntegration = None
 
 from app.database import get_db
 from app.dependencies import require_authentication, get_user_github_token
 from app.models.user import User
-from app.schemas.github import RepositoryInfo, IssueInfo, RepositoryIssues
+from app.schemas.github import RepositoryInfo, IssueInfo, RepositoryIssues, PullRequestInfo, RepositoryPullRequests
 
 router = APIRouter()
 
@@ -120,6 +128,77 @@ async def get_repository_issues(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch issues: {str(e)}")
+
+@router.get("/repositories/{owner}/{repo}/pulls", response_model=RepositoryPullRequests)
+async def get_repository_pull_requests(
+    owner: str,
+    repo: str,
+    state: str = Query("open", description="Pull request state: open, closed, or all"),
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(30, ge=1, le=100, description="Pull requests per page"),
+    search: Optional[str] = Query(None, description="Search term for filtering pull requests"),
+    user: User = Depends(require_authentication),
+    github_token: str = Depends(get_user_github_token)
+):
+    """Get pull requests for a specific repository"""
+    if not GitHubIntegration:
+        raise HTTPException(status_code=500, detail="GitHub integration not available")
+    
+    try:
+        # Use direct API call since GitHubIntegration doesn't have this method
+        import requests
+        headers = {'Authorization': f'token {github_token}'}
+        params = {
+            "state": state,
+            "page": page,
+            "per_page": per_page,
+            "sort": "updated",
+            "direction": "desc"
+        }
+        
+        response = requests.get(f'https://api.github.com/repos/{owner}/{repo}/pulls', 
+                              headers=headers, params=params)
+        response.raise_for_status()
+        
+        pull_requests = response.json()
+        
+        # If search term provided, filter by title and body
+        if search and search.strip():
+            search_lower = search.lower().strip()
+            filtered_prs = []
+            for pr in pull_requests:
+                title = pr.get('title', '').lower()
+                body = pr.get('body', '') or ''
+                body_lower = body.lower()
+                
+                if (search_lower in title or search_lower in body_lower):
+                    filtered_prs.append(pr)
+            pull_requests = filtered_prs
+        
+        pr_info_list = [PullRequestInfo(
+            id=pr['id'],
+            number=pr['number'],
+            title=pr['title'],
+            body=pr.get('body', ''),
+            state=pr['state'],
+            created_at=pr['created_at'],
+            updated_at=pr['updated_at'],
+            html_url=pr['html_url'],
+            user_login=pr['user']['login'],
+            head_ref=pr['head']['ref'],
+            base_ref=pr['base']['ref'],
+            draft=pr.get('draft', False)
+        ) for pr in pull_requests]
+        
+        return RepositoryPullRequests(
+            pull_requests=pr_info_list,
+            total_count=len(pr_info_list),
+            page=page,
+            per_page=per_page,
+            has_more=len(pull_requests) == per_page
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch pull requests: {str(e)}")
 
 @router.get("/repositories/{owner}/{repo}")
 async def get_repository_info(

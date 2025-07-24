@@ -94,13 +94,19 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
         setDataError(null);
         console.log(selectedRepo);
 
-        const response = await apiService.getRepositoryIssues(
-          selectedRepo.full_name,
-          { state: "open", per_page: 50 }
-        );
+        const [issuesResponse, prsResponse] = await Promise.all([
+          apiService.getRepositoryIssues(selectedRepo.full_name, {
+            state: "open",
+            per_page: 50,
+          }),
+          apiService.getRepositoryPullRequests(selectedRepo.full_name, {
+            state: "open",
+            per_page: 50,
+          }),
+        ]);
 
         // Convert GitHub API data to frontend format
-        const convertedIssues: Issue[] = response.issues.map((issue) => ({
+        const convertedIssues: Issue[] = issuesResponse.issues.map((issue) => ({
           id: issue.id.toString(),
           title: issue.title,
           number: issue.number,
@@ -109,7 +115,17 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
           user: issue.user_login,
         }));
 
-        const convertedPRs: PullRequest[] = [];
+        const convertedPRs: PullRequest[] = prsResponse.pull_requests.map(
+          (pr) => ({
+            id: pr.id.toString(),
+            title: pr.title,
+            number: pr.number,
+            repo: selectedRepo.full_name,
+            timeAgo: apiService.formatTimeAgo(pr.updated_at),
+            htmlUrl: pr.html_url,
+            user: pr.user_login,
+          })
+        );
 
         console.log(
           `[HomeScreen] Successfully loaded ${convertedIssues.length} issues and ${convertedPRs.length} PRs`
@@ -373,9 +389,6 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                                   </span>
                                   <span className="font-mono text-sm text-gray-400">
                                     #{pr.number}
-                                  </span>
-                                  <span className="text-xs text-gray-400">
-                                    by {pr.user}
                                   </span>
                                 </div>
                                 <h3 className="text-sm font-medium text-gray-900 mb-2">
