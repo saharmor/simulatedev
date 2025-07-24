@@ -113,7 +113,7 @@ export function TaskScreen({ taskId }: TaskScreenProps) {
 
   if (!task) {
     return (
-      <div className="flex-1 bg-background flex items-center justify-center">
+      <div className="flex-1 bg-background overflow-y-auto flex items-center justify-center">
         <p className="text-gray-500">Task not found</p>
       </div>
     );
@@ -122,7 +122,7 @@ export function TaskScreen({ taskId }: TaskScreenProps) {
   const duration = currentTime - task.startTime;
 
   return (
-    <div className="flex-1 bg-background">
+    <div className="flex-1 bg-background overflow-y-auto">
       <div className="max-w-4xl mx-auto py-8 px-8">
         {/* Task Header */}
         <div className="mb-8">

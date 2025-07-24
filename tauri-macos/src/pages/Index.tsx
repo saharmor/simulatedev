@@ -427,7 +427,7 @@ const Index = () => {
 
   return (
     <div
-      className={`flex min-h-screen bg-background transition-opacity duration-300 ${
+      className={`flex h-screen bg-background transition-opacity duration-300 ${
         isTransitioning ? "opacity-0" : "opacity-100"
       }`}
     >

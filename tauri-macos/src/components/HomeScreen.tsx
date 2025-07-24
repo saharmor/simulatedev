@@ -160,7 +160,7 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
   }, [onCommandK]);
 
   return (
-    <div className="flex-1 bg-background">
+    <div className="flex-1 bg-background overflow-y-auto">
       <div className="max-w-4xl mx-auto py-32 px-8">
         {/* Logo */}
         <div className="text-center mb-12">
