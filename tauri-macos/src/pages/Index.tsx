@@ -72,8 +72,8 @@ const Index = () => {
     setCurrentScreen("task");
   };
 
-  const handleTaskStart = (issue: { id: string; title: string; number: number; htmlUrl: string; user: string }, repository?: { name: string; full_name: string }) => {
-    console.log(`[Index] Creating task for issue: ${issue.title}`);
+  const handleTaskStart = (issue: { id: string; title: string; number: number; htmlUrl: string; user: string }, agent: { id: string; name: string; description: string; icon: string }, repository?: { name: string; full_name: string }) => {
+    console.log(`[Index] Creating task for issue: ${issue.title} with agent: ${agent.name}`);
     
     // Generate a unique task ID
     const taskId = `task-${Date.now()}-${issue.id}`;

@@ -10,6 +10,7 @@ import {
 import { Button } from "./ui/button";
 import { apiService, Repository } from "../services/apiService";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { AgentSelectionModal } from "./AgentSelectionModal";
 
 // Convert GitHub API types to frontend types for consistency
 interface Issue {
@@ -33,8 +34,15 @@ interface PullRequest {
 
 type TabType = "issues" | "prs";
 
+interface Agent {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+}
+
 interface HomeScreenProps {
-  onTaskStart: (issue: Issue, repository?: Repository) => void;
+  onTaskStart: (issue: Issue, agent: Agent, repository?: Repository) => void;
   onCommandK: () => void;
 }
 
@@ -52,6 +60,10 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>("issues");
+
+  // Agent selection modal state
+  const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
+  const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null);
 
   // Fetch repositories on component mount
   useEffect(() => {
@@ -158,6 +170,28 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onCommandK]);
+
+  // Modal handlers
+  const handleIssueClick = (issue: Issue) => {
+    setSelectedIssue(issue);
+    setIsAgentModalOpen(true);
+  };
+
+  const handleAgentSelect = (agent: Agent) => {
+    if (selectedIssue) {
+      console.log(
+        `[HomeScreen] Starting task for issue: ${selectedIssue.number} with agent: ${agent.name}`
+      );
+      onTaskStart(selectedIssue, agent, selectedRepo || undefined);
+    }
+    setIsAgentModalOpen(false);
+    setSelectedIssue(null);
+  };
+
+  const handleModalClose = () => {
+    setIsAgentModalOpen(false);
+    setSelectedIssue(null);
+  };
 
   return (
     <div className="flex-1 bg-background overflow-y-auto">
@@ -305,12 +339,7 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                       issues.map((issue) => (
                         <button
                           key={issue.id}
-                          onClick={() => {
-                            console.log(
-                              `[HomeScreen] Starting task for issue: ${issue.number}`
-                            );
-                            onTaskStart(issue, selectedRepo);
-                          }}
+                          onClick={() => handleIssueClick(issue)}
                           className="w-full p-4 bg-card border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
                         >
                           <div className="flex items-start justify-between">
@@ -372,9 +401,6 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                         <button
                           key={pr.id}
                           onClick={() => {
-                            console.log(
-                              `[HomeScreen] Starting task for PR: ${pr.number}`
-                            );
                             // Convert PR to Issue-like object for now
                             const prAsIssue: Issue = {
                               id: pr.id,
@@ -384,7 +410,7 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                               htmlUrl: pr.htmlUrl,
                               user: pr.user
                             };
-                            onTaskStart(prAsIssue, selectedRepo);
+                            handleIssueClick(prAsIssue);
                           }}
                           className="w-full bg-card border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors text-left"
                         >
@@ -451,6 +477,13 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
           </p>
         </div>
       </div>
+
+      {/* Agent Selection Modal */}
+      <AgentSelectionModal
+        isOpen={isAgentModalOpen}
+        onClose={handleModalClose}
+        onAgentSelect={handleAgentSelect}
+      />
     </div>
   );
 }
