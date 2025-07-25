@@ -315,6 +315,17 @@
             box-shadow: 0 4px 12px rgba(108, 117, 125, 0.15);
         }
         
+        .session.requires-input {
+            border-color: #dc3545;
+            box-shadow: 0 2px 8px rgba(220, 53, 69, 0.2);
+        }
+        
+        .session.requires-input:hover {
+            border-color: #c82333;
+            box-shadow: 0 6px 16px rgba(220, 53, 69, 0.3);
+            transform: translateY(-2px);
+        }
+        
         .error {
             color: #dc3545;
             padding: 20px;
@@ -376,9 +387,36 @@
         }
         
         .status-requires_user_input {
-            background: #f8d7da;
-            color: #721c24;
+            background: #dc3545;
+            color: white;
             animation: pulse 2s infinite;
+            cursor: pointer;
+            font-weight: 700;
+        }
+        
+        .status-requires_user_input:hover {
+            background: #c82333;
+            transform: scale(1.05);
+        }
+        
+        .input-required-badge {
+            background: #dc3545;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            cursor: pointer;
+            animation: pulse 2s infinite;
+            transition: all 0.2s ease;
+            border: 2px solid #dc3545;
+        }
+        
+        .input-required-badge:hover {
+            background: #fff;
+            color: #dc3545;
+            transform: scale(1.05);
         }
         
         @keyframes pulse {
@@ -658,9 +696,9 @@
                 <div class="buffering-indicator" id="buffering-indicator">📦 Buffering...</div>
                 <div id="log-content">Select a session to view logs</div>
                 <div id="input-panel">
-                    <div class="input-panel-header">⚠️ Session requires your input:</div>
+                    <div class="input-panel-header">⚠️ Gemini is waiting for your input:</div>
                     <div class="quick-input-container">
-                        <input type="text" id="quick-input-field" class="quick-input-field" placeholder="Enter your response (e.g., 1, 2, y, n)">
+                        <input type="text" id="quick-input-field" class="quick-input-field" placeholder="Enter your response (e.g., 1, 2, y, n, or type your answer)">
                         <button id="quick-send-btn" class="btn btn-primary btn-sm" onclick="sendQuickInput()">Send</button>
                         <button class="btn btn-secondary btn-sm" onclick="hideInputPanel()">Close</button>
                     </div>
@@ -818,13 +856,23 @@
             if (currentSelectedSession === s.session_id) {
                 d.classList.add('selected');
             }
+            if (s.status === 'REQUIRES_USER_INPUT') {
+                d.classList.add('requires-input');
+            }
             
             const info = document.createElement('div');
             info.className = 'session-info';
             
             const content = document.createElement('div');
             content.className = 'session-content';
-            content.onclick = () => selectSession(s.session_id);
+            
+            if (s.status === 'REQUIRES_USER_INPUT') {
+                content.onclick = () => selectSessionAndShowInput(s.session_id);
+                content.style.cursor = 'pointer';
+                content.title = 'Click to select session and provide input';
+            } else {
+                content.onclick = () => selectSession(s.session_id);
+            }
             
             const sessionId = document.createElement('div');
             sessionId.className = 'session-id';
@@ -832,7 +880,17 @@
             
             const status = document.createElement('span');
             status.className = `session-status ${getStatusClass(s.status)}`;
-            status.textContent = s.status;
+            
+            if (s.status === 'REQUIRES_USER_INPUT') {
+                status.textContent = 'INPUT REQUIRED';
+                status.title = 'Click to provide input';
+                status.onclick = async (e) => {
+                    e.stopPropagation();
+                    await selectSessionAndShowInput(s.session_id);
+                };
+            } else {
+                status.textContent = s.status;
+            }
             
             const promptText = document.createElement('div');
             promptText.className = 'session-prompt';
@@ -863,18 +921,10 @@
             
             // Add input button for sessions requiring user input
             if (s.status === 'REQUIRES_USER_INPUT') {
-                const quickInputBtn = document.createElement('button');
-                quickInputBtn.className = 'btn btn-danger btn-sm';
-                quickInputBtn.innerHTML = '⚡ Quick Input';
-                quickInputBtn.onclick = async (e) => {
-                    e.stopPropagation();
-                    await showQuickInputPanel(s.session_id);
-                };
-                actionButtons.appendChild(quickInputBtn);
-                
                 const inputBtn = document.createElement('button');
                 inputBtn.className = 'btn btn-warning btn-sm';
-                inputBtn.innerHTML = '👁️ Options';
+                inputBtn.innerHTML = '👁️ View Context';
+                inputBtn.title = 'View full context and options';
                 inputBtn.onclick = async (e) => {
                     e.stopPropagation();
                     await showInputOptions(s.session_id);
@@ -974,6 +1024,25 @@
         
         let currentSessionForInput = null;
         let quickInputSessionId = null;
+        
+        async function selectSessionAndShowInput(sessionId) {
+            // First, select the session to show its logs
+            selectSession(sessionId);
+            
+            // Store the session ID for quick input
+            quickInputSessionId = sessionId;
+            
+            // Show the input panel
+            const inputPanel = document.getElementById('input-panel');
+            inputPanel.classList.add('show');
+            
+            // Focus on the input field after a brief delay to ensure the session is loaded
+            setTimeout(() => {
+                document.getElementById('quick-input-field').focus();
+            }, 300);
+            
+            console.log(`Auto-selected session ${sessionId} and opened input panel`);
+        }
         
         async function showQuickInputPanel(sessionId) {
             // First, select the session to show its logs

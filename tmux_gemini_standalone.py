@@ -171,14 +171,17 @@ class TmuxGeminiManager:
         with self._json_save_lock:
             json_path = self.logs_dir / f"{session_id}_output.json"
             
-            # Skip if already saved to avoid duplicate work
-            if json_path.exists():
-                self.logger.debug(f"JSON output for session {session_id} already exists, skipping")
-                return
-            
             try:
                 # Capture final output directly from tmux pane (cleaner than reading full log)
                 final_output = self._capture_final_session_output(session_id)
+                
+                # Check if output has changed from what was previously saved
+                if json_path.exists():
+                    if self._is_output_unchanged(json_path, final_output):
+                        self.logger.debug(f"Output for session {session_id} unchanged, skipping save")
+                        return
+                    else:
+                        self.logger.debug(f"Output for session {session_id} has changed, updating JSON")
                 
                 # Get session info
                 session_info = self.sessions.get(session_id)
@@ -216,6 +219,21 @@ class TmuxGeminiManager:
                     
             except Exception as e:
                 self.logger.error(f"Failed to save session {session_id} output to JSON: {e}")
+
+    def _is_output_unchanged(self, json_path: Path, new_output: str) -> bool:
+        """Check if the new output is identical to the previously saved output"""
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                existing_data = json.load(f)
+                existing_output = existing_data.get('output', '')
+                
+                # Compare the actual output content (strip whitespace for comparison)
+                return existing_output.strip() == new_output.strip()
+                
+        except Exception as e:
+            self.logger.warning(f"Failed to read existing output for comparison: {e}")
+            # If we can't read the existing file, assume it's different and save
+            return False
 
     def _capture_final_session_output(self, session_id: str) -> str:
         """Capture the final, clean output from a session's tmux pane"""
@@ -392,8 +410,7 @@ class TmuxGeminiManager:
                 "● 1. Yes, allow once",
                 "● 2. Yes, allow always", 
                 "4. No (esc)",
-                "WriteFile Writing to",
-                "⠏ Waiting for",
+                "(Use Enter to select)",
                 "Press any key to continue",
                 "Would you like to",
                 "Continue? (y/n)",
@@ -504,7 +521,7 @@ class TmuxGeminiManager:
                         del self.session_prompts[sid]
                     
             # Handle RUNNING -> REQUIRES_USER_INPUT transition
-            elif info.status == "RUNNING" and self._check_requires_user_input(sid):
+            elif info.status in ["RUNNING", "SPAWNING"] and self._check_requires_user_input(sid):
                 info.status = "REQUIRES_USER_INPUT"
                 self.logger.info(f"Session {sid} status changed: RUNNING -> REQUIRES_USER_INPUT")
                 pane = self.pane_mapping.get(sid)
