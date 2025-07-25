@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Gemini Sessions</title>
+    <title>Agentic CLI Sessions</title>
     <style>
         * {
             box-sizing: border-box;
@@ -692,7 +692,7 @@
 <body>
     <div class="main-container">
         <div class="sessions-panel">
-            <div class="header">🚀 Gemini Session Manager</div>
+            <div class="header">🚀 Agentic CLI Session Manager</div>
             <div class="controls">
                 <div class="controls-grid">
                     <button class="btn btn-success btn-sm" onclick="toggleCreateForm()">✨ New Session</button>
@@ -703,11 +703,15 @@
                         <input type="checkbox" id="yolo-mode" style="margin: 0; cursor: pointer;" onchange="saveYoloMode()">
                         <span>🚀 YOLO Mode</span>
                     </label>
-                    <span style="font-size: 11px; color: #6c757d; font-style: italic;">Sends Ctrl+Y before running</span>
+                    <span style="font-size: 11px; color: #6c757d; font-style: italic;">Auto-approve changes (agent-specific)</span>
                 </div>
                 <button class="btn btn-danger btn-sm" onclick="cleanPreviousSessions()" style="width: 100%; margin-top: 8px;">🗑️ Clean Previous Sessions</button>
             </div>
             <div id="create-form">
+                <select id="agent-select" style="width: 100%; margin-bottom: 12px; padding: 12px; border: 1px solid #e1e8ed; border-radius: 6px; font-size: 14px; font-family: inherit;">
+                    <option value="gemini">Gemini</option>
+                    <option value="claude" selected>Claude Code</option>
+                </select>
                 <textarea id="prompt-input" placeholder="Enter your prompt..." rows="3">Write a Python script that prints the time in Berlin to console</textarea>
                 <input id="repo-input" placeholder="Repository URL (optional)" />
                 <div class="form-buttons">
@@ -723,7 +727,7 @@
                 <div class="buffering-indicator" id="buffering-indicator">📦 Buffering...</div>
                 <div id="log-content">Select a session to view logs</div>
                 <div id="input-panel">
-                    <div class="input-panel-header">⚠️ Gemini is waiting for your input:</div>
+                    <div class="input-panel-header">⚠️ Agent is waiting for your input:</div>
                     <div class="quick-input-container">
                         <input type="text" id="quick-input-field" class="quick-input-field" placeholder="Enter your response (e.g., 1, 2, y, n, or type your answer)">
                         <button id="quick-send-btn" class="btn btn-primary btn-sm" onclick="sendQuickInput()">Send</button>
@@ -738,7 +742,7 @@
     <div id="optionsModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Gemini is waiting for your input</h3>
+                <h3>Agent is waiting for your input</h3>
                 <span class="close">&times;</span>
             </div>
             <div class="modal-body">
@@ -898,6 +902,12 @@
         sessionId.className = 'session-id';
         sessionId.textContent = s.session_id;
         
+        // Add agent type badge
+        const agentBadge = document.createElement('span');
+        agentBadge.style.cssText = 'font-size: 11px; background: #e1e8ed; padding: 2px 6px; border-radius: 4px; margin-left: 8px; text-transform: uppercase; font-weight: 600;';
+        agentBadge.textContent = s.agent_type || 'gemini';
+        sessionId.appendChild(agentBadge);
+        
         const status = document.createElement('span');
         status.className = `session-status ${getStatusClass(s.status)}`;
         
@@ -1009,11 +1019,11 @@
         }
         
         async function copyAttachCommand(sessionId) {
-            const command = `tmux attach-session -t gemini_manager`;
+            const command = `tmux attach-session -t agent_manager`;
             const fullInstructions = `${command}
 # Then use Ctrl+B + arrow keys to navigate to the ${sessionId} pane
-# Or find the pane with: tmux list-panes -t gemini_manager -F "#{pane_id}: #{pane_title}" | grep "${sessionId}"
-# Then select it with: tmux select-pane -t gemini_manager:<pane_number>`;
+# Or find the pane with: tmux list-panes -t agent_manager -F "#{pane_id}: #{pane_title}" | grep "${sessionId}"
+# Then select it with: tmux select-pane -t agent_manager:<pane_number>`;
             
             try {
                 await navigator.clipboard.writeText(fullInstructions);
@@ -1448,6 +1458,7 @@
         async function createSession() {
             const prompt = document.getElementById('prompt-input').value.trim();
             const repo = document.getElementById('repo-input').value.trim();
+            const agentType = document.getElementById('agent-select').value;
             
             if (!prompt) {
                 alert('Please enter a prompt');
@@ -1455,12 +1466,17 @@
             }
             
             try {
-                const requestBody = { prompt };
+                const requestBody = { 
+                    prompt,
+                    agent_type: agentType
+                };
                 if (repo) requestBody.repo_url = repo;
                 
-                // Include YOLO mode setting
-                const yoloMode = document.getElementById('yolo-mode').checked;
-                requestBody.yolo_mode = yoloMode;
+                // Include YOLO mode setting only for agents that support it
+                if (agentType === 'gemini' || agentType === 'claude') {
+                    const yoloMode = document.getElementById('yolo-mode').checked;
+                    requestBody.yolo_mode = yoloMode;
+                }
                 
                 const response = await fetch('/api/sessions', { 
                     method: 'POST',
@@ -1501,27 +1517,31 @@
             const originalText = button.textContent;
             button.disabled = true;
             
-            // Define four test session configurations
+            // Define four test session configurations with mixed agents
             const testSessions = [
                 {
                     prompt: "Write a Python script that prints 'Hello Berlin!' every 5 seconds, exactly 10 times, with a counter showing which iteration it is",
+                    agent_type: "gemini",
                     yolo_mode: true,
-                    description: "Berlin Greeter"
+                    description: "Gemini: Berlin Greeter (YOLO)"
                 },
                 {
                     prompt: "Write a Python script that displays the current time in Berlin, New York, and Tokyo every 3 seconds for 15 iterations",
+                    agent_type: "claude",
                     yolo_mode: true,
-                    description: "World Clock"
+                    description: "Claude: World Clock (YOLO)"
                 },
                 {
                     prompt: "Write a Python script that creates a countdown timer from 30 seconds to 0, displaying each number with a 1-second delay",
-                    yolo_mode: true,
-                    description: "Countdown Timer"
+                    agent_type: "gemini",
+                    yolo_mode: false,
+                    description: "Gemini: Countdown Timer"
                 },
                 {
                     prompt: "Write a Python script that calculates and displays the first 20 numbers in the Fibonacci sequence, with a 2-second delay between each number",
+                    agent_type: "claude",
                     yolo_mode: false,
-                    description: "Fibonacci Generator"
+                    description: "Claude: Fibonacci Generator"
                 }
             ];
             
@@ -1543,6 +1563,7 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
                             prompt: session.prompt, 
+                            agent_type: session.agent_type,
                             yolo_mode: session.yolo_mode 
                         })
                     });
@@ -1661,6 +1682,22 @@
             try {
                 // Load YOLO mode setting
                 loadYoloMode();
+                
+                // Setup agent selection listener
+                document.getElementById('agent-select').addEventListener('change', (e) => {
+                    const yoloContainer = document.getElementById('yolo-mode-container');
+                    const yoloHelpText = yoloContainer.querySelector('span[style*="font-style: italic"]');
+                    
+                    // YOLO mode is available for both agents now
+                    yoloContainer.style.display = 'flex';
+                    
+                    // Update help text based on selected agent
+                    if (e.target.value === 'claude') {
+                        yoloHelpText.textContent = 'Skip permission prompts (Claude only)';
+                    } else {
+                        yoloHelpText.textContent = 'Auto-approve changes (Gemini only)';
+                    }
+                });
                 
                 // Initial load
                 await doRefresh();
