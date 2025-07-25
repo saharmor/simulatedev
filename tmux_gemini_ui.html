@@ -926,8 +926,15 @@
         const timer = document.createElement('div');
         timer.className = 'session-timer';
         timer.style.cssText = 'font-size: 11px; color: #6c757d; margin-top: 2px;';
-        timer.textContent = formatElapsedTime(s.start_time);
-        timer.dataset.startTime = s.start_time;
+        
+        // Show duration for completed sessions, elapsed time for active ones
+        if (s.status === 'DONE' || s.status === 'STOPPED') {
+            timer.textContent = formatDuration(s.start_time, s.end_time);
+            // Don't set dataset.startTime for completed sessions so they won't update
+        } else {
+            timer.textContent = formatElapsedTime(s.start_time);
+            timer.dataset.startTime = s.start_time;
+        }
         
         // Add YOLO mode indicator if enabled
         if (s.yolo_mode) {
@@ -1517,7 +1524,7 @@
             const originalText = button.textContent;
             button.disabled = true;
             
-            // Define four test session configurations with mixed agents
+            // Define four test session configurations - 2 Gemini and 2 Claude
             const testSessions = [
                 {
                     prompt: "Write a Python script that prints 'Hello Berlin!' every 5 seconds, exactly 10 times, with a counter showing which iteration it is",
@@ -1634,6 +1641,20 @@
                 const minutes = Math.floor(elapsed / 60);
                 const seconds = elapsed % 60;
                 return `${minutes}:${seconds.toString().padStart(2, '0')}m ago`;
+            }
+        }
+        
+        function formatDuration(startTime, endTime) {
+            if (!startTime || !endTime) return '';
+            
+            const duration = Math.floor(endTime - startTime);
+            
+            if (duration < 60) {
+                return `Took ${duration}s`;
+            } else {
+                const minutes = Math.floor(duration / 60);
+                const seconds = duration % 60;
+                return `Took ${minutes}:${seconds.toString().padStart(2, '0')}m`;
             }
         }
         
