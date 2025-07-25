@@ -426,6 +426,16 @@
             50% { opacity: 0.7; }
         }
         
+        /* YOLO mode styles */
+        .yolo-indicator {
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        #yolo-mode:checked + span {
+            color: #dc3545 !important;
+            font-weight: 700;
+        }
+        
         .session-prompt {
             font-size: 13px;
             color: #6c757d;
@@ -688,6 +698,13 @@
                     <button class="btn btn-success btn-sm" onclick="toggleCreateForm()">✨ New Session</button>
                     <button class="btn btn-warning btn-sm" onclick="runTestSessions()">🧪 Test Sessions</button>
                 </div>
+                <div id="yolo-mode-container" style="display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 8px; background: #f8f9fa; border-radius: 6px; border: 1px solid #e1e8ed; transition: all 0.2s ease;">
+                    <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: #495057; cursor: pointer;">
+                        <input type="checkbox" id="yolo-mode" style="margin: 0; cursor: pointer;" onchange="saveYoloMode()">
+                        <span>🚀 YOLO Mode</span>
+                    </label>
+                    <span style="font-size: 11px; color: #6c757d; font-style: italic;">Sends Ctrl+Y before running</span>
+                </div>
                 <button class="btn btn-danger btn-sm" onclick="cleanPreviousSessions()" style="width: 100%; margin-top: 8px;">🗑️ Clean Previous Sessions</button>
             </div>
             <div id="create-form">
@@ -877,27 +894,45 @@
             const title = document.createElement('div');
             title.className = 'session-title';
             
-            const sessionId = document.createElement('div');
-            sessionId.className = 'session-id';
-            sessionId.textContent = s.session_id;
-            
-            const status = document.createElement('span');
-            status.className = `session-status ${getStatusClass(s.status)}`;
-            
-            if (s.status === 'REQUIRES_USER_INPUT') {
-                status.textContent = 'INPUT REQUIRED';
-                status.title = 'Click to provide input';
-                status.onclick = async (e) => {
-                    e.stopPropagation();
-                    await selectSessionAndShowInput(s.session_id);
-                };
-            } else {
-                status.textContent = s.status;
-            }
-            
-            title.appendChild(sessionId);
-            header.appendChild(title);
-            header.appendChild(status);
+                    const sessionId = document.createElement('div');
+        sessionId.className = 'session-id';
+        sessionId.textContent = s.session_id;
+        
+        const status = document.createElement('span');
+        status.className = `session-status ${getStatusClass(s.status)}`;
+        
+        if (s.status === 'REQUIRES_USER_INPUT') {
+            status.textContent = 'INPUT REQUIRED';
+            status.title = 'Click to provide input';
+            status.onclick = async (e) => {
+                e.stopPropagation();
+                await selectSessionAndShowInput(s.session_id);
+            };
+        } else {
+            status.textContent = s.status;
+        }
+        
+        // Add timer display
+        const timer = document.createElement('div');
+        timer.className = 'session-timer';
+        timer.style.cssText = 'font-size: 11px; color: #6c757d; margin-top: 2px;';
+        timer.textContent = formatElapsedTime(s.start_time);
+        timer.dataset.startTime = s.start_time;
+        
+        // Add YOLO mode indicator if enabled
+        if (s.yolo_mode) {
+            const yoloIndicator = document.createElement('span');
+            yoloIndicator.className = 'yolo-indicator';
+            yoloIndicator.textContent = '🚀';
+            yoloIndicator.title = 'YOLO Mode: Sends Ctrl+Y before running';
+            yoloIndicator.style.cssText = 'font-size: 12px; margin-left: 4px; opacity: 0.8;';
+            sessionId.appendChild(yoloIndicator);
+        }
+        
+        title.appendChild(sessionId);
+        title.appendChild(timer);
+        header.appendChild(title);
+        header.appendChild(status);
             
             // Create prompt section
             const promptText = document.createElement('div');
@@ -1423,6 +1458,10 @@
                 const requestBody = { prompt };
                 if (repo) requestBody.repo_url = repo;
                 
+                // Include YOLO mode setting
+                const yoloMode = document.getElementById('yolo-mode').checked;
+                requestBody.yolo_mode = yoloMode;
+                
                 const response = await fetch('/api/sessions', { 
                     method: 'POST',
                     headers: {
@@ -1460,61 +1499,169 @@
         async function runTestSessions() {
             const button = event.target;
             const originalText = button.textContent;
-            button.textContent = 'Creating...';
             button.disabled = true;
             
-            try {
-                // Test Session 1: German hello world with delays
-                const session1Prompt = "Write a Python script that prints hello_world in German twice, with a 10-second sleep delay between each call";
-                
-                // Test Session 2: Generate Hallo multiple times
-                const session2Prompt = "Write a Python script that generates the word 'Hallo' 20 times with 5 seconds between each time";
-                
-                console.log('Creating test session 1...');
-                const response1 = await fetch('/api/sessions', { 
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: session1Prompt })
-                });
-                
-                console.log('Creating test session 2...');
-                const response2 = await fetch('/api/sessions', { 
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: session2Prompt })
-                });
-                
-                if (response1.ok && response2.ok) {
-                    console.log('Both test sessions created successfully');
-                    
-                    // Get session IDs from responses
-                    const result1 = await response1.json();
-                    const result2 = await response2.json();
-                    
-                    // Refresh the list
-                    await refreshSessions(true); // Immediate refresh for user action
-                    
-                    // Auto-select the first test session
-                    if (result1.session_id) {
-                        console.log(`Auto-selecting first test session: ${result1.session_id}`);
-                        selectSession(result1.session_id);
-                    }
-                } else {
-                    console.error('Failed to create one or both test sessions');
-                    alert('Failed to create test sessions');
+            // Define four test session configurations
+            const testSessions = [
+                {
+                    prompt: "Write a Python script that prints 'Hello Berlin!' every 5 seconds, exactly 10 times, with a counter showing which iteration it is",
+                    yolo_mode: true,
+                    description: "Berlin Greeter"
+                },
+                {
+                    prompt: "Write a Python script that displays the current time in Berlin, New York, and Tokyo every 3 seconds for 15 iterations",
+                    yolo_mode: true,
+                    description: "World Clock"
+                },
+                {
+                    prompt: "Write a Python script that creates a countdown timer from 30 seconds to 0, displaying each number with a 1-second delay",
+                    yolo_mode: true,
+                    description: "Countdown Timer"
+                },
+                {
+                    prompt: "Write a Python script that calculates and displays the first 20 numbers in the Fibonacci sequence, with a 2-second delay between each number",
+                    yolo_mode: false,
+                    description: "Fibonacci Generator"
                 }
+            ];
+            
+            const createdSessions = [];
+            let firstSessionId = null;
+            
+            try {
+                // Create sessions sequentially with 3-second delays
+                for (let i = 0; i < testSessions.length; i++) {
+                    const session = testSessions[i];
+                    
+                    // Update button text to show progress
+                    button.textContent = `Creating ${session.description}... (${i + 1}/4)`;
+                    
+                    console.log(`Creating test session ${i + 1}: ${session.description}${session.yolo_mode ? ' (YOLO)' : ''}`);
+                    
+                    const response = await fetch('/api/sessions', { 
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            prompt: session.prompt, 
+                            yolo_mode: session.yolo_mode 
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const result = await response.json();
+                        createdSessions.push({...result, description: session.description});
+                        
+                        // Store the first session ID for auto-selection
+                        if (i === 0) {
+                            firstSessionId = result.session_id;
+                        }
+                        
+                        console.log(`✅ Created ${session.description}: ${result.session_id}`);
+                        
+                        // Wait 3 seconds before creating the next session (except for the last one)
+                        if (i < testSessions.length - 1) {
+                            button.textContent = `Waiting 3s before next session... (${i + 1}/4 done)`;
+                            await new Promise(resolve => setTimeout(resolve, 3000));
+                        }
+                    } else {
+                        const error = await response.text();
+                        console.error(`❌ Failed to create ${session.description}:`, error);
+                        throw new Error(`Failed to create ${session.description}: ${error}`);
+                    }
+                }
+                
+                console.log(`🎉 Successfully created all ${createdSessions.length} test sessions`);
+                
+                // Final button update
+                button.textContent = 'Refreshing sessions...';
+                
+                // Refresh the session list
+                await refreshSessions(true); // Immediate refresh for user action
+                
+                // Auto-select the first test session
+                if (firstSessionId) {
+                    console.log(`🎯 Auto-selecting first test session: ${firstSessionId}`);
+                    selectSession(firstSessionId);
+                }
+                
+                // Show success message
+                const sessionSummary = createdSessions.map((s, i) => 
+                    `${i + 1}. ${s.description} (${testSessions[i].yolo_mode ? 'YOLO' : 'Manual'})`
+                ).join('\n');
+                
+                console.log(`📋 Test Sessions Created:\n${sessionSummary}`);
+                
             } catch (error) {
-                console.error('Error creating test sessions:', error);
-                alert('Error creating test sessions');
+                console.error('❌ Error during test session creation:', error);
+                alert(`Error creating test sessions: ${error.message}`);
             } finally {
                 button.textContent = originalText;
                 button.disabled = false;
             }
         }
         
+        // Timer functions
+        function formatElapsedTime(startTime) {
+            if (!startTime) return '';
+            
+            const now = Date.now() / 1000; // Convert to seconds
+            const elapsed = Math.floor(now - startTime);
+            
+            if (elapsed < 60) {
+                return `${elapsed}s ago`;
+            } else {
+                const minutes = Math.floor(elapsed / 60);
+                const seconds = elapsed % 60;
+                return `${minutes}:${seconds.toString().padStart(2, '0')}m ago`;
+            }
+        }
+        
+        function updateAllTimers() {
+            const timers = document.querySelectorAll('.session-timer');
+            timers.forEach(timer => {
+                const startTime = parseFloat(timer.dataset.startTime);
+                if (startTime) {
+                    timer.textContent = formatElapsedTime(startTime);
+                }
+            });
+        }
+        
+        // YOLO Mode functions
+        function saveYoloMode() {
+            const checkbox = document.getElementById('yolo-mode');
+            const container = document.getElementById('yolo-mode-container');
+            localStorage.setItem('yolo-mode', checkbox.checked);
+            console.log(`YOLO mode ${checkbox.checked ? 'enabled' : 'disabled'}`);
+            
+            // Update visual feedback
+            if (checkbox.checked) {
+                container.style.background = '#fff3cd';
+                container.style.borderColor = '#ffc107';
+            } else {
+                container.style.background = '#f8f9fa';
+                container.style.borderColor = '#e1e8ed';
+            }
+        }
+        
+        function loadYoloMode() {
+            const checkbox = document.getElementById('yolo-mode');
+            const container = document.getElementById('yolo-mode-container');
+            const saved = localStorage.getItem('yolo-mode');
+            checkbox.checked = saved === 'true';
+            
+            // Apply visual feedback on load
+            if (checkbox.checked) {
+                container.style.background = '#fff3cd';
+                container.style.borderColor = '#ffc107';
+            }
+        }
+        
         // Initialize
         (async () => {
             try {
+                // Load YOLO mode setting
+                loadYoloMode();
+                
                 // Initial load
                 await doRefresh();
                 
@@ -1525,6 +1672,9 @@
                         await doRefresh();
                     }
                 }, 3000);
+                
+                // Update timers every second
+                setInterval(updateAllTimers, 1000);
             } catch (error) {
                 document.getElementById('list').innerHTML = '<div class="error">Error loading sessions</div>';
             }

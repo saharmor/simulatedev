@@ -54,6 +54,7 @@ class SessionInfo:
     status: str  # SPAWNING, RUNNING, DONE, STOPPED, REQUIRES_USER_INPUT
     start_time: float
     end_time: Optional[float] = None
+    yolo_mode: bool = False
     
     def copy(self):
         """Create a safe copy for external use"""
@@ -63,7 +64,8 @@ class SessionInfo:
             repo_url=self.repo_url,
             status=self.status,
             start_time=self.start_time,
-            end_time=self.end_time
+            end_time=self.end_time,
+            yolo_mode=self.yolo_mode
         )
 
 @dataclass
@@ -96,9 +98,10 @@ class OutputBuffer:
 class TmuxGeminiManager:
     """Thread-safe manager for multiple tmux sessions with efficient streaming."""
 
-    def __init__(self, max_sessions: int = 50, default_repo: str | None = None):
+    def __init__(self, max_sessions: int = 50, default_repo: str | None = None, pre_commands: List[str] | None = None):
         self.max_sessions = max_sessions
         self.default_repo = default_repo or "https://github.com/saharmor/gemini-multimodal-playground"
+        self.pre_commands = pre_commands or []
         self.running = True
         self.main_session = "gemini_manager"
         self.logs_dir = Path("logs")
@@ -138,7 +141,12 @@ class TmuxGeminiManager:
             ]
         )
         self.logger = logging.getLogger(__name__)
-        self.logger.info("TmuxGeminiManager initialized (thread-safe version)")
+        self.logger.info("🚀 TmuxGeminiManager initialized (thread-safe version with YOLO mode support)")
+        
+        # Test logging output
+        print("=" * 60)
+        print("🔍 LOGGING TEST - If you don't see this, logging is broken!")
+        print("=" * 60)
 
     # ---------- Context Managers for Safe Access ----------
     @contextmanager
@@ -218,7 +226,7 @@ class TmuxGeminiManager:
         )
         self._run(["tmux", "send-keys", "-t", f"{self.main_session}:controller", welcome, "C-m"])
 
-    def create_session(self, prompt: str, repo_url: Optional[str] = None) -> Optional[str]:
+    def create_session(self, prompt: str, repo_url: Optional[str] = None, yolo_mode: bool = False) -> Optional[str]:
         """Create a new session (thread-safe)"""
         repo_url = repo_url or self.default_repo
         
@@ -237,9 +245,12 @@ class TmuxGeminiManager:
                 return None
             
             # Create session atomically
-            info = SessionInfo(sid, prompt, repo_url, "SPAWNING", time.time())
+            info = SessionInfo(sid, prompt, repo_url, "SPAWNING", time.time(), yolo_mode=yolo_mode)
             self._sessions[sid] = info
             self._output_buffers[sid] = OutputBuffer()
+            
+            # Log session creation with YOLO mode status
+            self.logger.info(f"📝 Created session {sid} with YOLO mode: {'ENABLED 🚀' if yolo_mode else 'DISABLED'}")
             
             # Create pane
             try:
@@ -260,13 +271,31 @@ class TmuxGeminiManager:
                     "Write a script that runs for 30 seconds, printing timestamps"
                 
                 project_path = os.getcwd()
-                gemini_cmd = f"cd '{project_path}' && gemini 2>&1"
-                self._run(["tmux", "send-keys", "-t", target, gemini_cmd, "C-m"])
+                
+                # Build command chain: pre-commands + gemini
+                all_commands = []
+                
+                # Add cd to project path
+                all_commands.append(f"cd '{project_path}'")
+                
+                # Add pre-commands
+                all_commands.extend(self.pre_commands)
+                
+                # Add gemini command
+                all_commands.append("gemini 2>&1")
+                
+                # Join all commands with &&
+                full_command = " && ".join(all_commands)
+                
+                self.logger.info(f"Executing command chain for session {sid}: {full_command}")
+                self._run(["tmux", "send-keys", "-t", target, full_command, "C-m"])
                 
                 # Store prompt
                 self._session_prompts[sid] = actual_prompt
                 
-                self.logger.info(f"Created session {sid}")
+                success_message = f"✅ Successfully created session {sid} (YOLO: {'ON' if yolo_mode else 'OFF'})"
+                self.logger.info(success_message)
+                print(f"📝 {success_message}")
                 return sid
                 
             except Exception as e:
@@ -321,9 +350,23 @@ class TmuxGeminiManager:
     def _capture_pane_output(self, pane: str) -> Optional[str]:
         """Capture output from tmux pane"""
         try:
-            result = self._run(["tmux", "capture-pane", "-p", "-t", pane])
+            # Add timeout to prevent hanging
+            result = subprocess.run(
+                ["tmux", "capture-pane", "-p", "-t", pane],
+                capture_output=True,
+                text=True,
+                timeout=5.0  # 5 second timeout
+            )
+            if result.returncode != 0:
+                # Don't log warnings for missing panes (normal after cleanup)
+                if "can't find pane" not in result.stderr:
+                    self.logger.warning(f"capture-pane failed for {pane}: {result.stderr}")
+                return None
             return result.stdout
-        except Exception:
+        except subprocess.TimeoutExpired:
+            return None
+        except Exception as e:
+            self.logger.error(f"capture-pane error for {pane}: {e}")
             return None
 
     async def _update_session_output(self, sid: str) -> Optional[str]:
@@ -363,11 +406,14 @@ class TmuxGeminiManager:
         if not websockets:
             return
         
-        # Send to all clients
+        # Send to all clients with timeout
         disconnected = []
         for ws in websockets:
             try:
-                await ws.send_text(changes)
+                # Add timeout to prevent hanging on WebSocket send
+                await asyncio.wait_for(ws.send_text(changes), timeout=2.0)
+            except asyncio.TimeoutError:
+                disconnected.append(ws)
             except Exception:
                 disconnected.append(ws)
         
@@ -383,9 +429,12 @@ class TmuxGeminiManager:
 
     async def _save_session_output_async(self, sid: str):
         """Save session output asynchronously"""
-        await asyncio.get_event_loop().run_in_executor(
-            None, self._save_session_output_sync, sid
-        )
+        try:
+            await asyncio.get_event_loop().run_in_executor(
+                None, self._save_session_output_sync, sid
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to save session {sid} output: {e}", exc_info=True)
 
     def _save_session_output_sync(self, sid: str):
         """Save session output to JSON (thread-safe)"""
@@ -420,11 +469,9 @@ class TmuxGeminiManager:
                 # Atomic rename
                 temp_path.replace(json_path)
                 
-                self.logger.info(f"Saved session {sid} output")
-                
             except Exception as e:
                 self.logger.error(f"Failed to save session {sid}: {e}")
-                if temp_path.exists():
+                if 'temp_path' in locals() and temp_path.exists():
                     temp_path.unlink()
 
     # ---------- Status Checking (Thread-Safe) ----------
@@ -441,10 +488,7 @@ class TmuxGeminiManager:
             return False
         
         ready_indicators = [
-            "Loaded cached credentials",
-            "Loading Gemini",
-            "Type your message",
-            "Command:"
+            "Type your message or @path/to/file",
         ]
         
         return any(indicator in output for indicator in ready_indicators)
@@ -489,16 +533,24 @@ class TmuxGeminiManager:
         if not output:
             return True
         
-        # Check for completion
+        # Check for completion by looking for ready indicators again
         lines = output.split('\n')[-10:]
         
-        # Look for "Type your message" after response
-        if not self._check_requires_input(sid):
-            for line in lines:
-                if "Type your message" in line:
+        # Don't mark done if session requires input
+        if self._check_requires_input(sid):
+            return False
+        
+        # Look for ready indicators (Gemini is ready for next prompt)
+        ready_indicators = [
+            "Type your message or @path/to/file",
+        ]
+        
+        for line in lines:
+            for indicator in ready_indicators:
+                if indicator in line:
                     return True
         
-        # Check for shell prompt
+        # Also check for shell prompt as fallback
         for line in lines:
             stripped = line.strip()
             if stripped and (
@@ -519,6 +571,12 @@ class TmuxGeminiManager:
         
         for sid in session_ids:
             try:
+                # Skip completed sessions to avoid trying to capture from non-existent panes
+                with self._state_lock:
+                    session = self._sessions.get(sid)
+                    if not session or session.status in ("DONE", "STOPPED"):
+                        continue
+                
                 # Update output
                 changes = await self._update_session_output(sid)
                 if changes:
@@ -543,13 +601,42 @@ class TmuxGeminiManager:
             
             # State machine
             if session.status == "SPAWNING":
+                # Debug logging for all sessions
+                self.logger.debug(f"Session {sid}: Checking SPAWNING state - yolo_mode={session.yolo_mode}")
+                
                 if self._check_requires_input(sid):
                     session.status = "REQUIRES_USER_INPUT"
                     self.logger.info(f"Session {sid}: SPAWNING -> REQUIRES_USER_INPUT")
                     self._rename_pane(pane, f"INPUT‑{sid}")
                 elif self._check_gemini_ready(sid):
                     session.status = "RUNNING"
-                    self.logger.info(f"Session {sid}: SPAWNING -> RUNNING")
+                    self.logger.info(f"Session {sid}: SPAWNING -> RUNNING (YOLO mode: {session.yolo_mode})")
+                    
+                    # Send CTRL+y if YOLO mode is enabled
+                    if session.yolo_mode:
+                        # Print to console AND log - double visibility
+                        yolo_message = f"🚀 Session {sid}: YOLO MODE ACTIVATED - Sending Ctrl+Y to toggle YOLO in Gemini"
+                        self.logger.info(yolo_message)
+                        print("\n" + "="*80)
+                        print(yolo_message)
+                        print("="*80 + "\n")
+                        
+                        try:
+                            # Send CTRL+Y using tmux standard notation - this should press and hold CTRL, press Y, then release both
+                            result = self._run(["tmux", "send-keys", "-t", pane, "C-y"])
+                            success_message = f"✅ Session {sid}: CTRL+Y sent successfully to pane {pane}"
+                            self.logger.info(success_message)
+                            print(f"✅ {success_message}")
+                            
+                            # Wait for Gemini to process the YOLO toggle
+                            await asyncio.sleep(1.5)
+                        except subprocess.CalledProcessError as e:
+                            error_message = f"❌ Session {sid}: Failed to send CTRL+Y: {e}"
+                            self.logger.error(error_message)
+                            print(f"❌ {error_message}")
+                            await asyncio.sleep(1)
+                    else:
+                        self.logger.debug(f"Session {sid}: YOLO mode disabled, skipping Ctrl+Y")
                     
                     # Send prompt
                     prompt = self._session_prompts.get(sid)
@@ -567,24 +654,44 @@ class TmuxGeminiManager:
                     self.logger.info(f"Session {sid}: RUNNING -> REQUIRES_USER_INPUT")
                     self._rename_pane(pane, f"INPUT‑{sid}")
                 elif self._check_done(sid):
-                    session.status = "DONE"
-                    session.end_time = time.time()
-                    await self._save_session_output_async(sid)
-                    self.logger.info(f"Session {sid}: RUNNING -> DONE")
-                    self._rename_pane(pane, f"DONE‑{sid}")
-                    await self._cleanup_session(sid)
+                    try:
+                        session.status = "DONE"
+                        session.end_time = time.time()
+                        # Schedule save in background to avoid blocking state transition
+                        save_task = asyncio.create_task(self._save_session_output_async(sid))
+                        save_task.add_done_callback(lambda t: None if not t.exception() else 
+                                                   self.logger.error(f"Background save failed for {sid}: {t.exception()}"))
+                        self.logger.info(f"Session {sid}: RUNNING -> DONE")
+                        self._rename_pane(pane, f"DONE‑{sid}")
+                        await self._cleanup_session(sid)
+                    except Exception as e:
+                        self.logger.error(f"Exception in DONE transition for {sid}: {e}", exc_info=True)
             
             elif session.status == "REQUIRES_USER_INPUT":
                 if self._check_done(sid):
                     session.status = "DONE"
                     session.end_time = time.time()
-                    await self._save_session_output_async(sid)
+                    # Schedule save in background to avoid blocking state transition
+                    save_task = asyncio.create_task(self._save_session_output_async(sid))
+                    save_task.add_done_callback(lambda t: None if not t.exception() else 
+                                               self.logger.error(f"Background save failed for {sid}: {t.exception()}"))
                     self.logger.info(f"Session {sid}: REQUIRES_USER_INPUT -> DONE")
                     self._rename_pane(pane, f"DONE‑{sid}")
                     await self._cleanup_session(sid)
                 elif not self._check_requires_input(sid):
                     session.status = "RUNNING"
                     self.logger.info(f"Session {sid}: REQUIRES_USER_INPUT -> RUNNING")
+                    
+                    # Send prompt if it hasn't been sent yet (this handles SPAWNING -> REQUIRES_USER_INPUT -> RUNNING path)
+                    prompt = self._session_prompts.get(sid)
+                    if prompt:
+                        self._run(["tmux", "send-keys", "-t", pane, "-l", prompt])
+                        await asyncio.sleep(0.5)
+                        self._run(["tmux", "send-keys", "-t", pane, "C-m"])
+                        self._prompt_sent_time[sid] = time.time()
+                        del self._session_prompts[sid]
+                        self.logger.info(f"Session {sid}: Sent delayed prompt after input resolution")
+                    
                     self._rename_pane(pane, f"RUNNING‑{sid}")
 
     async def _cleanup_session(self, sid: str):
@@ -594,9 +701,21 @@ class TmuxGeminiManager:
         
         if pane:
             try:
+                # Send CTRL+C twice quickly
                 self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(0.1)  # Short delay between CTRL+C commands
+                self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
+                await asyncio.sleep(0.3)  # Wait a bit for processes to terminate
+                
+                # Type exit and press enter
                 self._run(["tmux", "send-keys", "-t", pane, "exit", "C-m"], check=False)
+                await asyncio.sleep(0.2)  # Give it time to process
+                
+                # Remove pane mapping since the pane is now closed
+                with self._state_lock:
+                    if sid in self._pane_mapping:
+                        del self._pane_mapping[sid]
+                        
             except Exception as e:
                 self.logger.warning(f"Cleanup error for {sid}: {e}")
 
@@ -724,6 +843,7 @@ from pydantic import BaseModel
 class CreateSessionRequest(BaseModel):
     prompt: str
     repo_url: Optional[str] = None
+    yolo_mode: bool = False
 
 @app.post("/api/sessions")
 async def create_session(request: CreateSessionRequest):
@@ -731,7 +851,15 @@ async def create_session(request: CreateSessionRequest):
     if not request.prompt:
         return JSONResponse({"error": "Prompt required"}, status_code=400)
     
-    sid = manager.create_session(request.prompt, request.repo_url)
+    # Log the API request with YOLO mode status
+    api_message = f"🌐 API: Creating session with prompt='{request.prompt[:50]}...' yolo_mode={request.yolo_mode}"
+    manager.logger.info(api_message)
+    
+    # Extra visibility for YOLO mode requests
+    if request.yolo_mode:
+        print(f"\n🚀 YOLO MODE REQUEST RECEIVED: {request.prompt[:50]}...")
+    
+    sid = manager.create_session(request.prompt, request.repo_url, request.yolo_mode)
     if sid:
         return {"status": "created", "session_id": sid}
     
@@ -871,9 +999,9 @@ async def run_server():
     server = uvicorn.Server(config)
     await server.serve()
 
-async def main(max_sessions: int = 50, attach: bool = False, ui: bool = False, interactive: bool = True):
+async def main(max_sessions: int = 50, attach: bool = False, ui: bool = False, interactive: bool = True, pre_commands: List[str] | None = None):
     global manager
-    manager = TmuxGeminiManager(max_sessions=max_sessions)
+    manager = TmuxGeminiManager(max_sessions=max_sessions, pre_commands=pre_commands)
     manager.setup_main_session()
     
     # Start monitoring
@@ -902,6 +1030,10 @@ async def main(max_sessions: int = 50, attach: bool = False, ui: bool = False, i
         subprocess.Popen(["tmux", "attach", "-t", manager.main_session])
     
     print("🚀 Gemini tmux manager running. Press Ctrl+C to stop.")
+    print(f"🎯 YOLO Mode Support: ACTIVE - Toggle in UI or look for 🚀 messages in logs")
+    print(f"📊 Max sessions: {max_sessions}")
+    if pre_commands:
+        print(f"⚙️  Pre-commands: {pre_commands}")
     
     if interactive:
         print("📝 Enter prompts or 'q' to quit:")
@@ -968,14 +1100,21 @@ if __name__ == "__main__":
     parser.add_argument("--attach", action="store_true", help="Attach to tmux")
     parser.add_argument("--ui", action="store_true", help="Start web UI")
     parser.add_argument("--no-interactive", action="store_true", help="Run without interactive prompt")
+    parser.add_argument("--pre-commands", type=str, help="Comma-separated list of commands to run before gemini (e.g., 'source venv/bin/activate,pip install -r requirements.txt')")
     args = parser.parse_args()
+    
+    # Parse pre-commands from comma-separated string
+    pre_commands = []
+    if args.pre_commands:
+        pre_commands = [cmd.strip() for cmd in args.pre_commands.split(',') if cmd.strip()]
     
     try:
         asyncio.run(main(
             max_sessions=args.max, 
             attach=args.attach, 
             ui=args.ui,
-            interactive=not args.no_interactive
+            interactive=not args.no_interactive,
+            pre_commands=pre_commands
         ))
     except KeyboardInterrupt:
         print("\n🛑 Stopped by user")
