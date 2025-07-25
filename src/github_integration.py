@@ -703,17 +703,48 @@ class GitHubIntegration:
             print(f"ERROR: Failed to update remote origin: {e.stderr.decode()}")
             return False
     
-    def parse_repo_info(self, repo_url: str) -> Dict[str, str]:
+    def parse_repo_info(self, repo_url: str) -> Dict[str, Any]:
         """Parse repository URL to extract owner and repo name"""
-        parsed = urlparse(repo_url)
-        path_parts = parsed.path.strip('/').split('/')
+        import re
         
-        if len(path_parts) >= 2:
-            owner = path_parts[0]
-            repo = path_parts[1].replace('.git', '')
-            return {"owner": owner, "repo": repo}
-        else:
-            raise ValueError(f"Invalid repository URL: {repo_url}")
+        if not repo_url:
+            raise ValueError("Repository URL is required")
+        
+        # Handle different GitHub URL formats
+        patterns = [
+            # Full issue URL: https://github.com/owner/repo/issues/123
+            r'github\.com/([^/]+)/([^/]+)/issues/(\d+)',
+            # Repository URL: https://github.com/owner/repo
+            r'github\.com/([^/]+)/([^/]+)/?$',
+            # Repository URL with .git: https://github.com/owner/repo.git
+            r'github\.com/([^/]+)/([^/]+)\.git/?$',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, repo_url)
+            if match:
+                owner = match.group(1)
+                repo = match.group(2)
+                
+                result = {
+                    'owner': owner,
+                    'repo': repo,
+                    'repo_url': f"https://github.com/{owner}/{repo}",
+                    'type': 'repository'
+                }
+                
+                # If it's an issue URL, extract issue number
+                if len(match.groups()) >= 3:
+                    issue_number = int(match.group(3))
+                    result.update({
+                        'issue_number': issue_number,
+                        'issue_url': repo_url,
+                        'type': 'issue'
+                    })
+                
+                return result
+        
+        raise ValueError(f"Invalid GitHub repository URL: {repo_url}")
     
     def setup_git_config(self, repo_path: str):
         """Setup git configuration for the repository"""

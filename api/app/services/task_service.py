@@ -90,7 +90,7 @@ class TaskService:
             task = Task(
                 id=task_id,
                 user_id=user_id,
-                repo_url="https://github.com/repos/{repo_info['owner']}/{repo_info['repo']}/",
+                repo_url=repo_info['repo_url'],
                 repo_owner=repo_info['owner'],
                 repo_name=repo_info['repo'],
                 issue_number=final_issue_number,
@@ -106,7 +106,7 @@ class TaskService:
             db.add(task)
             db.commit()
             
-            print(f"Task created: {task_id} for repo https://github.com/repos/{repo_info['owner']}/{repo_info['repo']}/")
+            print(f"Task created: {task_id} for repo {repo_info['repo_url']}")
             return task_id
             
         finally:
@@ -437,7 +437,7 @@ class TaskService:
 Issue Description:
 {body}
 
-Repository: https://github.com/repos/{repo_info['owner']}/{repo_info['repo']}/
+Repository: {repo_info['repo_url']}
 
 Please analyze the issue, understand the requirements, and implement the necessary changes to resolve this issue. Make sure to:
 1. Understand the problem described in the issue
