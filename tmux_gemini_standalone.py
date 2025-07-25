@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-Gemini CLI tmux Manager + Lean UI (v3.1)
+Gemini CLI tmux Manager + Lean UI (v4.1)
 ========================================
-Fixes `rename-pane` target errors on macOS/Linux by renaming panes via their
-**pane‑id only** (e.g. `%14`) instead of the composite
-`session:window.%id` string that tmux rejects.
+Thread-safe version with all race conditions fixed.
 
-Other behaviour unchanged:
-• Detached‑first manager (inspired by claude_code_agent_farm)
-• FastAPI + WebSocket UI on `http://localhost:8000` when `--ui` flag passed
-• Logs for each session in `logs/<session>.log`
+Key improvements:
+- Comprehensive locking for all shared state
+- Atomic state transitions
+- Safe WebSocket management
+- Proper async/await usage
+- Robust error recovery
 
 Run:
 ```bash
-pip install fastapi uvicorn "python-multipart>=0.0.5"
+pip install fastapi uvicorn "python-multipart>=0.0.5" aiofiles
 python gemini_tmux_manager.py --attach --ui
 ```
 """
@@ -23,24 +23,27 @@ import subprocess
 import time
 import json
 import hashlib
-import random
 import sys
 import os
 import signal
 import threading
 import logging
 import re
-import tempfile
 import fcntl
-from typing import Dict, List, Optional
-from dataclasses import dataclass, asdict
+import queue
+from typing import Dict, List, Optional, Set, Tuple
+from dataclasses import dataclass, asdict, field
 from datetime import datetime
 from pathlib import Path
+from collections import defaultdict
+from contextlib import contextmanager
+from pydantic import BaseModel
 
 # ---------------------------- UI DEPS ----------------------------------------
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
+import aiofiles
 
 # ---------------------------- Data Models ------------------------------------
 @dataclass
@@ -51,98 +54,140 @@ class SessionInfo:
     status: str  # SPAWNING, RUNNING, DONE, STOPPED, REQUIRES_USER_INPUT
     start_time: float
     end_time: Optional[float] = None
+    
+    def copy(self):
+        """Create a safe copy for external use"""
+        return SessionInfo(
+            session_id=self.session_id,
+            prompt=self.prompt,
+            repo_url=self.repo_url,
+            status=self.status,
+            start_time=self.start_time,
+            end_time=self.end_time
+        )
 
-# ---------------------------- Manager ----------------------------------------
+@dataclass
+class OutputBuffer:
+    """Tracks output changes for efficient streaming"""
+    content: str = ""
+    version: int = 0
+    
+    def get_content(self) -> str:
+        """Get current content safely"""
+        return self.content
+    
+    def update_content(self, new_content: str) -> Optional[str]:
+        """Update content and return changes if any"""
+        if new_content != self.content:
+            # Find common prefix
+            common_len = 0
+            for i, (a, b) in enumerate(zip(self.content, new_content)):
+                if a != b:
+                    break
+                common_len = i + 1
+            
+            changes = new_content[common_len:]
+            self.content = new_content
+            self.version += 1
+            return changes
+        return None
+
+# ---------------------------- Thread-Safe Manager ----------------------------
 class TmuxGeminiManager:
-    """Manages multiple tmux sessions for Gemini CLI (mock‑mode)."""
+    """Thread-safe manager for multiple tmux sessions with efficient streaming."""
 
     def __init__(self, max_sessions: int = 50, default_repo: str | None = None):
-        self.sessions: Dict[str, SessionInfo] = {}
         self.max_sessions = max_sessions
         self.default_repo = default_repo or "https://github.com/saharmor/gemini-multimodal-playground"
         self.running = True
         self.main_session = "gemini_manager"
-        self.pane_mapping: Dict[str, str] = {}
-        self.next_pane_index = 0
-        self.logs_dir = Path("logs"); self.logs_dir.mkdir(exist_ok=True)
+        self.logs_dir = Path("logs")
+        self.logs_dir.mkdir(exist_ok=True)
         self.status_file = Path("tmux_sessions_status.json")
         
-        # Cursor tracking for efficient WebSocket streaming
-        self._cursors: Dict[str, int] = {}  # session_id → byte offset in log
+        # Thread safety - single lock for all shared state
+        self._state_lock = threading.RLock()
         
-        # Thread safety for JSON operations
-        self._json_save_lock = threading.Lock()
+        # Protected state (access only with _state_lock)
+        self._sessions: Dict[str, SessionInfo] = {}
+        self._pane_mapping: Dict[str, str] = {}
+        self._output_buffers: Dict[str, OutputBuffer] = {}
+        self._session_prompts: Dict[str, str] = {}
+        self._prompt_sent_time: Dict[str, float] = {}
         
-        # Log rotation settings (guardrails for runaway size)
-        self.max_log_size = 20_000_000  # 20MB per log file
-        self.max_backup_count = 3
+        # WebSocket management with separate lock
+        self._ws_lock = threading.RLock()
+        self._active_websockets: Dict[str, Set[WebSocket]] = defaultdict(set)
+        self._websocket_positions: Dict[str, Dict[int, int]] = defaultdict(dict)
         
-        # Setup debug logging
+        # File operations lock
+        self._file_lock = threading.Lock()
+        
+        # Setup logging
+        self._setup_logging()
+
+    def _setup_logging(self):
+        """Setup debug logging"""
         debug_log_file = self.logs_dir / "debug.log"
         logging.basicConfig(
             level=logging.DEBUG,
-            format='%(asctime)s - %(levelname)s - %(message)s',
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
                 logging.FileHandler(debug_log_file),
                 logging.StreamHandler()
             ]
         )
         self.logger = logging.getLogger(__name__)
-        self.logger.info("TmuxGeminiManager initialized")
+        self.logger.info("TmuxGeminiManager initialized (thread-safe version)")
 
-    # ---------- low‑level helpers ----------
+    # ---------- Context Managers for Safe Access ----------
+    @contextmanager
+    def _session_context(self, sid: str):
+        """Context manager for safe session access"""
+        with self._state_lock:
+            session = self._sessions.get(sid)
+            if session:
+                yield session
+            else:
+                yield None
+
+    @contextmanager
+    def _atomic_state_update(self):
+        """Context manager for atomic state updates"""
+        with self._state_lock:
+            yield
+
+    # ---------- Helper Methods ----------
     def _run(self, cmd: List[str], check: bool = True) -> subprocess.CompletedProcess:
-        return subprocess.run(cmd, capture_output=True, text=True, check=check)
+        """Run command safely"""
+        try:
+            return subprocess.run(cmd, capture_output=True, text=True, check=check)
+        except Exception as e:
+            self.logger.error(f"Command failed: {' '.join(cmd)} - {e}")
+            raise
 
     def _generate_id(self, prompt: str, repo_url: str) -> str:
         return "gemini_" + hashlib.md5(f"{prompt}:{repo_url}".encode()).hexdigest()[:8]
 
     def _rename_pane(self, full_target: str, new_name: str):
-        """Set pane title using select-pane -T (modern tmux syntax)."""
-        pane_id = full_target.split(".")[-1]  # e.g. '%14'
-        self._run(["tmux", "select-pane", "-t", pane_id, "-T", new_name])
+        """Set pane title safely"""
+        try:
+            pane_id = full_target.split(".")[-1]
+            self._run(["tmux", "select-pane", "-t", pane_id, "-T", new_name])
+        except Exception as e:
+            self.logger.warning(f"Failed to rename pane: {e}")
     
-    def _rotate_log_if_needed(self, session_id: str):
-        """Rotate log file if it exceeds max size (guardrail for runaway size)"""
-        log_path = self.logs_dir / f"{session_id}.log"
-        
-        if not log_path.exists():
-            return
-            
-        # Check file size
-        if log_path.stat().st_size > self.max_log_size:
-            self.logger.info(f"Rotating log for session {session_id} (size: {log_path.stat().st_size} bytes)")
-            
-            # Rotate existing backup files
-            for i in range(self.max_backup_count - 1, 0, -1):
-                old_backup = self.logs_dir / f"{session_id}.log.{i}"
-                new_backup = self.logs_dir / f"{session_id}.log.{i + 1}"
-                if old_backup.exists():
-                    if new_backup.exists():
-                        new_backup.unlink()
-                    old_backup.rename(new_backup)
-            
-            # Move current log to .1
-            backup_path = self.logs_dir / f"{session_id}.log.1"
-            if backup_path.exists():
-                backup_path.unlink()
-            log_path.rename(backup_path)
-            
-            # Reset cursor since we rotated the file
-            self._cursors[session_id] = 0
-            
-            self.logger.info(f"Log rotated for session {session_id}")
-            return True
-        return False
-
     def _clean_terminal_output(self, text: str) -> str:
-        """Clean terminal output by removing ANSI escape codes and control sequences"""
-        # Regex to remove ANSI escape codes and terminal control sequences
+        """Clean terminal output by removing ANSI escape codes"""
+        if not text:
+            return ""
+            
+        # Comprehensive ANSI escape code removal
         ansi_escape = re.compile(r'''
             \x1B  # ESC
-            (?:   # 7-bit C1 Fe (except CSI)
+            (?:   # 7-bit C1 Fe
                 [@-Z\\-_]
-            |     # or [ for CSI, followed by parameter bytes
+            |     # or [ for CSI
                 \[
                 [0-?]*  # Parameter bytes
                 [ -/]*  # Intermediate bytes
@@ -150,939 +195,790 @@ class TmuxGeminiManager:
             )
         ''', re.VERBOSE)
         
-        # Additional patterns for other terminal sequences
-        terminal_sequences = re.compile(r'\x1b\[[0-9;]*[mGKHJF]|\x1b\[[\?0-9]*[hl]|\x07|\r')
-        
-        # Remove ANSI escape codes and terminal control sequences
+        # Remove various terminal sequences
         text = ansi_escape.sub('', text)
-        text = terminal_sequences.sub('', text)
+        text = re.sub(r'\x1b\[[0-9;]*[mGKHJF]', '', text)
+        text = re.sub(r'\x1b\[[\?0-9]*[hl]', '', text)
+        text = re.sub(r'\x07|\r', '', text)
         
-        # Remove non-printable characters except newline, tab, and box-drawing characters
-        text = ''.join(char for char in text if char.isprintable() or char in '\n\t' or ord(char) >= 0x2500)
-        
-        # Clean up any remaining escape sequences
-        text = re.sub(r'\[[\?0-9]*[KJhl]', '', text)
+        # Keep only printable characters plus newline/tab
+        text = ''.join(c for c in text if c.isprintable() or c in '\n\t' or ord(c) >= 0x2500)
         
         return text
 
-    def _save_session_output_to_json(self, session_id: str):
-        """Thread-safe saving of completed session output to JSON file for efficient loading"""
-        # Use thread lock to prevent concurrent access
-        with self._json_save_lock:
-            json_path = self.logs_dir / f"{session_id}_output.json"
-            
-            try:
-                # Capture final output directly from tmux pane (cleaner than reading full log)
-                final_output = self._capture_final_session_output(session_id)
-                
-                # Check if output has changed from what was previously saved
-                if json_path.exists():
-                    if self._is_output_unchanged(json_path, final_output):
-                        self.logger.debug(f"Output for session {session_id} unchanged, skipping save")
-                        return
-                    else:
-                        self.logger.debug(f"Output for session {session_id} has changed, updating JSON")
-                
-                # Get session info
-                session_info = self.sessions.get(session_id)
-                
-                # Create JSON structure
-                output_data = {
-                    "session_id": session_id,
-                    "status": "DONE",
-                    "prompt": session_info.prompt if session_info else "",
-                    "repo_url": session_info.repo_url if session_info else "",
-                    "start_time": session_info.start_time if session_info else None,
-                    "end_time": session_info.end_time if session_info else None,
-                    "output": final_output,
-                    "saved_at": time.time()
-                }
-                
-                # Atomic write: write to temp file first, then rename
-                temp_path = json_path.with_suffix('.tmp')
-                try:
-                    with open(temp_path, 'w', encoding='utf-8') as f:
-                        # Add file lock during write
-                        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-                        json.dump(output_data, f, indent=2, ensure_ascii=False)
-                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-                    
-                    # Atomic rename - this is the critical atomic operation
-                    temp_path.rename(json_path)
-                    self.logger.info(f"Saved session {session_id} output to JSON: {json_path}")
-                    
-                except Exception as e:
-                    # Clean up temp file if write failed
-                    if temp_path.exists():
-                        temp_path.unlink()
-                    raise e
-                    
-            except Exception as e:
-                self.logger.error(f"Failed to save session {session_id} output to JSON: {e}")
-
-    def _is_output_unchanged(self, json_path: Path, new_output: str) -> bool:
-        """Check if the new output is identical to the previously saved output"""
-        try:
-            with open(json_path, 'r', encoding='utf-8') as f:
-                existing_data = json.load(f)
-                existing_output = existing_data.get('output', '')
-                
-                # Compare the actual output content (strip whitespace for comparison)
-                return existing_output.strip() == new_output.strip()
-                
-        except Exception as e:
-            self.logger.warning(f"Failed to read existing output for comparison: {e}")
-            # If we can't read the existing file, assume it's different and save
-            return False
-
-    def _capture_final_session_output(self, session_id: str) -> str:
-        """Capture the final, clean output from a session's tmux pane"""
-        pane = self.pane_mapping.get(session_id)
-        if not pane:
-            # Fallback to reading log file if pane is gone
-            return self._read_session_log_fallback(session_id)
-        
-        try:
-            # Capture the current pane content (this is the final state)
-            result = self._run(["tmux", "capture-pane", "-p", "-t", pane])
-            raw_output = result.stdout
-            
-            # Clean the output to remove terminal sequences
-            cleaned_output = self._clean_terminal_output(raw_output)
-            
-            return cleaned_output
-            
-        except subprocess.CalledProcessError as e:
-            self.logger.warning(f"Failed to capture pane output for session {session_id}: {e}")
-            # Fallback to reading log file
-            return self._read_session_log_fallback(session_id)
-    
-    def _read_session_log_fallback(self, session_id: str) -> str:
-        """Fallback method to read session output from log file"""
-        log_path = self.logs_dir / f"{session_id}.log"
-        
-        if not log_path.exists():
-            self.logger.warning(f"Log file for session {session_id} not found")
-            return ""
-        
-        try:
-            with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-                raw_output = f.read()
-            
-            # Clean the output
-            cleaned_output = self._clean_terminal_output(raw_output)
-            return cleaned_output
-            
-        except Exception as e:
-            self.logger.error(f"Failed to read log file for session {session_id}: {e}")
-            return ""
-
-    # ---------- session / pane creation ----------
+    # ---------- Session Management (Thread-Safe) ----------
     def setup_main_session(self):
+        """Setup the main tmux session"""
         subprocess.run(["tmux", "kill-session", "-t", self.main_session], check=False)
         self._run(["tmux", "new-session", "-d", "-s", self.main_session, "-n", "controller"])
         welcome = (
             "clear && echo '🚀 GEMINI SESSION MANAGER' && "
             "echo '=========================' && "
-            "echo 'Use tmux prefix + arrow keys to navigate panes; prefix+d to detach.'"
+            "echo 'Sessions will appear as panes.'"
         )
         self._run(["tmux", "send-keys", "-t", f"{self.main_session}:controller", welcome, "C-m"])
 
-    def _new_pane(self, session_id: str) -> str:
-        self._run(["tmux", "split-window", "-t", f"{self.main_session}:controller", "-h"])
-        self._run(["tmux", "select-layout", "-t", f"{self.main_session}:controller", "tiled"])
-        pane_id = self._run([
-            "tmux", "list-panes", "-t", f"{self.main_session}:controller", "-F", "#{pane_id}"
-        ]).stdout.strip().split("\n")[-1]
-        target = f"{self.main_session}:controller.{pane_id}"
-        self.pane_mapping[session_id] = target
-        return target
-
-    def _pipe_log(self, pane_target: str, session_id: str):
-        log_path = self.logs_dir / f"{session_id}.log"
-        # Use pipe-pane -o to attach pipe only the first time (append-once pattern)
-        self._run([
-            "tmux", "pipe-pane",
-            "-o",                       # <= attach pipe only the first time
-            "-t", pane_target,
-            f"exec cat >> '{log_path}'" # append everything the pane prints
-        ], check=False)
-
-    def create_session(self, prompt: str, repo_url: Optional[str] = None):
+    def create_session(self, prompt: str, repo_url: Optional[str] = None) -> Optional[str]:
+        """Create a new session (thread-safe)"""
         repo_url = repo_url or self.default_repo
-        if sum(1 for s in self.sessions.values() if s.status in ("SPAWNING", "RUNNING", "REQUIRES_USER_INPUT")) >= self.max_sessions:
-            self.logger.warning(f"Max sessions ({self.max_sessions}) reached")
-            print("⚠️  Max sessions reached"); return
-        sid = self._generate_id(prompt, repo_url)
-        if sid in self.sessions and self.sessions[sid].status != "DONE":
-            self.logger.warning(f"Session {sid} already exists with status {self.sessions[sid].status}")
-            print("⚠️  Session already running for that prompt + repo"); return
         
-        info = SessionInfo(sid, prompt, repo_url, "SPAWNING", time.time())
-        self.sessions[sid] = info
-        self.logger.info(f"Created session {sid} with status SPAWNING")
-        
-        pane = self._new_pane(sid)
-        self.logger.debug(f"Created pane {pane} for session {sid}")
-        
-        # Set up pipe-pane logging (append-once pattern)
-        self._pipe_log(pane, sid)
-        self.logger.debug(f"Set up pipe-pane logging for session {sid}")
-        
-        # Use Gemini in non-interactive mode with direct input/output
-        project_path = os.getcwd()
-        log_path = self.logs_dir / f"{sid}.log"
-        
-        # Determine the actual prompt to use
-        if not prompt or prompt.strip() == "":
-            actual_prompt = "Write a script that runs for a random time between 1-3 minutes, printing hello world every 6 seconds"
-        else:
-            actual_prompt = prompt
-        
-        self.logger.info(f"Session {sid} using prompt: {actual_prompt[:100]}...")
-        
-        # Run Gemini with direct execution and better output capture
-        escaped_prompt = actual_prompt.replace("'", "'\"'\"'")
-        
-        # First, start Gemini interactively
-        gemini_start_cmd = f"cd '{project_path}' && gemini 2>&1 | tee -a {log_path}"
-        self._run(["tmux", "send-keys", "-t", pane, gemini_start_cmd, "C-m"])
-        self.logger.debug(f"Started Gemini interactively in pane {pane}")
-        
-        # Store the prompt so we can send it after Gemini is ready
-        self.session_prompts = getattr(self, 'session_prompts', {})
-        self.session_prompts[sid] = actual_prompt
-        self.logger.debug(f"Stored prompt for session {sid}, will send when Gemini is ready")
-        
-        # Keep in SPAWNING status until we detect Gemini is ready
-        self.logger.debug(f"Session {sid} created in SPAWNING status, will check for Gemini readiness")
-        self._rename_pane(pane, f"SPAWNING‑{sid}")
-        print(f"🔥 Started Gemini session {sid} in pane {pane} with prompt: {actual_prompt[:50]}...")
-
-    # ---------- status upkeep ----------
-    def _check_gemini_ready(self, sid: str) -> bool:
-        """Check if Gemini has loaded and is ready to receive input"""
-        pane = self.pane_mapping.get(sid)
-        if not pane:
-            self.logger.debug(f"Session {sid}: No pane mapping found for readiness check")
-            return False
-        
-        try:
-            out = self._run(["tmux", "capture-pane", "-p", "-t", pane]).stdout
-            lines = out.split('\n')
-            recent_lines = lines[-10:]  # Check more lines for readiness indicators
+        with self._atomic_state_update():
+            # Check limits
+            active_count = sum(1 for s in self._sessions.values() 
+                             if s.status in ("SPAWNING", "RUNNING", "REQUIRES_USER_INPUT"))
+            if active_count >= self.max_sessions:
+                self.logger.warning(f"Max sessions ({self.max_sessions}) reached")
+                return None
             
-            self.logger.debug(f"Session {sid}: Checking readiness in recent lines: {recent_lines}")
+            # Generate session ID
+            sid = self._generate_id(prompt, repo_url)
+            if sid in self._sessions and self._sessions[sid].status != "DONE":
+                self.logger.warning(f"Session {sid} already exists")
+                return None
             
-            # Look for indicators that Gemini has loaded and is processing
-            for line in recent_lines:
-                line_clean = line.strip()
-                if ("Loaded cached credentials" in line_clean or 
-                    "Loading Gemini" in line_clean or
-                    line_clean.startswith("Command:") or
-                    "Type your message" in line_clean):
-                    self.logger.debug(f"Session {sid}: Found Gemini readiness indicator: '{line_clean}'")
-                    return True
+            # Create session atomically
+            info = SessionInfo(sid, prompt, repo_url, "SPAWNING", time.time())
+            self._sessions[sid] = info
+            self._output_buffers[sid] = OutputBuffer()
             
-            return False
-            
-        except subprocess.CalledProcessError as e:
-            self.logger.debug(f"Session {sid}: Pane capture failed during readiness check: {e}")
-            return False
-
-    def _check_requires_user_input(self, sid: str) -> bool:
-        """Check if Gemini is waiting for user confirmation/input"""
-        pane = self.pane_mapping.get(sid)
-        if not pane:
-            return False
-        
-        try:
-            out = self._run(["tmux", "capture-pane", "-p", "-t", pane]).stdout
-            
-            # Check the entire output, not just after "context left)"
-            # as the waiting indicator might appear anywhere
-            self.logger.debug(f"Session {sid}: Checking full output for user input requirement")
-            
-            # Look for patterns indicating user input is required
-            user_input_indicators = [
-                "Apply this change?",
-                "Waiting for user confirmation",
-                "● 1. Yes, allow once",
-                "● 2. Yes, allow always", 
-                "4. No (esc)",
-                "(Use Enter to select)",
-                "Press any key to continue",
-                "Would you like to",
-                "Continue? (y/n)",
-                "Confirm? (yes/no)"
-            ]
-            
-            for indicator in user_input_indicators:
-                if indicator in out:
-                    self.logger.debug(f"Session {sid}: Found user input indicator: '{indicator}'")
-                    return True
-            
-            return False
-            
-        except subprocess.CalledProcessError as e:
-            self.logger.debug(f"Session {sid}: Pane capture failed during user input check: {e}")
-            return False
-
-    def _check_done(self, sid: str):
-        pane = self.pane_mapping.get(sid)
-        if not pane: 
-            self.logger.debug(f"Session {sid}: No pane mapping found, considering done")
-            return True
-        
-        # Check if pane still exists (it might have been killed when stopped)
-        try:
-            out = self._run(["tmux", "capture-pane", "-p", "-t", pane]).stdout
-            
-            # Log a snippet of the captured output for debugging
-            lines = out.split('\n')
-            recent_lines = lines[-10:]  # Check more lines for completion indicators
-            self.logger.debug(f"Session {sid}: Recent lines captured: {recent_lines}")
-            
-            # For interactive Gemini, look for "Type your message" appearing again after response
-            # But only after we've had time for Gemini to process and respond
-            prompt_sent_time = getattr(self, 'prompt_sent_time', {}).get(sid, 0)
-            time_since_prompt = time.time() - prompt_sent_time
-            
-            # Only check for completion if enough time has passed since we sent the prompt
-            # AND we're not waiting for user input
-            if time_since_prompt > 10:  # At least 10 seconds for Gemini to process
-                # Check if we're NOT in a waiting state
-                if not self._check_requires_user_input(sid):
-                    for line in recent_lines:
-                        stripped_line = line.strip()
-                        if "Type your message" in stripped_line:
-                            self.logger.debug(f"Session {sid}: Found 'Type your message' after {time_since_prompt:.1f}s, marking as done: '{stripped_line}'")
-                            return True
-            else:
-                self.logger.debug(f"Session {sid}: Only {time_since_prompt:.1f}s since prompt sent, waiting longer before checking completion")
-            
-            # Also check for shell prompt as fallback (in case Gemini exited)
-            # But be more specific to avoid false positives from Gemini UI
-            for line in recent_lines:
-                stripped_line = line.strip()
-                # Check if it's a macOS/Linux shell prompt pattern
-                # Look for username@hostname patterns or just % at the end
-                if stripped_line and (
-                    # Standard shell prompt endings
-                    (stripped_line.endswith('%') or stripped_line.endswith('$')) and
-                    # Must not be part of Gemini UI
-                    'gemini-' not in stripped_line and
-                    'sandbox' not in stripped_line and
-                    # Either short prompt or contains @ (user@host pattern)
-                    (len(stripped_line) < 50 or '@' in stripped_line)
-                ):
-                    self.logger.debug(f"Session {sid}: Found actual shell prompt, marking as done: '{stripped_line}'")
-                    return True
-            
-            self.logger.debug(f"Session {sid}: No completion indicators found, still running")
-            return False
-            
-        except subprocess.CalledProcessError as e:
-            # Pane no longer exists (was killed), consider it done
-            self.logger.debug(f"Session {sid}: Pane capture failed (pane killed?): {e}")
-            return True
-
-    def update(self):
-        # Check for log rotation on active sessions
-        for sid in list(self.sessions.keys()):
-            if self.sessions[sid].status in ("RUNNING", "SPAWNING", "REQUIRES_USER_INPUT"):
-                self._rotate_log_if_needed(sid)
-        
-        for sid, info in list(self.sessions.items()):
-            # Handle SPAWNING -> RUNNING transition
-            if info.status == "SPAWNING" and self._check_gemini_ready(sid):
-                info.status = "RUNNING"
-                self.logger.info(f"Session {sid} status changed: SPAWNING -> RUNNING")
+            # Create pane
+            try:
+                self._run(["tmux", "split-window", "-t", f"{self.main_session}:controller", "-h"])
+                self._run(["tmux", "select-layout", "-t", f"{self.main_session}:controller", "tiled"])
+                pane_id = self._run([
+                    "tmux", "list-panes", "-t", f"{self.main_session}:controller", "-F", "#{pane_id}"
+                ]).stdout.strip().split("\n")[-1]
                 
-                # Now send the stored prompt to Gemini
-                if hasattr(self, 'session_prompts') and sid in self.session_prompts:
-                    pane = self.pane_mapping.get(sid)
-                    if pane:
-                        prompt = self.session_prompts[sid]
-                        # Send the prompt using literal mode to handle special characters
-                        self._run(["tmux", "send-keys", "-t", pane, "-l", prompt])
-                        # Add a small delay to let Gemini process the pasted text before sending Enter
-                        time.sleep(0.5)
-                        self._run(["tmux", "send-keys", "-t", pane, "C-m"])
-                        self.logger.debug(f"Sent prompt to Gemini: {prompt[:100]}...")
-                        
-                        # Mark when we sent the prompt so we can distinguish from initial ready state
-                        self.prompt_sent_time = getattr(self, 'prompt_sent_time', {})
-                        self.prompt_sent_time[sid] = time.time()
-                        
-                        self._rename_pane(pane, f"RUNNING‑{sid}")
-                        
-                        # Clean up the stored prompt
-                        del self.session_prompts[sid]
-                    
-            # Handle RUNNING -> REQUIRES_USER_INPUT transition
-            elif info.status in ["RUNNING", "SPAWNING"] and self._check_requires_user_input(sid):
-                info.status = "REQUIRES_USER_INPUT"
-                self.logger.info(f"Session {sid} status changed: RUNNING -> REQUIRES_USER_INPUT")
-                pane = self.pane_mapping.get(sid)
-                if pane:
-                    self._rename_pane(pane, f"INPUT‑{sid}")
-                    
-            # Handle REQUIRES_USER_INPUT -> RUNNING or DONE transitions
-            elif info.status == "REQUIRES_USER_INPUT":
-                if self._check_done(sid):
-                    info.status = "DONE"; info.end_time = time.time()
-                    self.logger.info(f"Session {sid} status changed: REQUIRES_USER_INPUT -> DONE")
-                    
-                    # Perform cleanup for sessions that go directly from USER_INPUT to DONE
-                    pane = self.pane_mapping.get(sid)
-                    if pane:
-                        try:
-                            # Save session output to JSON BEFORE closing - captures final clean state
-                            self._save_session_output_to_json(sid)
-                            
-                            # Stop pipe-pane logging first
-                            self._run(["tmux", "pipe-pane", "-t", pane], check=False)
-                            self.logger.debug(f"Session {sid}: Stopped pipe-pane logging")
-                            
-                            # For interactive Gemini, send two Ctrl+C to exit Gemini CLI, then exit shell
-                            self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
-                            time.sleep(0.5)
-                            self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
-                            time.sleep(0.5)
-                            self._run(["tmux", "send-keys", "-t", pane, "exit", "C-m"], check=False)
-                            time.sleep(0.5)
-                            self.logger.debug(f"Session {sid}: Sent exit commands to pane")
-                            
-                            # Write completion message to log file
-                            log_path = self.logs_dir / f"{sid}.log"
-                            with open(log_path, 'a') as f:
-                                f.write("✅ Gemini session completed and closed\n")
-                            
-                            # Rename pane to show completion
-                            self._rename_pane(pane, f"DONE‑{sid}")
-                            
-                            print(f"✅ Session {sid} completed and Gemini CLI closed")
-                            self.logger.info(f"Session {sid} cleanup completed")
-                            
-                        except subprocess.CalledProcessError as e:
-                            # Pane no longer exists, clean up mapping
-                            self.logger.debug(f"Session {sid}: Cleanup failed, pane may be gone: {e}")
-                            if sid in self.pane_mapping:
-                                del self.pane_mapping[sid]
-                elif not self._check_requires_user_input(sid):
-                    # User provided input, back to running
-                    info.status = "RUNNING"
-                    self.logger.info(f"Session {sid} status changed: REQUIRES_USER_INPUT -> RUNNING")
-                    pane = self.pane_mapping.get(sid)
-                    if pane:
-                        self._rename_pane(pane, f"RUNNING‑{sid}")
-                        
-            # Handle RUNNING -> DONE transition  
-            elif info.status == "RUNNING" and self._check_done(sid):
-                info.status = "DONE"; info.end_time = time.time()
-                self.logger.info(f"Session {sid} status changed: RUNNING -> DONE")
+                target = f"{self.main_session}:controller.{pane_id}"
+                self._pane_mapping[sid] = target
                 
-                pane = self.pane_mapping.get(sid)
-                if pane:
-                    try:
-                        # Save session output to JSON BEFORE closing - captures final clean state
-                        self._save_session_output_to_json(sid)
-                        
-                        # Stop pipe-pane logging first
-                        self._run(["tmux", "pipe-pane", "-t", pane], check=False)
-                        self.logger.debug(f"Session {sid}: Stopped pipe-pane logging")
-                        
-                        # For interactive Gemini, send two Ctrl+C to exit Gemini CLI, then exit shell
-                        self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
-                        time.sleep(0.5)
-                        self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
-                        time.sleep(0.5)
-                        self._run(["tmux", "send-keys", "-t", pane, "exit", "C-m"], check=False)
-                        time.sleep(0.5)
-                        self.logger.debug(f"Session {sid}: Sent exit commands to pane")
-                        
-                        # Write completion message to log file
-                        log_path = self.logs_dir / f"{sid}.log"
-                        with open(log_path, 'a') as f:
-                            f.write("✅ Gemini session completed and closed\n")
-                        
-                        # Rename pane to show completion
-                        self._rename_pane(pane, f"DONE‑{sid}")
-                        
-                        print(f"✅ Session {sid} completed and Gemini CLI closed")
-                        self.logger.info(f"Session {sid} cleanup completed")
-                        
-                    except subprocess.CalledProcessError as e:
-                        # Pane no longer exists, clean up mapping
-                        self.logger.debug(f"Session {sid}: Cleanup failed, pane may be gone: {e}")
-                        if sid in self.pane_mapping:
-                            del self.pane_mapping[sid]
+                # Set pane title
+                self._rename_pane(target, f"SPAWNING‑{sid}")
+                
+                # Start Gemini
+                actual_prompt = prompt.strip() if prompt.strip() else \
+                    "Write a script that runs for 30 seconds, printing timestamps"
+                
+                project_path = os.getcwd()
+                gemini_cmd = f"cd '{project_path}' && gemini 2>&1"
+                self._run(["tmux", "send-keys", "-t", target, gemini_cmd, "C-m"])
+                
+                # Store prompt
+                self._session_prompts[sid] = actual_prompt
+                
+                self.logger.info(f"Created session {sid}")
+                return sid
+                
+            except Exception as e:
+                # Rollback on error
+                self.logger.error(f"Failed to create session {sid}: {e}")
+                del self._sessions[sid]
+                del self._output_buffers[sid]
+                if sid in self._pane_mapping:
+                    del self._pane_mapping[sid]
+                return None
 
     def stop_session(self, sid: str) -> bool:
-        """Stop a running session"""
-        if sid not in self.sessions:
-            self.logger.warning(f"Attempted to stop non-existent session {sid}")
-            return False
-        
-        info = self.sessions[sid]
-        if info.status not in ("RUNNING", "REQUIRES_USER_INPUT"):
-            self.logger.warning(f"Attempted to stop session {sid} with status {info.status}")
-            return False
-        
-        self.logger.info(f"Stopping session {sid}")
-        
-        pane = self.pane_mapping.get(sid)
-        if pane:
-            # Stop pipe-pane logging first to prevent capturing shell artifacts
-            self._run(["tmux", "pipe-pane", "-t", pane], check=False)
-            self.logger.debug(f"Session {sid}: Stopped pipe-pane logging for manual stop")
+        """Stop a session (thread-safe)"""
+        with self._atomic_state_update():
+            if sid not in self._sessions:
+                return False
             
-            # For interactive Gemini, send two Ctrl+C to exit Gemini CLI, then exit shell
-            self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
-            time.sleep(0.5)
-            self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
-            time.sleep(0.5)
-            # Exit shell if needed
-            self._run(["tmux", "send-keys", "-t", pane, "exit", "C-m"], check=False)
-            time.sleep(0.5)
-            self.logger.debug(f"Session {sid}: Sent stop and exit commands")
+            info = self._sessions[sid]
+            if info.status not in ("RUNNING", "REQUIRES_USER_INPUT", "SPAWNING"):
+                return False
             
-            # Write final message directly to log file instead of through tmux
-            log_path = self.logs_dir / f"{sid}.log"
-            with open(log_path, 'a') as f:
-                f.write("🛑 Session stopped by user\n")
-            
-            # Kill the pane immediately after stopping logging
-            time.sleep(0.5)
-            pane_id = pane.split(".")[-1]  # Extract pane ID (e.g., '%14')
-            self._run(["tmux", "kill-pane", "-t", pane_id], check=False)
-            self.logger.debug(f"Session {sid}: Killed pane {pane_id}")
-            
-            # Clean up pane mapping
-            del self.pane_mapping[sid]
+            pane = self._pane_mapping.get(sid)
+            if pane:
+                try:
+                    # Send termination signals
+                    self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
+                    time.sleep(0.2)
+                    self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
+                    time.sleep(0.2)
+                    self._run(["tmux", "send-keys", "-t", pane, "exit", "C-m"], check=False)
+                    time.sleep(0.3)
+                    
+                    # Kill pane
+                    pane_id = pane.split(".")[-1]
+                    self._run(["tmux", "kill-pane", "-t", pane_id], check=False)
+                    
+                    del self._pane_mapping[sid]
+                except Exception as e:
+                    self.logger.error(f"Error stopping session {sid}: {e}")
             
             # Update status
             info.status = "STOPPED"
             info.end_time = time.time()
-            self.logger.info(f"Session {sid} status changed: RUNNING -> STOPPED")
             
-            print(f"🛑 Stopped session {sid}")
+            # Save output asynchronously
+            asyncio.create_task(self._save_session_output_async(sid))
+            
+            self.logger.info(f"Stopped session {sid}")
+            return True
+
+    # ---------- Output Management (Thread-Safe) ----------
+    def _capture_pane_output(self, pane: str) -> Optional[str]:
+        """Capture output from tmux pane"""
+        try:
+            result = self._run(["tmux", "capture-pane", "-p", "-t", pane])
+            return result.stdout
+        except Exception:
+            return None
+
+    async def _update_session_output(self, sid: str) -> Optional[str]:
+        """Update output buffer and return changes (thread-safe)"""
+        with self._state_lock:
+            pane = self._pane_mapping.get(sid)
+            buffer = self._output_buffers.get(sid)
+            
+            if not pane or not buffer:
+                return None
+        
+        # Capture outside lock to avoid blocking
+        raw_output = self._capture_pane_output(pane)
+        if not raw_output:
+            return None
+        
+        # Clean output
+        cleaned = self._clean_terminal_output(raw_output)
+        
+        # Update buffer atomically
+        with self._state_lock:
+            buffer = self._output_buffers.get(sid)
+            if buffer:
+                return buffer.update_content(cleaned)
+        
+        return None
+
+    async def _broadcast_changes(self, sid: str, changes: str):
+        """Broadcast changes to all WebSockets (thread-safe)"""
+        if not changes:
+            return
+        
+        # Get websockets safely
+        with self._ws_lock:
+            websockets = list(self._active_websockets.get(sid, set()))
+        
+        if not websockets:
+            return
+        
+        # Send to all clients
+        disconnected = []
+        for ws in websockets:
+            try:
+                await ws.send_text(changes)
+            except Exception:
+                disconnected.append(ws)
+        
+        # Clean up disconnected
+        if disconnected:
+            with self._ws_lock:
+                ws_set = self._active_websockets.get(sid, set())
+                for ws in disconnected:
+                    ws_set.discard(ws)
+                    ws_id = id(ws)
+                    if ws_id in self._websocket_positions.get(sid, {}):
+                        del self._websocket_positions[sid][ws_id]
+
+    async def _save_session_output_async(self, sid: str):
+        """Save session output asynchronously"""
+        await asyncio.get_event_loop().run_in_executor(
+            None, self._save_session_output_sync, sid
+        )
+
+    def _save_session_output_sync(self, sid: str):
+        """Save session output to JSON (thread-safe)"""
+        json_path = self.logs_dir / f"{sid}_output.json"
+        
+        with self._file_lock:
+            try:
+                # Get data safely
+                with self._state_lock:
+                    session = self._sessions.get(sid)
+                    buffer = self._output_buffers.get(sid)
+                    
+                    if not session:
+                        return
+                    
+                    output_data = {
+                        "session_id": sid,
+                        "status": session.status,
+                        "prompt": session.prompt,
+                        "repo_url": session.repo_url,
+                        "start_time": session.start_time,
+                        "end_time": session.end_time,
+                        "output": buffer.get_content() if buffer else "",
+                        "saved_at": time.time()
+                    }
+                
+                # Write atomically
+                temp_path = json_path.with_suffix('.tmp')
+                with open(temp_path, 'w', encoding='utf-8') as f:
+                    json.dump(output_data, f, indent=2, ensure_ascii=False)
+                
+                # Atomic rename
+                temp_path.replace(json_path)
+                
+                self.logger.info(f"Saved session {sid} output")
+                
+            except Exception as e:
+                self.logger.error(f"Failed to save session {sid}: {e}")
+                if temp_path.exists():
+                    temp_path.unlink()
+
+    # ---------- Status Checking (Thread-Safe) ----------
+    def _check_gemini_ready(self, sid: str) -> bool:
+        """Check if Gemini is ready (thread-safe)"""
+        with self._state_lock:
+            pane = self._pane_mapping.get(sid)
+        
+        if not pane:
+            return False
+        
+        output = self._capture_pane_output(pane)
+        if not output:
+            return False
+        
+        ready_indicators = [
+            "Loaded cached credentials",
+            "Loading Gemini",
+            "Type your message",
+            "Command:"
+        ]
+        
+        return any(indicator in output for indicator in ready_indicators)
+
+    def _check_requires_input(self, sid: str) -> bool:
+        """Check if session needs input (thread-safe)"""
+        with self._state_lock:
+            pane = self._pane_mapping.get(sid)
+        
+        if not pane:
+            return False
+        
+        output = self._capture_pane_output(pane)
+        if not output:
+            return False
+        
+        input_indicators = [
+            "Apply this change?",
+            "● 1. Yes, allow once",
+            "● 2. Yes, allow always",
+            "(Use Enter to select)",
+            "Continue? (y/n)",
+            "Confirm?"
+        ]
+        
+        return any(indicator in output for indicator in input_indicators)
+
+    def _check_done(self, sid: str) -> bool:
+        """Check if session is done (thread-safe)"""
+        with self._state_lock:
+            pane = self._pane_mapping.get(sid)
+            prompt_sent = self._prompt_sent_time.get(sid, 0)
+        
+        if not pane:
             return True
         
-        self.logger.warning(f"Session {sid}: No pane mapping found for stop")
+        # Wait minimum time after prompt
+        if time.time() - prompt_sent < 10:
+            return False
+        
+        output = self._capture_pane_output(pane)
+        if not output:
+            return True
+        
+        # Check for completion
+        lines = output.split('\n')[-10:]
+        
+        # Look for "Type your message" after response
+        if not self._check_requires_input(sid):
+            for line in lines:
+                if "Type your message" in line:
+                    return True
+        
+        # Check for shell prompt
+        for line in lines:
+            stripped = line.strip()
+            if stripped and (
+                (stripped.endswith('%') or stripped.endswith('$')) and
+                len(stripped) < 50 and
+                'gemini-' not in stripped
+            ):
+                return True
+        
         return False
 
+    # ---------- Main Update Loop (Thread-Safe) ----------
+    async def update_sessions(self):
+        """Update all sessions (thread-safe)"""
+        # Get session list snapshot
+        with self._state_lock:
+            session_ids = list(self._sessions.keys())
+        
+        for sid in session_ids:
+            try:
+                # Update output
+                changes = await self._update_session_output(sid)
+                if changes:
+                    await self._broadcast_changes(sid, changes)
+                
+                # Handle state transitions atomically
+                await self._handle_state_transition(sid)
+                
+            except Exception as e:
+                self.logger.error(f"Error updating session {sid}: {e}")
 
+    async def _handle_state_transition(self, sid: str):
+        """Handle state transitions atomically"""
+        with self._atomic_state_update():
+            session = self._sessions.get(sid)
+            if not session or session.status in ("DONE", "STOPPED"):
+                return
+            
+            pane = self._pane_mapping.get(sid)
+            if not pane:
+                return
+            
+            # State machine
+            if session.status == "SPAWNING":
+                if self._check_requires_input(sid):
+                    session.status = "REQUIRES_USER_INPUT"
+                    self.logger.info(f"Session {sid}: SPAWNING -> REQUIRES_USER_INPUT")
+                    self._rename_pane(pane, f"INPUT‑{sid}")
+                elif self._check_gemini_ready(sid):
+                    session.status = "RUNNING"
+                    self.logger.info(f"Session {sid}: SPAWNING -> RUNNING")
+                    
+                    # Send prompt
+                    prompt = self._session_prompts.get(sid)
+                    if prompt:
+                        self._run(["tmux", "send-keys", "-t", pane, "-l", prompt])
+                        await asyncio.sleep(0.5)
+                        self._run(["tmux", "send-keys", "-t", pane, "C-m"])
+                        self._prompt_sent_time[sid] = time.time()
+                        del self._session_prompts[sid]
+                        self._rename_pane(pane, f"RUNNING‑{sid}")
+            
+            elif session.status == "RUNNING":
+                if self._check_requires_input(sid):
+                    session.status = "REQUIRES_USER_INPUT"
+                    self.logger.info(f"Session {sid}: RUNNING -> REQUIRES_USER_INPUT")
+                    self._rename_pane(pane, f"INPUT‑{sid}")
+                elif self._check_done(sid):
+                    session.status = "DONE"
+                    session.end_time = time.time()
+                    await self._save_session_output_async(sid)
+                    self.logger.info(f"Session {sid}: RUNNING -> DONE")
+                    self._rename_pane(pane, f"DONE‑{sid}")
+                    await self._cleanup_session(sid)
+            
+            elif session.status == "REQUIRES_USER_INPUT":
+                if self._check_done(sid):
+                    session.status = "DONE"
+                    session.end_time = time.time()
+                    await self._save_session_output_async(sid)
+                    self.logger.info(f"Session {sid}: REQUIRES_USER_INPUT -> DONE")
+                    self._rename_pane(pane, f"DONE‑{sid}")
+                    await self._cleanup_session(sid)
+                elif not self._check_requires_input(sid):
+                    session.status = "RUNNING"
+                    self.logger.info(f"Session {sid}: REQUIRES_USER_INPUT -> RUNNING")
+                    self._rename_pane(pane, f"RUNNING‑{sid}")
+
+    async def _cleanup_session(self, sid: str):
+        """Clean up completed session"""
+        with self._state_lock:
+            pane = self._pane_mapping.get(sid)
+        
+        if pane:
+            try:
+                self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
+                await asyncio.sleep(0.2)
+                self._run(["tmux", "send-keys", "-t", pane, "exit", "C-m"], check=False)
+            except Exception as e:
+                self.logger.warning(f"Cleanup error for {sid}: {e}")
 
     def save_status(self):
-        self.status_file.write_text(json.dumps({sid: asdict(s) for sid, s in self.sessions.items()}, indent=2))
+        """Save status to file (thread-safe)"""
+        with self._file_lock:
+            try:
+                with self._state_lock:
+                    data = {sid: asdict(s.copy()) for sid, s in self._sessions.items()}
+                
+                temp_path = self.status_file.with_suffix('.tmp')
+                with open(temp_path, 'w') as f:
+                    json.dump(data, f, indent=2)
+                temp_path.replace(self.status_file)
+                
+            except Exception as e:
+                self.logger.error(f"Failed to save status: {e}")
 
-    async def ticker(self):
+    async def monitor_loop(self):
+        """Main monitoring loop"""
         while self.running:
-            self.update()
-            self.save_status()
-            await asyncio.sleep(5)  # Sample Gemini sessions every 5 seconds
+            try:
+                await self.update_sessions()
+                self.save_status()
+            except Exception as e:
+                self.logger.error(f"Monitor loop error: {e}")
+            
+            await asyncio.sleep(2)
 
-# ---------------------------- UI Layer ---------------------------------------
+    # ---------- Public API Methods (Thread-Safe) ----------
+    def get_sessions(self) -> List[Dict]:
+        """Get all sessions safely"""
+        with self._state_lock:
+            return [asdict(s.copy()) for s in self._sessions.values()]
+    
+    def get_session(self, sid: str) -> Optional[Dict]:
+        """Get single session safely"""
+        with self._state_lock:
+            session = self._sessions.get(sid)
+            return asdict(session.copy()) if session else None
+    
+    def get_session_output(self, sid: str) -> Optional[str]:
+        """Get session output safely"""
+        with self._state_lock:
+            buffer = self._output_buffers.get(sid)
+            return buffer.get_content() if buffer else None
+    
+    async def send_input(self, sid: str, response: str) -> bool:
+        """Send input to session"""
+        with self._state_lock:
+            session = self._sessions.get(sid)
+            pane = self._pane_mapping.get(sid)
+            
+            if not session or session.status != "REQUIRES_USER_INPUT" or not pane:
+                return False
+        
+        try:
+            self._run(["tmux", "send-keys", "-t", pane, response])
+            await asyncio.sleep(1)
+            self._run(["tmux", "send-keys", "-t", pane, "C-m"])
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to send input: {e}")
+            return False
+
+    def register_websocket(self, sid: str, ws: WebSocket):
+        """Register WebSocket connection"""
+        with self._ws_lock:
+            self._active_websockets[sid].add(ws)
+            self._websocket_positions[sid][id(ws)] = 0
+    
+    def unregister_websocket(self, sid: str, ws: WebSocket):
+        """Unregister WebSocket connection"""
+        with self._ws_lock:
+            self._active_websockets[sid].discard(ws)
+            ws_id = id(ws)
+            if ws_id in self._websocket_positions.get(sid, {}):
+                del self._websocket_positions[sid][ws_id]
+
+# ---------------------------- FastAPI App ------------------------------------
 app = FastAPI()
-manager: Optional[TmuxGeminiManager] = None  # will be set in main()
+manager: Optional[TmuxGeminiManager] = None
 
 @app.get("/api/sessions")
 async def list_sessions():
-    return {"sessions": [asdict(s) for s in manager.sessions.values()]}
+    return {"sessions": manager.get_sessions()}
 
 @app.get("/api/sessions/{sid}")
-async def session_meta(sid: str):
-    s = manager.sessions.get(sid)
-    return asdict(s) if s else {"error": "not found"}
+async def get_session(sid: str):
+    session = manager.get_session(sid)
+    if not session:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+    return session
 
 @app.get("/api/sessions/{sid}/output")
 async def get_session_output(sid: str):
-    """Get saved output for a completed session"""
-    if sid not in manager.sessions:
-        return {"error": "Session not found"}, 404
+    """Get session output"""
+    session = manager.get_session(sid)
+    if not session:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
     
-    session_info = manager.sessions[sid]
-    if session_info.status != "DONE":
-        return {"error": "Session is not completed yet"}, 400
-    
+    # Try saved file first
     json_path = manager.logs_dir / f"{sid}_output.json"
-    if not json_path.exists():
-        return {"error": "Output file not found"}, 404
+    if json_path.exists():
+        try:
+            async with aiofiles.open(json_path, 'r') as f:
+                content = await f.read()
+                return json.loads(content)
+        except Exception:
+            pass
     
-    try:
-        with open(json_path, 'r', encoding='utf-8') as f:
-            output_data = json.load(f)
-        return output_data
-    except Exception as e:
-        manager.logger.error(f"Failed to read output for session {sid}: {e}")
-        return {"error": "Failed to read output file"}, 500
+    # Return current buffer
+    output = manager.get_session_output(sid)
+    if output is not None:
+        return {
+            "session_id": sid,
+            "status": session["status"],
+            "output": output
+        }
+    
+    return JSONResponse({"error": "No output available"}, status_code=404)
+
+from pydantic import BaseModel
+
+class CreateSessionRequest(BaseModel):
+    prompt: str
+    repo_url: Optional[str] = None
+
+@app.post("/api/sessions")
+async def create_session(request: CreateSessionRequest):
+    """Create new session"""
+    if not request.prompt:
+        return JSONResponse({"error": "Prompt required"}, status_code=400)
+    
+    sid = manager.create_session(request.prompt, request.repo_url)
+    if sid:
+        return {"status": "created", "session_id": sid}
+    
+    return JSONResponse({"error": "Failed to create session"}, status_code=500)
 
 @app.post("/api/sessions/{sid}/stop")
 async def stop_session(sid: str):
-    success = manager.stop_session(sid)
-    if success:
+    """Stop session"""
+    if manager.stop_session(sid):
         return {"status": "stopped", "session_id": sid}
-    else:
-        return {"error": "Session not found or not running"}, 404
-
-@app.get("/api/sessions/{sid}/options")
-async def get_input_options(sid: str):
-    """Get the current input options for a session that requires user input"""
-    if sid not in manager.sessions:
-        return {"error": "Session not found"}, 404
-    
-    info = manager.sessions[sid]
-    if info.status != "REQUIRES_USER_INPUT":
-        return {"error": "Session is not waiting for input"}, 400
-    
-    pane = manager.pane_mapping.get(sid)
-    if not pane:
-        return {"error": "Session pane not found"}, 500
-    
-    # Capture the current pane content to show options
-    try:
-        result = manager._run(["tmux", "capture-pane", "-p", "-t", pane])
-        output = result.stdout
-        
-        # Extract the last meaningful section (usually the options)
-        lines = output.split('\n')
-        # Find the last section with options (look for numbered items)
-        options_section = []
-        in_options = False
-        
-        for line in reversed(lines):
-            if line.strip():
-                options_section.insert(0, line)
-                # Look for numbered options or confirmation prompts
-                if any(pattern in line for pattern in ['● 1.', '● 2.', '1)', '2)', 'Apply this change?', 'Continue?']):
-                    in_options = True
-                # Stop if we hit a clear boundary
-                elif in_options and ('╭' in line or '╰' in line or 'context left)' in line):
-                    break
-            elif in_options:
-                # Empty line in options section
-                options_section.insert(0, line)
-        
-        return {
-            "session_id": sid,
-            "status": "waiting_for_input", 
-            "options": options_section[-20:],  # Last 20 lines to show context
-            "full_output": output.split('\n')[-30:]  # Last 30 lines for full context
-        }
-        
-    except subprocess.CalledProcessError as e:
-        return {"error": f"Failed to capture options: {e}"}, 500
+    return JSONResponse({"error": "Session not found"}, status_code=404)
 
 @app.post("/api/sessions/{sid}/input")
 async def send_input(sid: str, response: str):
-    """Send input to a session that's waiting for user confirmation"""
-    if sid not in manager.sessions:
-        return {"error": "Session not found"}, 404
+    """Send input to session"""
+    if await manager.send_input(sid, response):
+        return {"status": "input_sent", "session_id": sid}
+    return JSONResponse({"error": "Cannot send input"}, status_code=400)
+
+@app.get("/api/sessions/{sid}/options")
+async def get_session_options(sid: str):
+    """Get session options/context for user input"""
+    session = manager.get_session(sid)
+    if not session:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
     
-    info = manager.sessions[sid]
-    if info.status != "REQUIRES_USER_INPUT":
-        return {"error": "Session is not waiting for input"}, 400
+    if session["status"] != "REQUIRES_USER_INPUT":
+        return JSONResponse({"error": "Session does not require input"}, status_code=400)
     
-    pane = manager.pane_mapping.get(sid)
-    if not pane:
-        return {"error": "Session pane not found"}, 500
+    # Get current output to show context
+    output = manager.get_session_output(sid)
+    if output is not None:
+        # Split into lines and get recent context
+        lines = output.split('\n')
+        return {
+            "session_id": sid,
+            "status": session["status"],
+            "full_output": lines,
+            "context": lines[-20:] if len(lines) > 20 else lines  # Last 20 lines
+        }
     
-    # Send the user's response
-    manager._run(["tmux", "send-keys", "-t", pane, response])
-    # Add a small delay to let Gemini process the input before sending Enter
-    time.sleep(0.3)
-    manager._run(["tmux", "send-keys", "-t", pane, "C-m"])
-    manager.logger.info(f"Sent user input '{response}' to session {sid}")
-    
-    return {"status": "input_sent", "session_id": sid, "response": response}
+    return JSONResponse({"error": "No context available"}, status_code=404)
 
 @app.post("/api/sessions/clean")
 async def clean_previous_sessions():
-    """Clean all DONE and STOPPED sessions"""
+    """Clean up all previous sessions"""
     try:
-        cleaned_sessions = []
-        sessions_to_remove = []
-        
-        for sid, info in manager.sessions.items():
-            if info.status in ("DONE", "STOPPED"):
-                sessions_to_remove.append(sid)
-                cleaned_sessions.append(sid)
-                
-                # Clean up the pane mapping if it exists
-                if sid in manager.pane_mapping:
-                    del manager.pane_mapping[sid]
-                
-                # Remove log files
-                log_path = manager.logs_dir / f"{sid}.log"
-                if log_path.exists():
+        with manager._atomic_state_update():
+            # Get all sessions that are done or stopped
+            sessions_to_clean = []
+            for sid, session in manager._sessions.items():
+                if session.status in ("DONE", "STOPPED"):
+                    sessions_to_clean.append(sid)
+            
+            # Remove from internal state
+            for sid in sessions_to_clean:
+                if sid in manager._sessions:
+                    del manager._sessions[sid]
+                if sid in manager._output_buffers:
+                    del manager._output_buffers[sid]
+                if sid in manager._pane_mapping:
+                    pane = manager._pane_mapping[sid]
                     try:
-                        log_path.unlink()
-                        manager.logger.info(f"Removed log file for session {sid}")
-                    except OSError as e:
-                        manager.logger.warning(f"Failed to remove log file for session {sid}: {e}")
+                        # Kill the pane if it still exists
+                        pane_id = pane.split(".")[-1]
+                        manager._run(["tmux", "kill-pane", "-t", pane_id], check=False)
+                    except Exception:
+                        pass
+                    del manager._pane_mapping[sid]
                 
-                # Remove any rotated log files
-                for i in range(1, manager.max_backup_count + 1):
-                    backup_path = manager.logs_dir / f"{sid}.log.{i}"
-                    if backup_path.exists():
-                        try:
-                            backup_path.unlink()
-                            manager.logger.info(f"Removed backup log file {backup_path}")
-                        except OSError as e:
-                            manager.logger.warning(f"Failed to remove backup log file {backup_path}: {e}")
+                # Clean up any remaining state
+                if sid in manager._session_prompts:
+                    del manager._session_prompts[sid]
+                if sid in manager._prompt_sent_time:
+                    del manager._prompt_sent_time[sid]
         
-        # Remove sessions from manager
-        for sid in sessions_to_remove:
-            del manager.sessions[sid]
-            # Clean up cursor tracking
-            if sid in manager._cursors:
-                del manager._cursors[sid]
+        # Clean up WebSocket connections
+        with manager._ws_lock:
+            for sid in sessions_to_clean:
+                if sid in manager._active_websockets:
+                    del manager._active_websockets[sid]
+                if sid in manager._websocket_positions:
+                    del manager._websocket_positions[sid]
         
-        manager.logger.info(f"Cleaned {len(cleaned_sessions)} previous sessions: {cleaned_sessions}")
-        
-        return {
-            "status": "success", 
-            "cleaned_sessions": cleaned_sessions,
-            "count": len(cleaned_sessions)
-        }
+        manager.logger.info(f"Cleaned {len(sessions_to_clean)} sessions")
+        return {"status": "cleaned", "count": len(sessions_to_clean)}
         
     except Exception as e:
-        manager.logger.error(f"Error cleaning sessions: {e}")
-        return {"error": f"Failed to clean sessions: {str(e)}"}, 500
-
-@app.post("/api/sessions/create")
-async def create_session_api(prompt: str, repo_url: Optional[str] = None):
-    if not prompt:
-        return {"error": "Prompt is required"}, 400
-    
-    # Generate session ID to return it
-    sid = manager._generate_id(prompt, repo_url or manager.default_repo)
-    
-    # Check if session already exists
-    if sid in manager.sessions and manager.sessions[sid].status != "DONE":
-        return {"error": "Session already exists for this prompt and repo"}, 409
-    
-    # Create the session
-    manager.create_session(prompt, repo_url)
-    
-    return {"status": "created", "session_id": sid}
+        manager.logger.error(f"Failed to clean sessions: {e}")
+        return JSONResponse({"error": "Failed to clean sessions"}, status_code=500)
 
 @app.websocket("/ws/{sid}")
-async def tail_ws(ws: WebSocket, sid: str):
-    import re
-    # Regex to remove ANSI escape codes and terminal control sequences
-    ansi_escape = re.compile(r'''
-        \x1B  # ESC
-        (?:   # 7-bit C1 Fe (except CSI)
-            [@-Z\\-_]
-        |     # or [ for CSI, followed by parameter bytes
-            \[
-            [0-?]*  # Parameter bytes
-            [ -/]*  # Intermediate bytes
-            [@-~]   # Final byte
-        )
-    ''', re.VERBOSE)
+async def websocket_endpoint(websocket: WebSocket, sid: str):
+    """WebSocket for streaming output"""
+    await websocket.accept()
     
-    # Additional patterns for other terminal sequences
-    terminal_sequences = re.compile(r'\x1b\[[0-9;]*[mGKHJF]|\x1b\[[\?0-9]*[hl]|\x07|\r')
+    # Register
+    manager.register_websocket(sid, websocket)
     
-    def clean_line(line):
-        # Remove ANSI escape codes and terminal control sequences first
-        line = ansi_escape.sub('', line)
-        line = terminal_sequences.sub('', line)
-        
-        # Remove non-printable characters except newline, tab, and box-drawing characters
-        line = ''.join(char for char in line if char.isprintable() or char in '\n\t' or ord(char) >= 0x2500)
-        
-        # Clean up any remaining escape sequences
-        line = re.sub(r'\[[\?0-9]*[KJhl]', '', line)
-        
-        stripped = line.strip()
-        
-        # Only filter out very specific shell artifacts, be much less aggressive
-        if stripped in ['%', '%%', '$', '#']:
-            return ''
-        
-        # Skip obvious shell prompts but allow other content
-        if stripped.endswith('% ') or stripped.endswith('$ '):
-            return ''
-        
-        # Skip the startup command echo but preserve Gemini content
-        if stripped.startswith('cd ') and stripped.endswith('&& gemini') and 'Type your message' not in stripped:
-            return ''
-        
-        # Preserve Gemini UI elements (box drawing, prompts, etc.)
-        if any(indicator in stripped for indicator in ['Type your message', '│', '╭', '╰', '✦', 'gemini-', 'context left']):
-            return line.rstrip()
-        
-        # Don't filter empty lines as they provide structure
-        if not stripped:
-            return line
-        
-        return line.rstrip()  # Remove trailing whitespace but keep the content
-    
-    await ws.accept()
-    log_path = manager.logs_dir / f"{sid}.log"
-    
-    # Wait for log file to exist
-    while not log_path.exists():
-        await asyncio.sleep(0.2)
-    
-    # For DONE sessions, reset cursor to show full log from beginning
-    session_info = manager.sessions.get(sid)
-    if session_info and session_info.status == "DONE":
-        manager._cursors[sid] = 0
-        manager.logger.debug(f"Reset cursor to 0 for DONE session {sid}")
-    
-    # Efficient cursor-based streaming: only send bytes we haven't sent yet
     try:
-        with log_path.open("rb") as f:
-            # Skip what this client already received, but handle log rotation
-            cursor_pos = manager._cursors.get(sid, 0)
+        # Send current content
+        output = manager.get_session_output(sid)
+        if output:
+            await websocket.send_text(output)
+        
+        # Keep alive
+        while True:
+            await websocket.receive_text()
             
-            # If cursor is beyond file size, log was likely rotated - start from beginning
-            try:
-                f.seek(0, 2)  # Seek to end
-                file_size = f.tell()
-                if cursor_pos > file_size:
-                    manager.logger.debug(f"Log rotation detected for {sid}, resetting cursor")
-                    cursor_pos = 0
-                    manager._cursors[sid] = 0
-                
-                f.seek(cursor_pos)
-            except OSError:
-                # File might not exist yet or other IO error
-                cursor_pos = 0
-                f.seek(0)
-            
-            while True:
-                chunk = f.read(4096)
-                if chunk:
-                    # Update cursor position
-                    manager._cursors[sid] = f.tell()
-                    
-                    # Decode and clean the chunk
-                    try:
-                        text = chunk.decode('utf-8', errors='ignore')
-                    except UnicodeDecodeError as decode_error:
-                        # Log actual decode error but continue
-                        manager.logger.debug(f"Unicode decode error in WebSocket for {sid}: {decode_error}")
-                        continue
-                    
-                    # Process line by line for cleaning and send via WebSocket
-                    try:
-                        for line in text.split('\n'):
-                            if line:  # Skip empty lines
-                                cleaned = clean_line(line)
-                                if cleaned:  # Only send non-empty cleaned lines
-                                    await ws.send_text(cleaned)
-                    except WebSocketDisconnect as ws_error:
-                        # WebSocket disconnected, exit gracefully
-                        manager.logger.debug(f"WebSocket disconnected for {sid}: {ws_error}")
-                        return
-                    except Exception as send_error:
-                        # Other WebSocket send errors, also exit
-                        manager.logger.debug(f"WebSocket send error for {sid}: {send_error}")
-                        return
-                else:
-                    await asyncio.sleep(0.1)  # No new data, wait briefly
-                    
-    except WebSocketDisconnect as e:
-        # Handle WebSocket disconnection
-        manager.logger.debug(f"WebSocket disconnected for {sid}: {e}")
-        return
-    except Exception as e:
-        # Handle other unexpected errors
-        manager.logger.error(f"Unexpected error in WebSocket handler for {sid}: {e}")
-        return
+    except WebSocketDisconnect:
+        pass
+    finally:
+        manager.unregister_websocket(sid, websocket)
 
 @app.get("/")
 async def index():
-    # Serve the external HTML file
+    """Serve UI"""
     html_path = Path(__file__).parent / "tmux_gemini_ui.html"
     if html_path.exists():
-        return HTMLResponse(html_path.read_text())
-    else:
-        return HTMLResponse("<h1>UI file not found</h1><p>Please ensure tmux_gemini_ui.html exists in the same directory.</p>")
+        with open(html_path, 'r') as f:
+            content = f.read()
+            return HTMLResponse(content)
+    return HTMLResponse("<h1>UI file not found</h1>")
 
-# ---------------------------- Runner ----------------------------------------
+# ---------------------------- Main Entry --------------------------------------
+async def run_server():
+    """Run uvicorn server in a separate thread with its own event loop"""
+    config = uvicorn.Config(
+        app=app,
+        host="0.0.0.0",
+        port=8000,
+        log_level="warning",
+        workers=1,  # Single worker to minimize threads
+        loop="none",  # Don't create new event loop
+        access_log=False  # Reduce logging overhead
+    )
+    server = uvicorn.Server(config)
+    await server.serve()
 
-def run_uvicorn():
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
-
-async def interactive_loop():
-    print("Enter prompt (or 'q' to quit):")
-    loop = asyncio.get_event_loop()
-    while True:
-        try:
-            p = await loop.run_in_executor(None, sys.stdin.readline)
-            if not p: continue
-            p = p.strip()
-            if p.lower() in {"q", "quit", "exit"}:
-                manager.running = False; break
-            if p:
-                manager.create_session(p)
-        except (KeyboardInterrupt, EOFError):
-            manager.running = False; break
-
-async def demo_loop():
-    """Create demo sessions automatically"""
-    # Use the predefined prompt for real Gemini testing
-    test_prompt = "Write a script that runs for a random time between 1-3 minutes, printing hello world every 6 seconds"
-    
-    print("🚀 Creating Gemini session with predefined prompt...")
-    print(f"Prompt: {test_prompt}")
-    manager.create_session(test_prompt)
-    
-    print("✅ Gemini session created!")
-    print("🌐 Visit http://localhost:8000 to see the UI")
-    print("📱 Session will update automatically as Gemini executes the task")
-    print("\n⏳ Manager running... Press Ctrl+C to stop")
-    
-    try:
-        while manager.running:
-            await asyncio.sleep(1)
-    except KeyboardInterrupt:
-        print("\n🛑 Stopping manager...")
-        manager.running = False
-
-async def main(max_sessions: int = 50, attach: bool = False, ui: bool = False, demo: bool = False):
+async def main(max_sessions: int = 50, attach: bool = False, ui: bool = False, interactive: bool = True):
     global manager
     manager = TmuxGeminiManager(max_sessions=max_sessions)
     manager.setup_main_session()
-    asyncio.create_task(manager.ticker())
-    if ui:
-        threading.Thread(target=run_uvicorn, daemon=True).start()
-        print("🌐 UI running on http://localhost:8000")
-    if attach:
-        os.execvp("tmux", ["tmux", "attach", "-t", manager.main_session])
     
-    if demo:
-        await demo_loop()
-    elif ui and not demo:
-        # Just keep the UI server running without interactive prompt
-        print("🎯 UI server is running. Use the web interface at http://localhost:8000")
-        print("⏹️  Press Ctrl+C to stop")
+    # Start monitoring
+    monitor_task = asyncio.create_task(manager.monitor_loop())
+    
+    server_thread = None
+    if ui:
+        # Run uvicorn in a separate thread to avoid asyncio thread explosion
+        import threading
+        server_thread = threading.Thread(
+            target=lambda: uvicorn.run(
+                app, 
+                host="0.0.0.0", 
+                port=8000, 
+                log_level="warning",
+                workers=1,
+                access_log=False
+            ),
+            daemon=True
+        )
+        server_thread.start()
+        print("🌐 UI running on http://localhost:8000")
+    
+    if attach:
+        # Attach to tmux (non-blocking)
+        subprocess.Popen(["tmux", "attach", "-t", manager.main_session])
+    
+    print("🚀 Gemini tmux manager running. Press Ctrl+C to stop.")
+    
+    if interactive:
+        print("📝 Enter prompts or 'q' to quit:")
+        
+        # Use a single thread for input instead of creating new ones
+        import queue
+        input_queue = queue.Queue()
+        
+        def input_thread():
+            while manager.running:
+                try:
+                    line = input("> ")
+                    input_queue.put(line)
+                except (EOFError, KeyboardInterrupt):
+                    input_queue.put(None)
+                    break
+        
+        input_thread_instance = threading.Thread(target=input_thread, daemon=True)
+        input_thread_instance.start()
+        
+        # Main event loop
+        try:
+            while manager.running:
+                try:
+                    # Check for input without blocking
+                    prompt = input_queue.get_nowait()
+                    
+                    if prompt is None:  # EOF or interrupt
+                        break
+                    
+                    if prompt.lower() in ('q', 'quit', 'exit'):
+                        break
+                    
+                    if prompt.strip():
+                        manager.create_session(prompt.strip())
+                        
+                except queue.Empty:
+                    # No input available, just continue
+                    await asyncio.sleep(0.1)
+                    
+        except KeyboardInterrupt:
+            print("\n🛑 Shutting down...")
+    else:
+        # Non-interactive mode - just run until interrupted
         try:
             while manager.running:
                 await asyncio.sleep(1)
         except KeyboardInterrupt:
-            print("\n🛑 Stopping UI server...")
-            manager.running = False
-    else:
-        await interactive_loop()
+            print("\n🛑 Shutting down...")
+    
+    # Cleanup
+    manager.running = False
+    monitor_task.cancel()
+    
+    try:
+        await monitor_task
+    except asyncio.CancelledError:
+        pass
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Gemini tmux manager + UI")
-    parser.add_argument("--max", type=int, default=50, help="max concurrent sessions")
-    parser.add_argument("--attach", action="store_true", help="attach to tmux after startup")
-    parser.add_argument("--ui", action="store_true", help="start UI server on :8000")
-    parser.add_argument("--demo", action="store_true", help="create demo sessions automatically")
+    parser = argparse.ArgumentParser(description="Gemini tmux manager")
+    parser.add_argument("--max", type=int, default=50, help="Max concurrent sessions")
+    parser.add_argument("--attach", action="store_true", help="Attach to tmux")
+    parser.add_argument("--ui", action="store_true", help="Start web UI")
+    parser.add_argument("--no-interactive", action="store_true", help="Run without interactive prompt")
     args = parser.parse_args()
+    
     try:
-        asyncio.run(main(args.max, args.attach, args.ui, args.demo))
+        asyncio.run(main(
+            max_sessions=args.max, 
+            attach=args.attach, 
+            ui=args.ui,
+            interactive=not args.no_interactive
+        ))
+    except KeyboardInterrupt:
+        print("\n🛑 Stopped by user")
     finally:
+        # Cleanup tmux session
         subprocess.run(["tmux", "kill-session", "-t", "gemini_manager"], check=False)

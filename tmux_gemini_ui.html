@@ -292,12 +292,14 @@
         .session {
             margin: 8px 12px;
             padding: 16px;
-            cursor: pointer;
             border-radius: 8px;
             background: white;
             border: 1px solid #e1e8ed;
             transition: all 0.2s ease;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
         }
         
         .session:hover {
@@ -335,14 +337,14 @@
             margin: 12px;
         }
         
-        .session-info {
+        .session-header {
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
+            align-items: center;
             gap: 12px;
         }
         
-        .session-content {
+        .session-title {
             flex: 1;
             min-width: 0;
         }
@@ -427,25 +429,26 @@
         .session-prompt {
             font-size: 13px;
             color: #6c757d;
-            margin-top: 8px;
             line-height: 1.4;
             display: -webkit-box;
-            -webkit-line-clamp: 2;
+            -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
             overflow: hidden;
+            cursor: pointer;
         }
         
         .session-actions {
             display: flex;
-            flex-direction: column;
-            gap: 6px;
-            align-items: flex-end;
+            justify-content: flex-start;
+            padding-top: 8px;
+            border-top: 1px solid #f1f3f4;
         }
         
         .action-buttons {
             display: flex;
-            gap: 6px;
+            gap: 8px;
             flex-wrap: wrap;
+            align-items: center;
         }
         
         /* Header styles */
@@ -643,19 +646,26 @@
             .session {
                 margin: 6px 8px;
                 padding: 12px;
+                gap: 10px;
             }
             
-            .session-info {
+            .session-header {
                 flex-direction: column;
+                align-items: flex-start;
                 gap: 8px;
             }
             
             .session-actions {
-                align-items: flex-start;
+                padding-top: 6px;
             }
             
             .action-buttons {
-                justify-content: flex-start;
+                gap: 6px;
+            }
+            
+            .btn-sm {
+                padding: 4px 8px;
+                font-size: 11px;
             }
             
             .header {
@@ -681,7 +691,7 @@
                 <button class="btn btn-danger btn-sm" onclick="cleanPreviousSessions()" style="width: 100%; margin-top: 8px;">🗑️ Clean Previous Sessions</button>
             </div>
             <div id="create-form">
-                <textarea id="prompt-input" placeholder="Enter your prompt..." rows="3">What time is it?</textarea>
+                <textarea id="prompt-input" placeholder="Enter your prompt..." rows="3">Write a Python script that prints the time in Berlin to console</textarea>
                 <input id="repo-input" placeholder="Repository URL (optional)" />
                 <div class="form-buttons">
                     <button class="btn btn-success" onclick="createSession()">Create</button>
@@ -860,19 +870,12 @@
                 d.classList.add('requires-input');
             }
             
-            const info = document.createElement('div');
-            info.className = 'session-info';
+            // Create session header with ID and status
+            const header = document.createElement('div');
+            header.className = 'session-header';
             
-            const content = document.createElement('div');
-            content.className = 'session-content';
-            
-            if (s.status === 'REQUIRES_USER_INPUT') {
-                content.onclick = () => selectSessionAndShowInput(s.session_id);
-                content.style.cursor = 'pointer';
-                content.title = 'Click to select session and provide input';
-            } else {
-                content.onclick = () => selectSession(s.session_id);
-            }
+            const title = document.createElement('div');
+            title.className = 'session-title';
             
             const sessionId = document.createElement('div');
             sessionId.className = 'session-id';
@@ -892,14 +895,22 @@
                 status.textContent = s.status;
             }
             
+            title.appendChild(sessionId);
+            header.appendChild(title);
+            header.appendChild(status);
+            
+            // Create prompt section
             const promptText = document.createElement('div');
             promptText.className = 'session-prompt';
             promptText.textContent = s.prompt;
             promptText.title = s.prompt; // Show full prompt on hover
             
-            content.appendChild(sessionId);
-            content.appendChild(status);
-            content.appendChild(promptText);
+            if (s.status === 'REQUIRES_USER_INPUT') {
+                promptText.onclick = () => selectSessionAndShowInput(s.session_id);
+                promptText.title = 'Click to select session and provide input';
+            } else {
+                promptText.onclick = () => selectSession(s.session_id);
+            }
             
             // Create actions section
             const actions = document.createElement('div');
@@ -945,9 +956,12 @@
             }
             
             actions.appendChild(actionButtons);
-            info.appendChild(content);
-            info.appendChild(actions);
-            d.appendChild(info);
+            
+            // Assemble the session card
+            d.appendChild(header);
+            d.appendChild(promptText);
+            d.appendChild(actions);
+            
             return d;
         }
         
@@ -1026,7 +1040,8 @@
         let quickInputSessionId = null;
         
         async function selectSessionAndShowInput(sessionId) {
-            // First, select the session to show its logs
+            // Always select the session, but avoid unnecessary WebSocket reconnection in openLog  
+            const wasAlreadySelected = currentSelectedSession === sessionId;
             selectSession(sessionId);
             
             // Store the session ID for quick input
@@ -1036,12 +1051,12 @@
             const inputPanel = document.getElementById('input-panel');
             inputPanel.classList.add('show');
             
-            // Focus on the input field after a brief delay to ensure the session is loaded
+            // Focus on the input field after a brief delay
             setTimeout(() => {
                 document.getElementById('quick-input-field').focus();
-            }, 300);
+            }, wasAlreadySelected ? 100 : 300);
             
-            console.log(`Auto-selected session ${sessionId} and opened input panel`);
+            console.log(`${wasAlreadySelected ? 'Maintained' : 'Auto-selected'} session ${sessionId} and opened input panel`);
         }
         
         async function showQuickInputPanel(sessionId) {
@@ -1288,6 +1303,16 @@
         }
         
         async function openLog(id) {
+            // If the same session is already loaded and displayed, don't reload
+            if (currentSessionId === id) {
+                const logContent = document.getElementById('log-content');
+                // Only skip reload if we have actual content (not just loading message)
+                if (logContent.textContent && !logContent.textContent.includes('Loading logs for')) {
+                    console.log(`Session ${id} is already loaded with content, skipping reload`);
+                    return;
+                }
+            }
+            
             currentSessionId = id;
             
             // Clear any pending buffer flushes
@@ -1395,10 +1420,17 @@
             }
             
             try {
-                const params = new URLSearchParams({ prompt });
-                if (repo) params.append('repo_url', repo);
+                const requestBody = { prompt };
+                if (repo) requestBody.repo_url = repo;
                 
-                const response = await fetch(`/api/sessions/create?${params}`, { method: 'POST' });
+                const response = await fetch('/api/sessions', { 
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
                 if (response.ok) {
                     const result = await response.json();
                     
@@ -1439,10 +1471,18 @@
                 const session2Prompt = "Write a Python script that generates the word 'Hallo' 20 times with 5 seconds between each time";
                 
                 console.log('Creating test session 1...');
-                const response1 = await fetch('/api/sessions/create?' + new URLSearchParams({ prompt: session1Prompt }), { method: 'POST' });
+                const response1 = await fetch('/api/sessions', { 
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: session1Prompt })
+                });
                 
                 console.log('Creating test session 2...');
-                const response2 = await fetch('/api/sessions/create?' + new URLSearchParams({ prompt: session2Prompt }), { method: 'POST' });
+                const response2 = await fetch('/api/sessions', { 
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: session2Prompt })
+                });
                 
                 if (response1.ok && response2.ok) {
                     console.log('Both test sessions created successfully');
