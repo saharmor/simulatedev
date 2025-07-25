@@ -14,6 +14,11 @@ interface TaskScreenProps {
     issueId?: string;
     issueNumber?: number;
     createdAt: Date;
+    // Task execution phases
+    phase?: "working" | "creating_pr" | "completed";
+    workingCompletedAt?: Date;
+    prCreatedAt?: Date;
+    completedAt?: Date;
     // Mock task properties for compatibility
     startTime?: number;
     pr?: any;
@@ -62,6 +67,11 @@ function formatDuration(ms: number): string {
     return `${hours}h ${remainingMinutes}m`;
   }
   return `${minutes}m`;
+}
+
+function formatDurationInSeconds(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  return `${seconds}s`;
 }
 
 function getPRStatusIcon(status: PRData['status']) {
@@ -157,8 +167,70 @@ export function TaskScreen({ taskId, task: passedTask }: TaskScreenProps) {
           </div>
         </div>
 
-        {/* Status */}
-        {task.isRunning ? (
+        {/* Task Execution Phases */}
+        <div className="space-y-4">
+          {/* Phase 1: Agent Working */}
+          <div className="flex items-center gap-3">
+            <Rocket className={`w-6 h-6 text-foreground ${passedTask?.phase === "working" ? "animate-pulse" : ""}`} />
+            <div>
+              <span className="text-sm text-foreground">Agent is working...</span>
+              {passedTask?.phase === "working" ? (
+                <p className="text-xs text-gray-500 mt-1">
+                  Duration: {formatDurationInSeconds(currentTime - passedTask.createdAt.getTime())}
+                </p>
+              ) : passedTask?.workingCompletedAt ? (
+                <p className="text-xs text-gray-500 mt-1">
+                  Completed in: {formatDurationInSeconds(passedTask.workingCompletedAt.getTime() - passedTask.createdAt.getTime())}
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Phase 2: Creating PR */}
+          {(passedTask?.phase === "creating_pr" || passedTask?.phase === "completed") && (
+            <div className="flex items-center gap-3">
+              <Rocket className={`w-6 h-6 text-foreground ${passedTask?.phase === "creating_pr" ? "animate-pulse" : ""}`} />
+              <div>
+                <span className="text-sm text-foreground">Creating PR...</span>
+                {passedTask?.phase === "creating_pr" ? (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Duration: {formatDurationInSeconds(currentTime - (passedTask.workingCompletedAt?.getTime() || passedTask.createdAt.getTime()))}
+                  </p>
+                ) : passedTask?.prCreatedAt && passedTask?.workingCompletedAt ? (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Completed in: {formatDurationInSeconds(passedTask.prCreatedAt.getTime() - passedTask.workingCompletedAt.getTime())}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          )}
+
+          {/* Phase 3: PR Created */}
+          {passedTask?.phase === "completed" && (
+            <div className="flex items-center gap-3">
+              <Rocket className="w-6 h-6 text-foreground" />
+              <div>
+                <span className="text-sm text-foreground">PR Created!</span>
+                {passedTask?.completedAt && passedTask?.prCreatedAt && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Completed in: {formatDurationInSeconds(passedTask.completedAt.getTime() - passedTask.prCreatedAt.getTime())}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Show PR Component when completed */}
+        {passedTask?.phase === "completed" && passedTask?.pr && (
+          <div className="mt-8">
+            <h2 className="text-lg font-medium text-gray-900 mb-4">Pull Request</h2>
+            <PRComponent pr={passedTask.pr} />
+          </div>
+        )}
+
+        {/* Fallback for mock tasks */}
+        {!passedTask && task.isRunning && (
           <div className="flex items-center gap-3">
             <Rocket className="w-6 h-6 text-foreground animate-pulse" />
             <div>
@@ -168,13 +240,14 @@ export function TaskScreen({ taskId, task: passedTask }: TaskScreenProps) {
               </p>
             </div>
           </div>
-        ) : (
-          (task as any)?.pr && (
-            <div>
-              <h2 className="text-lg font-medium text-gray-900 mb-4">Pull Request</h2>
-              <PRComponent pr={(task as any).pr} />
-            </div>
-          )
+        )}
+
+        {/* Fallback for mock tasks with PR */}
+        {!passedTask && !task.isRunning && (task as any)?.pr && (
+          <div>
+            <h2 className="text-lg font-medium text-gray-900 mb-4">Pull Request</h2>
+            <PRComponent pr={(task as any).pr} />
+          </div>
         )}
       </div>
     </div>

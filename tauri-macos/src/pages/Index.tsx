@@ -23,6 +23,19 @@ interface Task {
   issueId?: string;
   issueNumber?: number;
   createdAt: Date;
+  // Task execution phases
+  phase: "working" | "creating_pr" | "completed";
+  workingCompletedAt?: Date;
+  prCreatedAt?: Date;
+  completedAt?: Date;
+  pr?: {
+    title: string;
+    branch: string;
+    filesChanged: number;
+    additions: number;
+    deletions: number;
+    status: 'open' | 'merged' | 'closed';
+  };
 }
 
 const Index = () => {
@@ -75,7 +88,8 @@ const Index = () => {
       isRunning: true,
       issueId: issue.id,
       issueNumber: issue.number,
-      createdAt: new Date()
+      createdAt: new Date(),
+      phase: "working"
     };
     
     // Add the task to the tasks array
@@ -86,6 +100,57 @@ const Index = () => {
     setCurrentScreen("task");
     
     console.log(`[Index] Task created with ID: ${taskId}`);
+    
+    // Start task execution simulation
+    startTaskExecution(taskId);
+  };
+
+  const startTaskExecution = (taskId: string) => {
+    console.log(`[Index] Starting task execution simulation for: ${taskId}`);
+    
+    // Phase 1: Agent working for 5 seconds
+    setTimeout(() => {
+      console.log(`[Index] Task ${taskId} - Agent work completed, moving to PR creation`);
+      setTasks(prevTasks => 
+        prevTasks.map(task => 
+          task.id === taskId 
+            ? { ...task, phase: "creating_pr", workingCompletedAt: new Date() }
+            : task
+        )
+      );
+      
+      // Phase 2: Creating PR for 2 seconds
+      setTimeout(() => {
+        console.log(`[Index] Task ${taskId} - PR creation completed, task finished`);
+        
+        setTasks(prevTasks => 
+          prevTasks.map(task => {
+            if (task.id === taskId) {
+              // Generate mock PR data using current task info
+              const mockPR = {
+                title: `Fix: ${task.name}`,
+                branch: task.branch,
+                filesChanged: Math.floor(Math.random() * 5) + 1,
+                additions: Math.floor(Math.random() * 100) + 10,
+                deletions: Math.floor(Math.random() * 20) + 1,
+                status: 'open' as const
+              };
+              
+              return { 
+                ...task, 
+                phase: "completed", 
+                prCreatedAt: new Date(),
+                completedAt: new Date(),
+                isRunning: false,
+                status: "pending_pr",
+                pr: mockPR
+              };
+            }
+            return task;
+          })
+        );
+      }, 2000); // 2 seconds for PR creation
+    }, 5000); // 5 seconds for agent working
   };
 
   const handleHomeSelect = () => {
