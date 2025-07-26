@@ -84,8 +84,6 @@ const Index = () => {
   };
 
   const handleTaskSelect = (taskId: string) => {
-    // Disconnect any existing WebSocket connection
-    websocketService.disconnect();
     setSelectedTaskId(taskId);
     setCurrentScreen("task");
   };
@@ -434,8 +432,6 @@ const Index = () => {
 
 
   const handleHomeSelect = () => {
-    // Disconnect any existing WebSocket connection
-    websocketService.disconnect();
     setCurrentScreen("home");
     setSelectedTaskId(null);
   };
@@ -450,9 +446,6 @@ const Index = () => {
     if (selectedTaskId === taskId) {
       setSelectedTaskId(null);
     }
-    
-    // Disconnect WebSocket if it's for this task
-    websocketService.disconnect();
   };
 
   const handleCommandK = () => {
@@ -532,8 +525,6 @@ const Index = () => {
     // Cleanup on unmount
     return () => {
       healthCheckService.stopPeriodicHealthChecks();
-      // Cleanup WebSocket connections
-      websocketService.disconnect();
     };
   }, []);
 
