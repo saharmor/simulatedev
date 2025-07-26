@@ -124,6 +124,7 @@ class ClaudeCodeAgent(CodingAgent):
                 'claude',
                 '-p', combined_prompt,
                 '--output-format', 'stream-json',
+                '--verbose',
                 '--dangerously-skip-permissions'
             ]
             

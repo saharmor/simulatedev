@@ -4,10 +4,11 @@ import { Button } from "./ui/button";
 interface Task {
   id: string;
   name: string;
-  status: "ongoing" | "pending_pr" | "merged" | "rejected";
+  status: "ongoing" | "pending_pr" | "merged" | "rejected" | "failed";
   branch: string;
   repo: string;
   isRunning?: boolean;
+  issueNumber?: number;
 }
 
 interface SidebarProps {
@@ -20,13 +21,15 @@ interface SidebarProps {
 function getStatusIcon(status: Task["status"]) {
   switch (status) {
     case "ongoing":
-      return <GitBranch className="w-3 h-3 text-warning" />;
+      return <GitBranch className="w-3 h-3 text-gray-500" />;
     case "pending_pr":
-      return <GitPullRequest className="w-3 h-3 text-gray-500" />;
+      return <GitPullRequest className="w-3 h-3 text-success" />;
     case "merged":
       return <GitMerge className="w-3 h-3 text-success" />;
     case "rejected":
       return <X className="w-3 h-3 text-error" />;
+    case "failed":
+      return <X className="w-3 h-3 text-red-500" />;
   }
 }
 
@@ -95,7 +98,7 @@ export function Sidebar({
                       {getStatusIcon(task.status)}
                       <div className="flex-1 min-w-0">
                         <div className="text-xs text-gray-500 font-mono mb-1">
-                          {task.branch}
+                          {task.issueNumber ? `issue #${task.issueNumber}` : task.branch}
                         </div>
                         <div className="text-sm text-gray-900 leading-relaxed">
                           {task.name}

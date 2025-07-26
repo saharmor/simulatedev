@@ -1,13 +1,15 @@
 import { useState, useEffect } from "react";
-import { ExternalLink, FileText, Plus, Minus, GitPullRequest, GitMerge, X, Rocket } from "lucide-react";
+import { ExternalLink, FileText, Plus, Minus, GitPullRequest, GitMerge, X, Rocket, Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
+import { useToast } from "./ui/use-toast";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 interface TaskScreenProps {
   taskId: string;
   task?: {
     id: string;
     name: string;
-    status: "ongoing" | "pending_pr" | "merged" | "rejected";
+    status: "ongoing" | "pending_pr" | "merged" | "rejected" | "failed";
     branch: string;
     repo: string;
     isRunning?: boolean;
@@ -15,14 +17,27 @@ interface TaskScreenProps {
     issueNumber?: number;
     createdAt: Date;
     // Task execution phases
-    phase?: "working" | "creating_pr" | "completed";
+    phase?: "working" | "creating_pr" | "completed" | "failed";
     workingCompletedAt?: Date;
     prCreatedAt?: Date;
     completedAt?: Date;
-    // Mock task properties for compatibility
-    startTime?: number;
-    pr?: any;
+    // Real task properties
+    realTaskId?: string;
+    currentPhase?: string;
+    progress?: number;
+    prUrl?: string;
+    errorMessage?: string;
+    pr?: PRData;
+    // Phase history for accumulating phases
+    phaseHistory?: Array<{
+      phase: string;
+      timestamp: Date;
+      completed?: boolean;
+      completedAt?: Date;
+    }>;
   };
+  onDeleteTask?: (taskId: string) => void;
+  onNavigateHome?: () => void;
 }
 
 interface PRData {
@@ -32,31 +47,8 @@ interface PRData {
   additions: number;
   deletions: number;
   status: 'open' | 'merged' | 'closed';
+  url?: string;
 }
-
-const mockTaskData = {
-  '1': {
-    name: 'Implement Playwright best practices for robust web automation',
-    branch: 'ethanzrd/simulatedev',
-    isRunning: true,
-    startTime: Date.now() - 1000 * 60 * 23, // 23 minutes ago
-    pr: null
-  },
-  '3': {
-    name: 'Add DiffUtil to RecyclerView for better performance',
-    branch: 'devin/performance-improvements',
-    isRunning: false,
-    startTime: Date.now() - 1000 * 60 * 60 * 2, // 2 hours ago
-    pr: {
-      title: 'Performance improvements: Add DiffUtil to RecyclerView',
-      branch: 'devin/1751818808-efficiency-improvements',
-      filesChanged: 2,
-      additions: 202,
-      deletions: 3,
-      status: 'open' as const
-    }
-  }
-};
 
 function formatDuration(ms: number): string {
   const minutes = Math.floor(ms / (1000 * 60));
@@ -88,6 +80,17 @@ function getPRStatusIcon(status: PRData['status']) {
 }
 
 function PRComponent({ pr }: { pr: PRData }) {
+  const handleOpenPR = async () => {
+    if (pr.url) {
+      console.log(`[TaskScreen] Opening external link: ${pr.url}`);
+      try {
+        await openUrl(pr.url);
+      } catch (error) {
+        console.error("Failed to open external link:", error);
+      }
+    }
+  };
+
   return (
     <div className="bg-card border border-gray-200 rounded-lg p-4">
       <div className="flex items-start justify-between">
@@ -114,7 +117,13 @@ function PRComponent({ pr }: { pr: PRData }) {
             </div>
           </div>
         </div>
-        <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700 ml-2">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="text-gray-500 hover:text-gray-700 ml-2"
+          onClick={handleOpenPR}
+          disabled={!pr.url}
+        >
           <ExternalLink className="w-4 h-4" />
         </Button>
       </div>
@@ -122,14 +131,31 @@ function PRComponent({ pr }: { pr: PRData }) {
   );
 }
 
-export function TaskScreen({ taskId, task: passedTask }: TaskScreenProps) {
+function LoadingDots() {
+  return (
+    <div className="flex space-x-1">
+      <div
+        className="w-1 h-1 bg-gray-400 rounded-full animate-bounce"
+        style={{ animationDelay: "0ms" }}
+      ></div>
+      <div
+        className="w-1 h-1 bg-gray-400 rounded-full animate-bounce"
+        style={{ animationDelay: "150ms" }}
+      ></div>
+      <div
+        className="w-1 h-1 bg-gray-400 rounded-full animate-bounce"
+        style={{ animationDelay: "300ms" }}
+      ></div>
+    </div>
+  );
+}
+
+export function TaskScreen({ taskId, task: passedTask, onDeleteTask, onNavigateHome }: TaskScreenProps) {
   const [currentTime, setCurrentTime] = useState(Date.now());
+  const { toast } = useToast();
   
-  // Use passed task data if available, otherwise fall back to mock data
-  const task = passedTask || mockTaskData[taskId as keyof typeof mockTaskData];
-  
-  // For real tasks, calculate duration from createdAt, for mock tasks use startTime
-  const startTime = passedTask ? passedTask.createdAt.getTime() : (task as any)?.startTime;
+  // Only use passed task data - no mock fallbacks
+  const task = passedTask;
 
   useEffect(() => {
     if (task?.isRunning) {
@@ -148,7 +174,20 @@ export function TaskScreen({ taskId, task: passedTask }: TaskScreenProps) {
     );
   }
 
-  const duration = startTime ? currentTime - startTime : 0;
+  const duration = task.createdAt ? currentTime - task.createdAt.getTime() : 0;
+
+  const handleDeleteTask = () => {
+    if (onDeleteTask) {
+      onDeleteTask(taskId);
+      if (onNavigateHome) {
+        onNavigateHome();
+      }
+      toast({
+        title: "Task deleted successfully.",
+        description: "The task has been removed from your list.",
+      });
+    }
+  };
 
   return (
     <div className="flex-1 bg-background overflow-y-auto">
@@ -159,94 +198,156 @@ export function TaskScreen({ taskId, task: passedTask }: TaskScreenProps) {
             {task.name}
           </h1>
           <div className="flex items-center gap-4 text-sm text-gray-600">
-            <span className="font-mono">{task.branch}</span>
+            <span className="font-mono">{task.issueNumber ? `issue #${task.issueNumber}` : task.branch}</span>
             <span>•</span>
             <span>
               {task.isRunning ? 'Running for' : 'Completed in'} {formatDuration(duration)}
             </span>
+            <span>•</span>
+            <span>{task?.progress !== undefined ? `${task.progress}%` : '0%'} complete</span>
           </div>
         </div>
 
         {/* Task Execution Phases */}
         <div className="space-y-4">
-          {/* Phase 1: Agent Working */}
-          <div className="flex items-center gap-3">
-            <Rocket className={`w-6 h-6 text-foreground ${passedTask?.phase === "working" ? "animate-pulse" : ""}`} />
-            <div>
-              <span className="text-sm text-foreground">Agent is working...</span>
-              {passedTask?.phase === "working" ? (
-                <p className="text-xs text-gray-500 mt-1">
-                  Duration: {formatDurationInSeconds(currentTime - passedTask.createdAt.getTime())}
-                </p>
-              ) : passedTask?.workingCompletedAt ? (
-                <p className="text-xs text-gray-500 mt-1">
-                  Completed in: {formatDurationInSeconds(passedTask.workingCompletedAt.getTime() - passedTask.createdAt.getTime())}
-                </p>
-              ) : null}
-            </div>
-          </div>
-
-          {/* Phase 2: Creating PR */}
-          {(passedTask?.phase === "creating_pr" || passedTask?.phase === "completed") && (
-            <div className="flex items-center gap-3">
-              <Rocket className={`w-6 h-6 text-foreground ${passedTask?.phase === "creating_pr" ? "animate-pulse" : ""}`} />
-              <div>
-                <span className="text-sm text-foreground">Creating PR...</span>
-                {passedTask?.phase === "creating_pr" ? (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Duration: {formatDurationInSeconds(currentTime - (passedTask.workingCompletedAt?.getTime() || passedTask.createdAt.getTime()))}
-                  </p>
-                ) : passedTask?.prCreatedAt && passedTask?.workingCompletedAt ? (
-                  <p className="text-xs text-gray-500 mt-1">
-                    Completed in: {formatDurationInSeconds(passedTask.prCreatedAt.getTime() - passedTask.workingCompletedAt.getTime())}
-                  </p>
-                ) : null}
-              </div>
-            </div>
+          {/* Phase History - Show all phases that have occurred */}
+          {task.phaseHistory && task.phaseHistory.length > 0 && (
+            <>
+              {task.phaseHistory.map((phaseEntry, index) => (
+                <div key={index} className={`flex items-center ${phaseEntry.phase === "Task execution failed" ? "justify-between" : "gap-3"}`}>
+                  <div className="flex items-center gap-3">
+                    <Rocket className={`w-6 h-6 ${phaseEntry.phase === "Task execution failed" ? "text-red-500" : "text-foreground"} ${!phaseEntry.completed ? "animate-pulse" : ""}`} />
+                    <div>
+                      <span className={`text-sm ${phaseEntry.phase === "Task execution failed" ? "text-red-500 font-medium" : "text-foreground"}`}>
+                        {phaseEntry.completed ? phaseEntry.phase : phaseEntry.phase}
+                      </span>
+                      {phaseEntry.completed && phaseEntry.completedAt && phaseEntry.phase !== "Task execution failed" && phaseEntry.phase !== "Task completed successfully!" ? (
+                        <p className={`text-xs mt-1 ${phaseEntry.phase === "Task execution failed" ? "text-red-600" : "text-gray-500"}`}>
+                          Completed in: {formatDurationInSeconds(phaseEntry.completedAt.getTime() - phaseEntry.timestamp.getTime())}
+                        </p>
+                      ) : !phaseEntry.completed && phaseEntry.phase !== "Task execution failed" && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Duration: {formatDurationInSeconds(currentTime - phaseEntry.timestamp.getTime())}
+                        </p>
+                      )}
+                      {phaseEntry.phase === "Task execution failed" && task.errorMessage && (
+                        <p className="text-xs text-red-600 mt-1">
+                          Error: {task.errorMessage}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {phaseEntry.phase === "Task execution failed" && (
+                    <div className="flex items-center">
+                      <Button 
+                        variant="destructive" 
+                        onClick={handleDeleteTask}
+                        className="flex items-center gap-2"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete Task
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </>
           )}
 
-          {/* Phase 3: PR Created */}
-          {passedTask?.phase === "completed" && (
+          {/* Current Active Phase (if not in history yet) */}
+          {task.phase !== "failed" && task?.currentPhase && !task.phaseHistory?.some(p => p.phase === task.currentPhase) && (
             <div className="flex items-center gap-3">
-              <Rocket className="w-6 h-6 text-foreground" />
+              <Rocket className={`w-6 h-6 text-foreground ${task.isRunning ? "animate-pulse" : ""}`} />
               <div>
-                <span className="text-sm text-foreground">PR Created!</span>
-                {passedTask?.completedAt && passedTask?.prCreatedAt && (
+                <span className="text-sm text-foreground">{task.currentPhase}</span>
+                {task?.isRunning && (
                   <p className="text-xs text-gray-500 mt-1">
-                    Completed in: {formatDurationInSeconds(passedTask.completedAt.getTime() - passedTask.prCreatedAt.getTime())}
+                    Duration: {formatDurationInSeconds(currentTime - task.createdAt.getTime())}
                   </p>
                 )}
               </div>
             </div>
           )}
+
+          {/* Legacy Phase Display for Backward Compatibility */}
+          {task.phase !== "failed" && !task?.currentPhase && !task.phaseHistory && (
+            <>
+              {/* Phase 1: Connecting to server */}
+              <div className="flex items-center gap-3">
+                <Rocket className={`w-6 h-6 text-foreground ${task.phase === "working" ? "animate-pulse" : ""}`} />
+                <div>
+                  <span className="text-sm text-foreground">Connecting to server...</span>
+                  {task.phase === "working" ? (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Duration: {formatDurationInSeconds(currentTime - task.createdAt.getTime())}
+                    </p>
+                  ) : task?.workingCompletedAt ? (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Completed in: {formatDurationInSeconds(task.workingCompletedAt.getTime() - task.createdAt.getTime())}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Phase 2: Creating PR */}
+              {(task.phase === "creating_pr" || task.phase === "completed") && (
+                <div className="flex items-center gap-3">
+                  <Rocket className={`w-6 h-6 text-foreground ${task.phase === "creating_pr" ? "animate-pulse" : ""}`} />
+                  <div>
+                    <span className="text-sm text-foreground">Creating PR...</span>
+                    {task.phase === "creating_pr" ? (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Duration: {formatDurationInSeconds(currentTime - (task.workingCompletedAt?.getTime() || task.createdAt.getTime()))}
+                      </p>
+                    ) : task?.prCreatedAt && task?.workingCompletedAt ? (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Completed in: {formatDurationInSeconds(task.prCreatedAt.getTime() - task.workingCompletedAt.getTime())}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+
+              {/* Phase 3: PR Created */}
+              {task.phase === "completed" && (
+                <div className="flex items-center gap-3">
+                  <Rocket className="w-6 h-6 text-foreground" />
+                  <div>
+                    <span className="text-sm text-foreground">PR Created!</span>
+                    {task?.completedAt && task?.prCreatedAt && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Completed in: {formatDurationInSeconds(task.completedAt.getTime() - task.prCreatedAt.getTime())}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
 
-        {/* Show PR Component when completed */}
-        {passedTask?.phase === "completed" && passedTask?.pr && (
+
+
+
+        {/* Show PR Component when completed or show Fetching PR with loading */}
+        {task.phase === "completed" && (
           <div className="mt-8">
             <h2 className="text-lg font-medium text-gray-900 mb-4">Pull Request</h2>
-            <PRComponent pr={passedTask.pr} />
-          </div>
-        )}
-
-        {/* Fallback for mock tasks */}
-        {!passedTask && task.isRunning && (
-          <div className="flex items-center gap-3">
-            <Rocket className="w-6 h-6 text-foreground animate-pulse" />
-            <div>
-              <span className="text-sm text-foreground">Agent is working...</span>
-              <p className="text-xs text-gray-500 mt-1">
-                Duration: {formatDuration(duration)}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Fallback for mock tasks with PR */}
-        {!passedTask && !task.isRunning && (task as any)?.pr && (
-          <div>
-            <h2 className="text-lg font-medium text-gray-900 mb-4">Pull Request</h2>
-            <PRComponent pr={(task as any).pr} />
+            {task?.pr ? (
+              <PRComponent pr={task.pr} />
+            ) : (
+              <div className="bg-card border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <Rocket className="w-6 h-6 text-foreground animate-pulse" />
+                  <div>
+                    <span className="text-sm text-foreground">Fetching PR...</span>
+                    <div className="mt-2">
+                      <LoadingDots />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

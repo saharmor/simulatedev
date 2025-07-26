@@ -23,7 +23,7 @@ GitHubIntegration = github_module.GitHubIntegration
 from app.database import get_db
 from app.dependencies import require_authentication, get_user_github_token
 from app.models.user import User
-from app.schemas.github import RepositoryInfo, IssueInfo, RepositoryIssues, PullRequestInfo, RepositoryPullRequests
+from app.schemas.github import RepositoryInfo, IssueInfo, RepositoryIssues, PullRequestInfo, RepositoryPullRequests, SinglePullRequestInfo
 
 router = APIRouter()
 
@@ -229,4 +229,52 @@ async def get_repository_info(
             updated_at=repo_data['updated_at']
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch repository info: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Failed to fetch repository info: {str(e)}")
+
+
+@router.get("/repositories/{owner}/{repo}/pulls/{pr_number}", response_model=SinglePullRequestInfo)
+async def get_pull_request(
+    owner: str,
+    repo: str,
+    pr_number: int,
+    user: User = Depends(require_authentication),
+    github_token: str = Depends(get_user_github_token)
+):
+    """Get a specific pull request by number"""
+    if not GitHubIntegration:
+        raise HTTPException(status_code=500, detail="GitHub integration not available")
+    
+    try:
+        import requests
+        headers = {'Authorization': f'token {github_token}'}
+        response = requests.get(f'https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}', headers=headers)
+        response.raise_for_status()
+        
+        pr_data = response.json()
+        return SinglePullRequestInfo(
+            id=pr_data['id'],
+            number=pr_data['number'],
+            title=pr_data['title'],
+            body=pr_data.get('body'),
+            state=pr_data['state'],
+            created_at=pr_data['created_at'],
+            updated_at=pr_data['updated_at'],
+            html_url=pr_data['html_url'],
+            user_login=pr_data['user']['login'],
+            head_ref=pr_data['head']['ref'],
+            base_ref=pr_data['base']['ref'],
+            draft=pr_data.get('draft', False),
+            additions=pr_data.get('additions', 0),
+            deletions=pr_data.get('deletions', 0),
+            changed_files=pr_data.get('changed_files', 0),
+            mergeable=pr_data.get('mergeable'),
+            mergeable_state=pr_data.get('mergeable_state'),
+            merged=pr_data.get('merged', False),
+            merged_at=pr_data.get('merged_at'),
+            merged_by=pr_data.get('merged_by', {}).get('login') if pr_data.get('merged_by') else None,
+            comments=pr_data.get('comments', 0),
+            review_comments=pr_data.get('review_comments', 0),
+            commits=pr_data.get('commits', 0)
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch pull request: {str(e)}") 

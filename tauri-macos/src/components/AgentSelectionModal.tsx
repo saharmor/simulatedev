@@ -20,13 +20,13 @@ interface AgentSelectionModalProps {
 
 const availableAgents: Agent[] = [
   {
-    id: "claude-code",
+    id: "claude_code",
     name: "Claude Code",
     description: "Advanced code generation and analysis",
     icon: "CC"
   },
   {
-    id: "gemini-cli",
+    id: "gemini_cli",
     name: "Gemini CLI",
     description: "Fast and efficient command-line focused AI",
     icon: "GC"

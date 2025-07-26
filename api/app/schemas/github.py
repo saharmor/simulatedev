@@ -81,6 +81,34 @@ class RepositoryPullRequests(BaseModel):
     has_more: bool
 
 
+class SinglePullRequestInfo(BaseModel):
+    """Schema for detailed GitHub pull request information"""
+    id: int
+    number: int
+    title: str
+    body: Optional[str] = None
+    state: str
+    created_at: str
+    updated_at: str
+    html_url: str
+    user_login: str
+    head_ref: str
+    base_ref: str
+    draft: bool = False
+    # Additional fields for single PR
+    additions: int = 0
+    deletions: int = 0
+    changed_files: int = 0
+    mergeable: Optional[bool] = None
+    mergeable_state: Optional[str] = None
+    merged: bool = False
+    merged_at: Optional[str] = None
+    merged_by: Optional[str] = None
+    comments: int = 0
+    review_comments: int = 0
+    commits: int = 0
+
+
 # Keep legacy schemas for backward compatibility
 class GitHubRepository(BaseModel):
     """Legacy schema for GitHub repository information"""
