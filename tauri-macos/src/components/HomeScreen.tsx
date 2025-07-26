@@ -416,7 +416,7 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex items-start gap-3 flex-1">
-                              <GitPullRequest className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                              <GitPullRequest className="w-4 h-4 text-success flex-shrink-0" />
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-1">
                                   <span className="font-mono text-sm text-gray-600">

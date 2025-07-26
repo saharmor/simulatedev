@@ -55,6 +55,65 @@ export interface PullRequestsResponse {
   has_more: boolean;
 }
 
+export interface SinglePullRequest {
+  id: number;
+  number: number;
+  title: string;
+  body?: string;
+  state: string;
+  created_at: string;
+  updated_at: string;
+  html_url: string;
+  user_login: string;
+  head_ref: string;
+  base_ref: string;
+  draft: boolean;
+  additions: number;
+  deletions: number;
+  changed_files: number;
+  mergeable?: boolean;
+  mergeable_state?: string;
+  merged: boolean;
+  merged_at?: string;
+  merged_by?: string;
+  comments: number;
+  review_comments: number;
+  commits: number;
+}
+
+export interface TaskExecutionRequest {
+  issue_url: string;
+  agents: Array<{
+    coding_ide: string;
+    model: string;
+    role: string;
+  }>;
+  create_pr: boolean;
+  workflow_type: string;
+  options?: Record<string, any>;
+  task_prompt?: string;
+  issue_number?: number;
+  issue_title?: string;
+}
+
+export interface TaskExecutionResponse {
+  task_id: string;
+  status: string;
+  repo_url: string;
+  issue_number?: number;
+  estimated_duration: number;
+  created_at: string;
+}
+
+export interface TaskProgressUpdate {
+  type: string;
+  task_id: string;
+  progress?: number;
+  current_phase?: string;
+  timestamp: string;
+  message?: string;
+}
+
 export class ApiService {
   async getRepositories(): Promise<Repository[]> {
     console.log("[ApiService] Fetching user repositories");
@@ -196,6 +255,107 @@ export class ApiService {
       return data;
     } catch (error) {
       console.error(`[ApiService] Error fetching pull requests for ${repo}:`, error);
+      throw error;
+    }
+  }
+
+  async executeTask(taskData: TaskExecutionRequest): Promise<TaskExecutionResponse> {
+    console.log("[ApiService] Executing task with data:", taskData);
+    console.log("[ApiService] Task data JSON:", JSON.stringify(taskData, null, 2));
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tasks/execute`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(taskData),
+      });
+
+      console.log(`[ApiService] Task execution response status: ${response.status}`);
+      console.log(`[ApiService] Task execution response headers:`, Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `[ApiService] Task execution failed: ${response.status} - ${errorText}`
+        );
+        throw new Error(`Failed to execute task: ${response.status}`);
+      }
+
+      const data: TaskExecutionResponse = await response.json();
+      console.log(`[ApiService] Task execution successful: ${data.task_id}`);
+      console.log(`[ApiService] Full task execution response:`, data);
+      console.log(`[ApiService] Task execution response JSON:`, JSON.stringify(data, null, 2));
+      return data;
+    } catch (error) {
+      console.error("[ApiService] Error executing task:", error);
+      throw error;
+    }
+  }
+
+  async getTaskStatus(taskId: string): Promise<any> {
+    console.log(`[ApiService] Fetching task status for: ${taskId}`);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tasks/${taskId}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+      });
+
+      console.log(`[ApiService] Task status response status: ${response.status}`);
+      console.log(`[ApiService] Task status response headers:`, Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `[ApiService] Task status request failed: ${response.status} - ${errorText}`
+        );
+        throw new Error(`Failed to fetch task status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log(`[ApiService] Task status fetched successfully`);
+      console.log(`[ApiService] Full task status response:`, data);
+      console.log(`[ApiService] Task status response JSON:`, JSON.stringify(data, null, 2));
+      return data;
+    } catch (error) {
+      console.error(`[ApiService] Error fetching task status:`, error);
+      throw error;
+    }
+  }
+
+  async getPullRequest(owner: string, repo: string, prNumber: number): Promise<SinglePullRequest> {
+    console.log(`[ApiService] Fetching pull request ${prNumber} for ${owner}/${repo}`);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/github/repositories/${owner}/${repo}/pulls/${prNumber}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+      });
+
+      console.log(`[ApiService] Pull request response status: ${response.status}`);
+      console.log(`[ApiService] Pull request response headers:`, Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `[ApiService] Pull request request failed: ${response.status} - ${errorText}`
+        );
+        throw new Error(`Failed to fetch pull request: ${response.status}`);
+      }
+
+      const data: SinglePullRequest = await response.json();
+      console.log(`[ApiService] Successfully fetched pull request ${prNumber}`);
+      console.log(`[ApiService] Full pull request response:`, data);
+      console.log(`[ApiService] Pull request response JSON:`, JSON.stringify(data, null, 2));
+      return data;
+    } catch (error) {
+      console.error(`[ApiService] Error fetching pull request:`, error);
       throw error;
     }
   }

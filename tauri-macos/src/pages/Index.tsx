@@ -10,13 +10,15 @@ import { NavigationHeader } from "../components/NavigationHeader";
 import { useDeepLink } from "../hooks/useDeepLink";
 import { healthCheckService, HealthCheckResult } from "../services/healthCheck";
 import { authService, User } from "../services/authService";
+import { apiService, TaskExecutionRequest } from "../services/apiService";
+import { websocketService, WebSocketCallbacks } from "../services/websocketService";
 
 type Screen = "startup" | "connection-failed" | "login" | "home" | "task";
 
 interface Task {
   id: string;
   name: string;
-  status: "ongoing" | "pending_pr" | "merged" | "rejected";
+  status: "ongoing" | "pending_pr" | "merged" | "rejected" | "failed";
   branch: string;
   repo: string;
   isRunning?: boolean;
@@ -24,7 +26,7 @@ interface Task {
   issueNumber?: number;
   createdAt: Date;
   // Task execution phases
-  phase: "working" | "creating_pr" | "completed";
+  phase: "working" | "creating_pr" | "completed" | "failed";
   workingCompletedAt?: Date;
   prCreatedAt?: Date;
   completedAt?: Date;
@@ -35,7 +37,21 @@ interface Task {
     additions: number;
     deletions: number;
     status: 'open' | 'merged' | 'closed';
+    url?: string;
   };
+  // Real task properties
+  realTaskId?: string;
+  currentPhase?: string;
+  progress?: number;
+  prUrl?: string;
+  errorMessage?: string;
+  // Phase history for accumulating phases
+  phaseHistory?: Array<{
+    phase: string;
+    timestamp: Date;
+    completed?: boolean;
+    completedAt?: Date;
+  }>;
 }
 
 const Index = () => {
@@ -68,14 +84,16 @@ const Index = () => {
   };
 
   const handleTaskSelect = (taskId: string) => {
+    // Disconnect any existing WebSocket connection
+    websocketService.disconnect();
     setSelectedTaskId(taskId);
     setCurrentScreen("task");
   };
 
-  const handleTaskStart = (issue: { id: string; title: string; number: number; htmlUrl: string; user: string }, agent: { id: string; name: string; description: string; icon: string }, repository?: { name: string; full_name: string }) => {
+  const handleTaskStart = async (issue: { id: string; title: string; number: number; htmlUrl: string; user: string }, agent: { id: string; name: string; description: string; icon: string }, repository?: { name: string; full_name: string }) => {
     console.log(`[Index] Creating task for issue: ${issue.title} with agent: ${agent.name}`);
     
-    // Generate a unique task ID
+    // Generate a unique task ID for frontend tracking
     const taskId = `task-${Date.now()}-${issue.id}`;
     
     // Create a new task from the issue data
@@ -101,61 +119,340 @@ const Index = () => {
     
     console.log(`[Index] Task created with ID: ${taskId}`);
     
-    // Start task execution simulation
-    startTaskExecution(taskId);
-  };
+    try {
+      // Prepare task execution request with hardcoded prompt
+      const taskRequest: TaskExecutionRequest = {
+        issue_url: issue.htmlUrl,
+        agents: [{
+          coding_ide: agent.id,
+          model: "claude-sonnet-4",
+          role: "Coder"
+        }],
+        workflow_type: "custom",
+        create_pr: true,
+        task_prompt: "Find grammatical issues in the readme file and fix them",
+        issue_number: issue.number,
+        issue_title: issue.title
+      };
 
-  const startTaskExecution = (taskId: string) => {
-    console.log(`[Index] Starting task execution simulation for: ${taskId}`);
-    
-    // Phase 1: Agent working for 5 seconds
-    setTimeout(() => {
-      console.log(`[Index] Task ${taskId} - Agent work completed, moving to PR creation`);
+      console.log(`[Index] Executing task with request:`, taskRequest);
+      
+      // Execute task via backend API
+      const response = await apiService.executeTask(taskRequest);
+      console.log(`[Index] Task execution response:`, response);
+      
+      // Update task with real task ID
       setTasks(prevTasks => 
         prevTasks.map(task => 
           task.id === taskId 
-            ? { ...task, phase: "creating_pr", workingCompletedAt: new Date() }
+            ? { ...task, realTaskId: response.task_id }
             : task
         )
       );
       
-      // Phase 2: Creating PR for 2 seconds
-      setTimeout(() => {
-        console.log(`[Index] Task ${taskId} - PR creation completed, task finished`);
+      // Start WebSocket connection for real-time updates
+      startWebSocketConnection(response.task_id, taskId);
+      
+    } catch (error) {
+      console.error(`[Index] Failed to execute task:`, error);
+      // Update task status to failed
+      setTasks(prevTasks => 
+        prevTasks.map(task => 
+          task.id === taskId 
+            ? { 
+                ...task, 
+                isRunning: false, 
+                status: "failed" as const,
+                phase: "failed" as const,
+                errorMessage: error instanceof Error ? error.message : String(error)
+              }
+            : task
+        )
+      );
+    }
+  };
+
+  const startWebSocketConnection = (realTaskId: string, frontendTaskId: string) => {
+    console.log(`[Index] Starting WebSocket connection for real task: ${realTaskId}, frontend task: ${frontendTaskId}`);
+    
+    const callbacks: WebSocketCallbacks = {
+      onOpen: () => {
+        console.log(`[Index] WebSocket connected for task: ${realTaskId}`);
+      },
+      onProgress: (data) => {
+        console.log(`[Index] Received progress update for task ${realTaskId}:`, data);
+        console.log(`[Index] Progress data JSON:`, JSON.stringify(data, null, 2));
+        console.log(`[Index] Progress type: ${data.type}`);
+        console.log(`[Index] Progress task_id: ${data.task_id}`);
+        console.log(`[Index] Progress progress: ${data.progress}`);
+        console.log(`[Index] Progress current_phase: ${data.current_phase}`);
+        console.log(`[Index] Progress timestamp: ${data.timestamp}`);
+        console.log(`[Index] Progress message: ${data.message}`);
         
         setTasks(prevTasks => 
           prevTasks.map(task => {
-            if (task.id === taskId) {
-              // Generate mock PR data using current task info
-              const mockPR = {
-                title: `Fix: ${task.name}`,
-                branch: task.branch,
-                filesChanged: Math.floor(Math.random() * 5) + 1,
-                additions: Math.floor(Math.random() * 100) + 10,
-                deletions: Math.floor(Math.random() * 20) + 1,
-                status: 'open' as const
-              };
+            if (task.id === frontendTaskId) {
+              console.log(`[Index] Updating task: ${task.id}`);
+              console.log(`[Index] Current task state:`, task);
+              
+              const updatedTask = { ...task };
+              
+              // Update progress
+              if (data.progress !== undefined) {
+                console.log(`[Index] Updating progress from ${updatedTask.progress} to ${data.progress}`);
+                updatedTask.progress = data.progress;
+              }
+              
+              // Update current phase and add to history
+              if (data.current_phase) {
+                console.log(`[Index] Processing current_phase: ${data.current_phase}`);
+                
+                // Initialize phase history if it doesn't exist
+                if (!updatedTask.phaseHistory) {
+                  console.log(`[Index] Initializing phase history for task`);
+                  updatedTask.phaseHistory = [];
+                  
+                  // Add "Connecting to server..." as the first phase if we're just starting
+                  if (updatedTask.phase === "working") {
+                    console.log(`[Index] Adding "Connecting to server..." as first phase`);
+                    updatedTask.phaseHistory.push({
+                      phase: "Connecting to server...",
+                      timestamp: updatedTask.createdAt,
+                      completed: true,
+                      completedAt: new Date()
+                    });
+                  }
+                }
+                
+                // Check if this phase is already in history
+                const existingPhaseIndex = updatedTask.phaseHistory.findIndex(p => p.phase === data.current_phase);
+                console.log(`[Index] Existing phase index: ${existingPhaseIndex}`);
+                
+                if (existingPhaseIndex === -1) {
+                  console.log(`[Index] Adding new phase to history: ${data.current_phase}`);
+                  
+                  // Mark the previous phase as completed (if any)
+                  if (updatedTask.phaseHistory.length > 0) {
+                    const lastPhase = updatedTask.phaseHistory[updatedTask.phaseHistory.length - 1];
+                    if (!lastPhase.completed) {
+                      console.log(`[Index] Marking previous phase as completed: ${lastPhase.phase}`);
+                      lastPhase.completed = true;
+                      lastPhase.completedAt = new Date();
+                    }
+                  }
+                  
+                  // Add new phase to history
+                  updatedTask.phaseHistory.push({
+                    phase: data.current_phase,
+                    timestamp: new Date(),
+                    completed: false
+                  });
+                }
+                
+                updatedTask.currentPhase = data.current_phase;
+                console.log(`[Index] Updated currentPhase to: ${updatedTask.currentPhase}`);
+                
+                // Map backend phases to frontend phases
+                if (data.current_phase.includes("Initializing") || data.current_phase.includes("Creating task request")) {
+                  console.log(`[Index] Mapping phase to "working"`);
+                  updatedTask.phase = "working";
+                } else if (data.current_phase.includes("Processing results") || data.current_phase.includes("completed")) {
+                  console.log(`[Index] Mapping phase to "completed"`);
+                  updatedTask.phase = "completed";
+                  updatedTask.isRunning = false;
+                  updatedTask.status = "pending_pr";
+                  updatedTask.completedAt = new Date();
+                  
+                  // Mark the last phase as completed
+                  if (updatedTask.phaseHistory.length > 0) {
+                    const lastPhase = updatedTask.phaseHistory[updatedTask.phaseHistory.length - 1];
+                    console.log(`[Index] Marking final phase as completed: ${lastPhase.phase}`);
+                    lastPhase.completed = true;
+                    lastPhase.completedAt = new Date();
+                  }
+                }
+              }
+              
+              console.log(`[Index] Updated task state:`, updatedTask);
+              console.log(`[Index] Phase history:`, updatedTask.phaseHistory);
+              
+              return updatedTask;
+            }
+            return task;
+          })
+        );
+        
+        // Close WebSocket connection when progress reaches 100%
+        if (data.progress === 100) {
+          console.log(`[Index] Progress reached 100%, closing WebSocket connection for task ${realTaskId}`);
+          websocketService.disconnect();
+          
+          // Mark the previous phase as completed
+          setTasks(prevTasks => 
+            prevTasks.map(task => {
+              if (task.id === frontendTaskId) {
+                const updatedTask = { ...task };
+                
+                if (updatedTask.phaseHistory && updatedTask.phaseHistory.length > 0) {
+                  const lastPhase = updatedTask.phaseHistory[updatedTask.phaseHistory.length - 1];
+                  if (!lastPhase.completed) {
+                    lastPhase.completed = true;
+                    lastPhase.completedAt = new Date();
+                  }
+                }
+                
+                console.log(`[Index] Marked final phase as completed for task ${frontendTaskId}`);
+                
+                return updatedTask;
+              }
+              return task;
+            })
+          );
+          
+          // Fetch task completion details
+          fetchTaskCompletionDetails(realTaskId, frontendTaskId);
+        }
+      },
+      onError: (error) => {
+        console.error(`[Index] WebSocket error for task ${realTaskId}:`, error);
+        // Update task status to failed
+        setTasks(prevTasks => 
+          prevTasks.map(task => {
+            if (task.id === frontendTaskId) {
+              const updatedTask = { ...task };
+              
+              // Mark the current phase as completed (if any)
+              if (updatedTask.phaseHistory && updatedTask.phaseHistory.length > 0) {
+                const lastPhase = updatedTask.phaseHistory[updatedTask.phaseHistory.length - 1];
+                if (!lastPhase.completed) {
+                  lastPhase.completed = true;
+                  lastPhase.completedAt = new Date();
+                }
+              }
+              
+              // Add error as a new phase in history (only if it doesn't already exist)
+              if (!updatedTask.phaseHistory) {
+                updatedTask.phaseHistory = [];
+              }
+              
+              // Check if "Task execution failed" phase already exists
+              const failedPhaseExists = updatedTask.phaseHistory.some(p => p.phase === "Task execution failed");
+              
+              if (!failedPhaseExists) {
+                updatedTask.phaseHistory.push({
+                  phase: "Task execution failed",
+                  timestamp: new Date(),
+                  completed: false // Don't mark as completed so it doesn't show "Completed in"
+                });
+              }
               
               return { 
-                ...task, 
-                phase: "completed", 
-                prCreatedAt: new Date(),
-                completedAt: new Date(),
-                isRunning: false,
-                status: "pending_pr",
-                pr: mockPR
+                ...updatedTask, 
+                isRunning: false, 
+                status: "failed" as const,
+                phase: "failed" as const,
+                errorMessage: error
               };
             }
             return task;
           })
         );
-      }, 2000); // 2 seconds for PR creation
-    }, 5000); // 5 seconds for agent working
+      },
+      onClose: () => {
+        console.log(`[Index] WebSocket closed for task: ${realTaskId}`);
+      }
+    };
+    
+    websocketService.connect(realTaskId, callbacks);
   };
 
+  const fetchTaskCompletionDetails = async (realTaskId: string, frontendTaskId: string) => {
+    console.log(`[Index] Fetching completion details for task: ${realTaskId}`);
+    
+    try {
+      // Get task status to check if it has PR URL
+      const taskStatus = await apiService.getTaskStatus(realTaskId);
+      console.log(`[Index] Task status:`, taskStatus);
+      
+      if (taskStatus.pr_url) {
+        console.log(`[Index] Task completed with PR: ${taskStatus.pr_url}`);
+        
+        // Extract owner, repo, and PR number from URL
+        const prUrlMatch = taskStatus.pr_url.match(/github\.com\/([^\/]+)\/([^\/]+)\/pull\/(\d+)/);
+        if (prUrlMatch) {
+          const [, owner, repo, prNumber] = prUrlMatch;
+          console.log(`[Index] Extracted PR details: owner=${owner}, repo=${repo}, prNumber=${prNumber}`);
+          
+          // Fetch PR details
+          const prDetails = await apiService.getPullRequest(owner, repo, parseInt(prNumber));
+          console.log(`[Index] PR details:`, prDetails);
+          
+          // Update task with PR information and issue number
+          setTasks(prevTasks => 
+            prevTasks.map(task => {
+              if (task.id === frontendTaskId) {
+                return {
+                  ...task,
+                  pr: {
+                    title: prDetails.title,
+                    branch: prDetails.head_ref,
+                    filesChanged: prDetails.changed_files,
+                    additions: prDetails.additions,
+                    deletions: prDetails.deletions,
+                    status: prDetails.merged ? 'merged' : (prDetails.state === 'closed' ? 'closed' : 'open'),
+                    url: prDetails.html_url
+                  },
+                  prUrl: taskStatus.pr_url
+                };
+              }
+              return task;
+            })
+          );
+        }
+      } else {
+        console.log(`[Index] Task completed but no PR URL found`);
+        // Still update the issue number if provided by backend
+        if (taskStatus.issue_number) {
+          setTasks(prevTasks => 
+            prevTasks.map(task => {
+              if (task.id === frontendTaskId) {
+                return {
+                  ...task,
+                  issueNumber: taskStatus.issue_number
+                };
+              }
+              return task;
+            })
+          );
+        }
+      }
+    } catch (error) {
+      console.error(`[Index] Error fetching task completion details:`, error);
+    }
+  };
+
+
+
   const handleHomeSelect = () => {
+    // Disconnect any existing WebSocket connection
+    websocketService.disconnect();
     setCurrentScreen("home");
     setSelectedTaskId(null);
+  };
+
+  const handleDeleteTask = (taskId: string) => {
+    console.log(`[Index] Deleting task: ${taskId}`);
+    
+    // Remove task from tasks array
+    setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId));
+    
+    // Clear selected task if it's the one being deleted
+    if (selectedTaskId === taskId) {
+      setSelectedTaskId(null);
+    }
+    
+    // Disconnect WebSocket if it's for this task
+    websocketService.disconnect();
   };
 
   const handleCommandK = () => {
@@ -235,6 +532,8 @@ const Index = () => {
     // Cleanup on unmount
     return () => {
       healthCheckService.stopPeriodicHealthChecks();
+      // Cleanup WebSocket connections
+      websocketService.disconnect();
     };
   }, []);
 
@@ -494,18 +793,9 @@ const Index = () => {
   const getCurrentTaskName = () => {
     if (!selectedTaskId) return undefined;
     
-    // Try to find the task in the real tasks array first
-    const realTask = tasks.find(t => t.id === selectedTaskId);
-    if (realTask) return realTask.name;
-    
-    // Fall back to mock data for existing mock tasks
-    const mockTaskData = {
-      "1": "Implement Playwright best practices for robust web automation",
-      "2": "Improve README formatting",
-      "3": "Add DiffUtil to RecyclerView for better performance",
-      "4": "Integrate MonsterAPI for Advanced Audio Transcription",
-    };
-    return mockTaskData[selectedTaskId as keyof typeof mockTaskData];
+    // Find the task in the tasks array
+    const task = tasks.find(t => t.id === selectedTaskId);
+    return task ? task.name : undefined;
   };
 
   if (currentScreen === "startup") {
@@ -562,6 +852,8 @@ const Index = () => {
           <TaskScreen 
             taskId={selectedTaskId} 
             task={tasks.find(t => t.id === selectedTaskId)}
+            onDeleteTask={handleDeleteTask}
+            onNavigateHome={handleHomeSelect}
           />
         )}
       </div>
