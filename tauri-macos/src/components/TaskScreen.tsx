@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { ExternalLink, FileText, Plus, Minus, GitPullRequest, GitMerge, X, Rocket, Trash2 } from "lucide-react";
+import { ExternalLink, FileText, Plus, Minus, GitPullRequest, GitMerge, X, Rocket, Trash2, Square } from "lucide-react";
 import { Button } from "./ui/button";
 import { useToast } from "./ui/use-toast";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { websocketService } from "../services/websocketService";
 
 interface TaskScreenProps {
   taskId: string;
@@ -152,19 +153,20 @@ function LoadingDots() {
 
 export function TaskScreen({ taskId, task: passedTask, onDeleteTask, onNavigateHome }: TaskScreenProps) {
   const [currentTime, setCurrentTime] = useState(Date.now());
+  const [isStopped, setIsStopped] = useState(false);
   const { toast } = useToast();
   
   // Only use passed task data - no mock fallbacks
   const task = passedTask;
 
   useEffect(() => {
-    if (task?.isRunning) {
+    if (task?.isRunning && !isStopped) {
       const interval = setInterval(() => {
         setCurrentTime(Date.now());
       }, 1000);
       return () => clearInterval(interval);
     }
-  }, [task?.isRunning]);
+  }, [task?.isRunning, isStopped]);
 
   if (!task) {
     return (
@@ -175,6 +177,16 @@ export function TaskScreen({ taskId, task: passedTask, onDeleteTask, onNavigateH
   }
 
   const duration = task.createdAt ? currentTime - task.createdAt.getTime() : 0;
+
+  const handleStopTask = () => {
+    console.log(`[TaskScreen] Stopping task: ${taskId}`);
+    websocketService.disconnect();
+    setIsStopped(true);
+    toast({
+      title: "Task stopped successfully.",
+      description: "The task has been stopped and the connection closed.",
+    });
+  };
 
   const handleDeleteTask = () => {
     if (onDeleteTask) {
@@ -194,14 +206,42 @@ export function TaskScreen({ taskId, task: passedTask, onDeleteTask, onNavigateH
       <div className="max-w-4xl mx-auto py-8 px-8">
         {/* Task Header */}
         <div className="mb-8">
-          <h1 className="text-2xl font-semibold text-gray-900 mb-2">
-            {task.name}
-          </h1>
+          <div className="flex items-start justify-between mb-2">
+            <h1 className="text-2xl font-semibold text-gray-900">
+              {task.name}
+            </h1>
+            {/* Stop/Delete Task Button - Integrated in header */}
+            {task.isRunning && (
+              <div>
+                {!isStopped ? (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={handleStopTask}
+                    className="flex items-center gap-2"
+                  >
+                    <Square className="w-4 h-4" />
+                    Stop Task
+                  </Button>
+                ) : (
+                  <Button 
+                    variant="destructive" 
+                    size="sm"
+                    onClick={handleDeleteTask}
+                    className="flex items-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete Task
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-4 text-sm text-gray-600">
             <span className="font-mono">{task.issueNumber ? `issue #${task.issueNumber}` : task.branch}</span>
             <span>•</span>
             <span>
-              {task.isRunning ? 'Running for' : 'Completed in'} {formatDuration(duration)}
+              {task.isRunning && !isStopped ? 'Running for' : 'Completed in'} {formatDuration(duration)}
             </span>
             <span>•</span>
             <span>{task?.progress !== undefined ? `${task.progress}%` : '0%'} complete</span>
@@ -215,27 +255,27 @@ export function TaskScreen({ taskId, task: passedTask, onDeleteTask, onNavigateH
             <>
               {task.phaseHistory.map((phaseEntry, index) => (
                 <div key={index} className={`flex items-center ${phaseEntry.phase === "Task execution failed" ? "justify-between" : "gap-3"}`}>
-                  <div className="flex items-center gap-3">
-                    <Rocket className={`w-6 h-6 ${phaseEntry.phase === "Task execution failed" ? "text-red-500" : "text-foreground"} ${!phaseEntry.completed ? "animate-pulse" : ""}`} />
-                    <div>
+                  <div className="flex items-center gap-3 flex-1">
+                    <Rocket className={`w-4 h-4 ${phaseEntry.phase === "Task execution failed" ? "text-red-500" : "text-foreground"} ${!phaseEntry.completed ? "animate-pulse" : ""}`} />
+                    <div className="flex items-center gap-4 flex-1">
                       <span className={`text-sm ${phaseEntry.phase === "Task execution failed" ? "text-red-500 font-medium" : "text-foreground"}`}>
                         {phaseEntry.completed ? phaseEntry.phase : phaseEntry.phase}
                       </span>
                       {phaseEntry.completed && phaseEntry.completedAt && phaseEntry.phase !== "Task execution failed" && phaseEntry.phase !== "Task completed successfully!" ? (
-                        <p className={`text-xs mt-1 ${phaseEntry.phase === "Task execution failed" ? "text-red-600" : "text-gray-500"}`}>
+                        <span className={`text-xs font-mono ${phaseEntry.phase === "Task execution failed" ? "text-red-600" : "text-gray-500"}`}>
                           Completed in: {formatDurationInSeconds(phaseEntry.completedAt.getTime() - phaseEntry.timestamp.getTime())}
-                        </p>
+                        </span>
                       ) : !phaseEntry.completed && phaseEntry.phase !== "Task execution failed" && (
-                        <p className="text-xs text-gray-500 mt-1">
+                        <span className="text-xs text-gray-500 font-mono">
                           Duration: {formatDurationInSeconds(currentTime - phaseEntry.timestamp.getTime())}
-                        </p>
-                      )}
-                      {phaseEntry.phase === "Task execution failed" && task.errorMessage && (
-                        <p className="text-xs text-red-600 mt-1">
-                          Error: {task.errorMessage}
-                        </p>
+                        </span>
                       )}
                     </div>
+                    {phaseEntry.phase === "Task execution failed" && task.errorMessage && (
+                      <p className="text-xs text-red-600">
+                        Error: {task.errorMessage}
+                      </p>
+                    )}
                   </div>
                   {phaseEntry.phase === "Task execution failed" && (
                     <div className="flex items-center">
@@ -257,13 +297,13 @@ export function TaskScreen({ taskId, task: passedTask, onDeleteTask, onNavigateH
           {/* Current Active Phase (if not in history yet) */}
           {task.phase !== "failed" && task?.currentPhase && !task.phaseHistory?.some(p => p.phase === task.currentPhase) && (
             <div className="flex items-center gap-3">
-              <Rocket className={`w-6 h-6 text-foreground ${task.isRunning ? "animate-pulse" : ""}`} />
-              <div>
+              <Rocket className={`w-4 h-4 text-foreground ${task.isRunning && !isStopped ? "animate-pulse" : ""}`} />
+              <div className="flex items-center gap-4 flex-1">
                 <span className="text-sm text-foreground">{task.currentPhase}</span>
-                {task?.isRunning && (
-                  <p className="text-xs text-gray-500 mt-1">
+                {task?.isRunning && !isStopped && (
+                  <span className="text-xs text-gray-500 font-mono">
                     Duration: {formatDurationInSeconds(currentTime - task.createdAt.getTime())}
-                  </p>
+                  </span>
                 )}
               </div>
             </div>
@@ -274,17 +314,17 @@ export function TaskScreen({ taskId, task: passedTask, onDeleteTask, onNavigateH
             <>
               {/* Phase 1: Connecting to server */}
               <div className="flex items-center gap-3">
-                <Rocket className={`w-6 h-6 text-foreground ${task.phase === "working" ? "animate-pulse" : ""}`} />
-                <div>
+                <Rocket className={`w-4 h-4 text-foreground ${task.phase === "working" && !isStopped ? "animate-pulse" : ""}`} />
+                <div className="flex items-center gap-4 flex-1">
                   <span className="text-sm text-foreground">Connecting to server...</span>
-                  {task.phase === "working" ? (
-                    <p className="text-xs text-gray-500 mt-1">
+                  {task.phase === "working" && !isStopped ? (
+                    <span className="text-xs text-gray-500 font-mono">
                       Duration: {formatDurationInSeconds(currentTime - task.createdAt.getTime())}
-                    </p>
+                    </span>
                   ) : task?.workingCompletedAt ? (
-                    <p className="text-xs text-gray-500 mt-1">
+                    <span className="text-xs text-gray-500 font-mono">
                       Completed in: {formatDurationInSeconds(task.workingCompletedAt.getTime() - task.createdAt.getTime())}
-                    </p>
+                    </span>
                   ) : null}
                 </div>
               </div>
@@ -292,17 +332,17 @@ export function TaskScreen({ taskId, task: passedTask, onDeleteTask, onNavigateH
               {/* Phase 2: Creating PR */}
               {(task.phase === "creating_pr" || task.phase === "completed") && (
                 <div className="flex items-center gap-3">
-                  <Rocket className={`w-6 h-6 text-foreground ${task.phase === "creating_pr" ? "animate-pulse" : ""}`} />
-                  <div>
+                  <Rocket className={`w-4 h-4 text-foreground ${task.phase === "creating_pr" && !isStopped ? "animate-pulse" : ""}`} />
+                  <div className="flex items-center gap-4 flex-1">
                     <span className="text-sm text-foreground">Creating PR...</span>
-                    {task.phase === "creating_pr" ? (
-                      <p className="text-xs text-gray-500 mt-1">
+                    {task.phase === "creating_pr" && !isStopped ? (
+                      <span className="text-xs text-gray-500 font-mono">
                         Duration: {formatDurationInSeconds(currentTime - (task.workingCompletedAt?.getTime() || task.createdAt.getTime()))}
-                      </p>
+                      </span>
                     ) : task?.prCreatedAt && task?.workingCompletedAt ? (
-                      <p className="text-xs text-gray-500 mt-1">
+                      <span className="text-xs text-gray-500 font-mono">
                         Completed in: {formatDurationInSeconds(task.prCreatedAt.getTime() - task.workingCompletedAt.getTime())}
-                      </p>
+                      </span>
                     ) : null}
                   </div>
                 </div>
@@ -311,13 +351,13 @@ export function TaskScreen({ taskId, task: passedTask, onDeleteTask, onNavigateH
               {/* Phase 3: PR Created */}
               {task.phase === "completed" && (
                 <div className="flex items-center gap-3">
-                  <Rocket className="w-6 h-6 text-foreground" />
-                  <div>
+                  <Rocket className="w-4 h-4 text-foreground" />
+                  <div className="flex items-center gap-4 flex-1">
                     <span className="text-sm text-foreground">PR Created!</span>
                     {task?.completedAt && task?.prCreatedAt && (
-                      <p className="text-xs text-gray-500 mt-1">
+                      <span className="text-xs text-gray-500 font-mono">
                         Completed in: {formatDurationInSeconds(task.completedAt.getTime() - task.prCreatedAt.getTime())}
-                      </p>
+                      </span>
                     )}
                   </div>
                 </div>
@@ -325,9 +365,6 @@ export function TaskScreen({ taskId, task: passedTask, onDeleteTask, onNavigateH
             </>
           )}
         </div>
-
-
-
 
         {/* Show PR Component when completed or show Fetching PR with loading */}
         {task.phase === "completed" && (
@@ -338,7 +375,7 @@ export function TaskScreen({ taskId, task: passedTask, onDeleteTask, onNavigateH
             ) : (
               <div className="bg-card border border-gray-200 rounded-lg p-4">
                 <div className="flex items-center gap-3">
-                  <Rocket className="w-6 h-6 text-foreground animate-pulse" />
+                  <Rocket className="w-4 h-4 text-foreground animate-pulse" />
                   <div>
                     <span className="text-sm text-foreground">Fetching PR...</span>
                     <div className="mt-2">
