@@ -569,8 +569,7 @@ class TmuxAgentManager:
                 self._rename_pane(target, f"SPAWNING‑{sid}")
                 
                 # Start agent
-                actual_prompt = prompt.strip() if prompt.strip() else \
-                    "Write a script that runs for 30 seconds, printing timestamps"
+                actual_prompt = prompt.strip()
                 
                 project_path = os.getcwd()
                 
@@ -638,6 +637,32 @@ class TmuxAgentManager:
                     del self._pane_mapping[sid]
                 return None
 
+    async def _terminate_pane(self, sid: str, pane: str, force_kill: bool = False):
+        """Shared logic for terminating tmux panes"""
+        try:
+            # Send CTRL+C twice to interrupt any running processes
+            self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
+            await asyncio.sleep(0.1)
+            self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
+            await asyncio.sleep(0.3)
+            
+            # Send exit command
+            self._run(["tmux", "send-keys", "-t", pane, "exit", "C-m"], check=False)
+            await asyncio.sleep(0.2)
+            
+            # Force kill pane if requested (for stop_session)
+            if force_kill:
+                pane_id = pane.split(".")[-1]
+                self._run(["tmux", "kill-pane", "-t", pane_id], check=False)
+            
+            # Remove pane mapping
+            with self._state_lock:
+                if sid in self._pane_mapping:
+                    del self._pane_mapping[sid]
+                    
+        except Exception as e:
+            self.logger.warning(f"Pane termination error for {sid}: {e}")
+
     def stop_session(self, sid: str) -> bool:
         """Stop a session (thread-safe)"""
         with self._atomic_state_update():
@@ -650,22 +675,12 @@ class TmuxAgentManager:
             
             pane = self._pane_mapping.get(sid)
             if pane:
-                try:
-                    # Send termination signals
-                    self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
-                    time.sleep(0.2)
-                    self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
-                    time.sleep(0.2)
-                    self._run(["tmux", "send-keys", "-t", pane, "exit", "C-m"], check=False)
-                    time.sleep(0.3)
-                    
-                    # Kill pane
-                    pane_id = pane.split(".")[-1]
-                    self._run(["tmux", "kill-pane", "-t", pane_id], check=False)
-                    
-                    del self._pane_mapping[sid]
-                except Exception as e:
-                    self.logger.error(f"Error stopping session {sid}: {e}")
+                # Use async termination in a task for consistency
+                async def _async_stop():
+                    await self._terminate_pane(sid, pane, force_kill=True)
+                
+                # Schedule the async termination
+                asyncio.create_task(_async_stop())
             
             # Update status
             info.status = SessionStatus.STOPPED
@@ -1161,11 +1176,12 @@ class TmuxAgentManager:
                     prompt = self._session_prompts.get(sid)
                     if prompt:
                         self._run(["tmux", "send-keys", "-t", pane, "-l", prompt])
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(1)
                         self._run(["tmux", "send-keys", "-t", pane, "C-m"])
                         self._prompt_sent_time[sid] = time.time()
                         del self._session_prompts[sid]
                         self._rename_pane(pane, f"RUNNING‑{sid}")
+                        await asyncio.sleep(2) # Wait for the agent to start working on the prompt
 
             
             elif session.status == SessionStatus.RUNNING:
@@ -1220,24 +1236,8 @@ class TmuxAgentManager:
             pane = self._pane_mapping.get(sid)
         
         if pane:
-            try:
-                # Send CTRL+C twice quickly
-                self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
-                await asyncio.sleep(0.1)  # Short delay between CTRL+C commands
-                self._run(["tmux", "send-keys", "-t", pane, "C-c"], check=False)
-                await asyncio.sleep(0.3)  # Wait a bit for processes to terminate
-                
-                # Type exit and press enter
-                self._run(["tmux", "send-keys", "-t", pane, "exit", "C-m"], check=False)
-                await asyncio.sleep(0.2)  # Give it time to process
-                
-                # Remove pane mapping since the pane is now closed
-                with self._state_lock:
-                    if sid in self._pane_mapping:
-                        del self._pane_mapping[sid]
-                        
-            except Exception as e:
-                self.logger.warning(f"Cleanup error for {sid}: {e}")
+            # Use shared termination logic without force kill (gentler cleanup)
+            await self._terminate_pane(sid, pane, force_kill=False)
 
     def save_status(self):
         """Save status to file (thread-safe)"""
