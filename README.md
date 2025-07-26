@@ -1,5 +1,5 @@
 # SimulateDev
-Run cutting-edge AI coding IDEs such as Cursor, Devin, and Claude Code via code.
+Run cutting-edge AI coding IDEs such as Cursor, Devin, and Claude Code to automate your development workflow.
 
 SimulateDev is an automation tool that runs AI coding agents (Cursor, Devin, Claude Code) on any GitHub repository with custom prompts and automatically creates pull requests with the changes. It supports both **single-agent** and **multi-agent collaborative workflows**. SimulateDev can also help you automatically address reviewer comments on existing PRs or completely resolve open GitHub issues.
 
@@ -15,14 +15,14 @@ https://github.com/user-attachments/assets/13b35289-3f38-4a46-a176-9c8e85892fe9
 
 ## ⚠️ Important Notes
 
-- macOS only: SimulateDev currently only works on macOS. Windows and Linux support are planned for future releases.
-- Ensure your coding IDEs (Cursor, Windsurf, Claude Code) are already installed and ready to use - SimulateDev doesn't handle IDE setup or installation (for now)
+- **macOS Only**: SimulateDev currently works exclusively on macOS. Windows and Linux support are planned for future releases.
+- Ensure your coding IDEs (Cursor, Windsurf, Claude Code) are already installed and ready to use. SimulateDev doesn't handle IDE setup or installation (for now).
 - For Windsurf users: Turn on **Turbo mode** for terminal auto-execution to ensure commands run automatically. [Learn more](https://www.reddit.com/r/windsurf/comments/1kksxgh/comment/mrx2el2/)
-- SimulateDev will periodically bring the IDE to the front to monitor the coding agent's progress and state. Ideally: you take your coffee break and let it work :)
+- SimulateDev will periodically bring the IDE to the front to monitor the coding agent's progress and state. Ideally, you can take a break and let it work.
 - **Permissions Required**: GitHub token needs `repo` permissions. Cursor/Windsurf require Automation & Accessibility permissions in System Settings → Privacy & Security
 
-## Run SimulateDev in <1 min
-Clone this repo → Create virtual environment → Install requirements.txt → Copy .env.example into .env and replace API keys → Run the following command (replace to your coding IDE of choice and GitHub repo url):
+## Run SimulateDev in Under 1 Minute
+Clone this repository → Create a virtual environment → Install requirements.txt → Copy .env.example to .env and replace with your API keys → Run the following command (replace with your coding IDE of choice and GitHub repository URL):
 ```bash
 python simulatedev.py --workflow bugs --repo https://github.com/saharmor/gemini-multimodal-playground --agent cursor
 ```
@@ -77,7 +77,7 @@ python simulatedev.py --workflow bugs --repo https://github.com/saharmor/gemini-
 
 4. **Set up environment variables:**
    ```bash
-   cp env.example .env
+   cp .env.example .env
    # Edit .env with your API keys
    ```
 
@@ -218,7 +218,7 @@ python scripts/issue_to_task.py --issue-url https://github.com/owner/repo/issues
 ```
 
 ### PR to Task (`scripts/pr_to_task.py`)
-Processes existing pull requests to automatically addresses all reviewer comments and feedback.
+Processes existing pull requests to automatically address all reviewer comments and feedback.
 
 ```bash
 # Address all PR review comments automatically
@@ -269,11 +269,11 @@ SimulateDev runs **entirely on your local machine** and leverages your existing 
 - **Multi-Agent Orchestration**: Supports collaborative workflows where specialized agents (Planner → Coder → Tester) work together sequentially on complex tasks
 - **IDE Integration**: SimulateDev programmatically opens and controls your installed coding IDEs through:
   - **GUI Automation**: Uses keyboard shortcuts and UI interaction for Cursor and Windsurf
-- **Screen Analysis**: Uses vision models (e.g. Claude) to analyze IDE screenshots and detect task completion, progress, and UI states
+- **Screen Analysis**: Uses vision models (e.g., Claude) to analyze IDE screenshots and detect task completion, progress, and UI states
 - **Intelligent Monitoring**: Continuously monitors IDE interfaces with adaptive check intervals, automatic resume detection, and timeout management
 - **Window Focus Management**: For GUI-based IDEs like Cursor, the window must be **visible and focused**. SimulateDev will play a beep sound and pause execution if the IDE window loses focus
 
-**Important**: For Cursor and Windsurf, keep the IDE window visible and focused during execution. Claude Code runs headlessly and doesn't require window focus.
+**Important**: For Cursor and Windsurf, keep the IDE window visible and focused during execution. Claude Code runs headlessly and does not require window focus.
 
 
 ## How It Works
