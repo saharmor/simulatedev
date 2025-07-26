@@ -1,20 +1,41 @@
 import { useState, useEffect } from "react";
-import { Search, Home, GitBranch, Palette } from "lucide-react";
+import { Search, Home, GitBranch, GitPullRequest, GitMerge, X, Palette } from "lucide-react";
 import { useTheme } from "next-themes";
+
+interface Task {
+  id: string;
+  name: string;
+  status: "ongoing" | "pending_pr" | "merged" | "rejected" | "failed";
+  branch: string;
+  repo: string;
+  isRunning?: boolean;
+  issueNumber?: number;
+}
 
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
   onTaskSelect: (taskId: string) => void;
   onHomeSelect: () => void;
+  tasks: Task[];
 }
 
-const mockWorkspaces = [
-  'Dhaka', 'Tunis', 'Khartoum', 'Kingston', 'Dublin', 
-  'Hyderabad', 'Tikal', 'Albany', 'Asmara', 'Bangui'
-];
+function getStatusIcon(status: Task["status"]) {
+  switch (status) {
+    case "ongoing":
+      return <GitBranch className="w-4 h-4 text-gray-500" />;
+    case "pending_pr":
+      return <GitPullRequest className="w-4 h-4 text-green-600" />;
+    case "merged":
+      return <GitMerge className="w-4 h-4 text-green-600" />;
+    case "rejected":
+      return <X className="w-4 h-4 text-red-500" />;
+    case "failed":
+      return <X className="w-4 h-4 text-red-500" />;
+  }
+}
 
-export function CommandPalette({ isOpen, onClose, onTaskSelect: _onTaskSelect, onHomeSelect }: CommandPaletteProps) {
+export function CommandPalette({ isOpen, onClose, onTaskSelect, onHomeSelect, tasks }: CommandPaletteProps) {
   const [search, setSearch] = useState('');
   const { theme, setTheme } = useTheme();
   
@@ -46,9 +67,14 @@ export function CommandPalette({ isOpen, onClose, onTaskSelect: _onTaskSelect, o
 
   if (!isOpen) return null;
 
-  const filteredWorkspaces = mockWorkspaces.filter(workspace =>
-    workspace.toLowerCase().includes(search.toLowerCase())
-  );
+  // Filter tasks based on search query (task name or issue number)
+  const filteredTasks = tasks.filter(task => {
+    const searchLower = search.toLowerCase();
+    const taskNameLower = task.name.toLowerCase();
+    const issueNumber = task.issueNumber?.toString() || '';
+    
+    return taskNameLower.includes(searchLower) || issueNumber.includes(searchLower);
+  });
 
   return (
     <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-start justify-center pt-32">
@@ -58,7 +84,7 @@ export function CommandPalette({ isOpen, onClose, onTaskSelect: _onTaskSelect, o
           <Search className="w-4 h-4 text-gray-400" />
           <input
             type="text"
-            placeholder="Type a command or search..."
+            placeholder="Search tasks by name or issue number..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1 bg-transparent outline-none text-sm"
@@ -87,27 +113,64 @@ export function CommandPalette({ isOpen, onClose, onTaskSelect: _onTaskSelect, o
             </button>
           </div>
 
-          {/* Workspaces */}
-          {filteredWorkspaces.length > 0 && (
+          {/* Tasks */}
+          {filteredTasks.length > 0 && (
             <div className="p-2">
               <div className="px-3 py-1">
                 <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  WORKSPACES
+                  TASKS
                 </h3>
               </div>
-              {filteredWorkspaces.map((workspace) => (
+              {filteredTasks.map((task) => (
                 <button
-                  key={workspace}
+                  key={task.id}
                   onClick={() => {
-                    // Handle workspace selection
+                    onTaskSelect(task.id);
                     onClose();
                   }}
-                  className="w-full flex items-center gap-3 px-3 py-2 rounded text-sm hover:bg-gray-100"
+                  className="w-full flex items-start gap-3 px-3 py-2 rounded text-sm hover:bg-gray-100 text-left"
                 >
-                  <GitBranch className="w-4 h-4 text-gray-600" />
-                  <span>{workspace}</span>
+                  {getStatusIcon(task.status)}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-gray-500 font-mono mb-1">
+                      {task.issueNumber ? `issue #${task.issueNumber}` : task.branch}
+                    </div>
+                    <div className="text-sm text-gray-900 leading-relaxed">
+                      {task.name}
+                    </div>
+                    {task.isRunning && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex space-x-1">
+                          <div
+                            className="w-1 h-1 bg-gray-400 rounded-full animate-bounce"
+                            style={{ animationDelay: "0ms" }}
+                          ></div>
+                          <div
+                            className="w-1 h-1 bg-gray-400 rounded-full animate-bounce"
+                            style={{ animationDelay: "150ms" }}
+                          ></div>
+                          <div
+                            className="w-1 h-1 bg-gray-400 rounded-full animate-bounce"
+                            style={{ animationDelay: "300ms" }}
+                          ></div>
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          Working...
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* Show message when no tasks match search */}
+          {search && filteredTasks.length === 0 && (
+            <div className="p-2">
+              <div className="px-3 py-2 text-sm text-gray-500">
+                No tasks found matching "{search}"
+              </div>
             </div>
           )}
 

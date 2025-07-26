@@ -863,6 +863,7 @@ const Index = () => {
         onClose={() => setIsCommandPaletteOpen(false)}
         onTaskSelect={handleTaskSelect}
         onHomeSelect={handleHomeSelect}
+        tasks={tasks}
       />
     </div>
   );
