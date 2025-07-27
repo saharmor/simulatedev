@@ -451,7 +451,11 @@ class Orchestrator:
             work_directory = self._setup_work_directory(request)
             
             # Sort agents by role to ensure proper execution order
-            sorted_agents = AgentRole.sort_agents_by_role(request.agents)
+            # For sequential workflows, preserve the intended order (Coder -> Tester -> Coder)
+            if request.workflow_type == "sequential":
+                sorted_agents = request.agents  # Preserve intended order for sequential execution
+            else:
+                sorted_agents = AgentRole.sort_agents_by_role(request.agents)
             
             # Determine execution type for logging
             execution_type = f"{len(sorted_agents)}-Agent"

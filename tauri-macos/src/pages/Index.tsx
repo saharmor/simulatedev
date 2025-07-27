@@ -7,6 +7,7 @@ import { HomeScreen } from "../components/HomeScreen";
 import { TaskScreen } from "../components/TaskScreen";
 import { CommandPalette } from "../components/CommandPalette";
 import { NavigationHeader } from "../components/NavigationHeader";
+import { AgentSelection } from "../components/AgentSelectionModal";
 import { useDeepLink } from "../hooks/useDeepLink";
 import { healthCheckService, HealthCheckResult } from "../services/healthCheck";
 import { authService, User } from "../services/authService";
@@ -96,8 +97,9 @@ const Index = () => {
     setCurrentScreen("task");
   };
 
-  const handleTaskStart = async (issue: { id: string; title: string; number: number; htmlUrl: string; user: string }, agent: { id: string; name: string; description: string; icon: string }, repository?: { name: string; full_name: string }) => {
-    console.log(`[Index] Creating task for issue: ${issue.title} with agent: ${agent.name}`);
+  const handleTaskStart = async (issue: { id: string; title: string; number: number; htmlUrl: string; user: string }, agentSelection: AgentSelection, repository?: { name: string; full_name: string }) => {
+    const { agent, isSequential } = agentSelection;
+    console.log(`[Index] Creating task for issue: ${issue.title} with agent: ${agent.name} (Sequential: ${isSequential})`);
     
     // Generate a unique task ID for frontend tracking
     const taskId = `task-${Date.now()}-${issue.id}`;
@@ -134,17 +136,22 @@ const Index = () => {
           model: "claude-sonnet-4",
           role: "Coder"
         }],
-        workflow_type: "custom",
+        workflow_type: isSequential ? "sequential" : "custom",
         create_pr: true,
         task_prompt: "Find grammatical issues in the readme file and fix them",
         issue_number: issue.number,
-        issue_title: issue.title
+        issue_title: issue.title,
+        options: isSequential && agentSelection.sequentialAgents ? {
+          sequential_agents: agentSelection.sequentialAgents
+        } : undefined
       };
 
-      console.log(`[Index] Executing task with request:`, taskRequest);
+      console.log(`[Index] Executing ${isSequential ? 'sequential' : 'single'} task with request:`, taskRequest);
       
-      // Execute task via backend API
-      const response = await apiService.executeTask(taskRequest);
+      // Execute task via backend API - use sequential endpoint if selected
+      const response = isSequential 
+        ? await apiService.executeSequentialTask(taskRequest)
+        : await apiService.executeTask(taskRequest);
       console.log(`[Index] Task execution response:`, response);
       
       // Update task with real task ID

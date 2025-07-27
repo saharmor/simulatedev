@@ -71,7 +71,7 @@ Consider feasibility for automated environments:
                 status = "SUCCESS" if plan['success'] else "FAILED"
                 prompt += f"""
 ### Plan {i} ({status})
-{plan['output'][:800]}...
+{plan['output']}
 """
             prompt += "\nPlease create an improved plan that addresses any shortcomings from previous attempts."
         
@@ -154,7 +154,7 @@ Consider feasibility for automated environments:
                 status = "SUCCESS" if plan['success'] else "FAILED"
                 role_prompt += f"""
 ### Plan {i} ({status})
-{plan['output'][:800]}...
+{plan['output']}
 """
             role_prompt += "\nPlease create an improved plan that addresses any shortcomings from previous attempts."
         

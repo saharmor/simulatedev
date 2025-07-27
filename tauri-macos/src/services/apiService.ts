@@ -294,6 +294,41 @@ export class ApiService {
     }
   }
 
+  async executeSequentialTask(taskData: TaskExecutionRequest): Promise<TaskExecutionResponse> {
+    console.log("[ApiService] Executing sequential task with data:", taskData);
+    console.log("[ApiService] Sequential task data JSON:", JSON.stringify(taskData, null, 2));
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tasks/execute-sequential`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(taskData),
+      });
+
+      console.log(`[ApiService] Sequential task execution response status: ${response.status}`);
+      console.log(`[ApiService] Sequential task execution response headers:`, Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `[ApiService] Sequential task execution failed: ${response.status} - ${errorText}`
+        );
+        throw new Error(`Failed to execute sequential task: ${response.status}`);
+      }
+
+      const data: TaskExecutionResponse = await response.json();
+      console.log(`[ApiService] Sequential task execution successful: ${data.task_id}`);
+      console.log(`[ApiService] Full sequential task execution response:`, data);
+      console.log(`[ApiService] Sequential task execution response JSON:`, JSON.stringify(data, null, 2));
+      return data;
+    } catch (error) {
+      console.error("[ApiService] Error executing sequential task:", error);
+      throw error;
+    }
+  }
+
   async getTaskStatus(taskId: string): Promise<any> {
     console.log(`[ApiService] Fetching task status for: ${taskId}`);
     try {

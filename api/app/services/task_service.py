@@ -448,6 +448,68 @@ Please analyze the issue, understand the requirements, and implement the necessa
 
         return prompt
 
+    async def create_sequential_agents_config(self, base_agents_config: List[Dict], sequential_agents_config: Dict = None) -> List[Dict]:
+        """Create sequential agent configuration: Coder -> Tester -> Coder"""
+        if not base_agents_config:
+            raise ValueError("Base agent configuration is required for sequential execution")
+        
+        # If specific sequential agents are provided, use them
+        if sequential_agents_config and 'coder1' in sequential_agents_config:
+            sequential_agents = [
+                # First Coder agent
+                {
+                    "coding_ide": sequential_agents_config['coder1']['id'],
+                    "model": "claude-sonnet-4",  # Default model
+                    "role": "Coder"
+                },
+                # Tester agent
+                {
+                    "coding_ide": sequential_agents_config['tester']['id'],
+                    "model": "claude-sonnet-4",  # Default model
+                    "role": "Tester"
+                },
+                # Second Coder agent for iteration
+                {
+                    "coding_ide": sequential_agents_config['coder2']['id'],
+                    "model": "claude-sonnet-4",  # Default model
+                    "role": "Coder"
+                }
+            ]
+            
+            print(f"[TaskService] Created sequential agents config with custom agents:")
+            print(f"[TaskService] Coder1: {sequential_agents_config['coder1']['name']}")
+            print(f"[TaskService] Tester: {sequential_agents_config['tester']['name']}")
+            print(f"[TaskService] Coder2: {sequential_agents_config['coder2']['name']}")
+        else:
+            # Fallback to using the first agent for all stages
+            base_agent = base_agents_config[0]
+            
+            sequential_agents = [
+                # First Coder agent
+                {
+                    "coding_ide": base_agent["coding_ide"],
+                    "model": base_agent["model"],
+                    "role": "Coder"
+                },
+                # Tester agent with same IDE and model
+                {
+                    "coding_ide": base_agent["coding_ide"],
+                    "model": base_agent["model"],
+                    "role": "Tester"
+                },
+                # Second Coder agent for iteration
+                {
+                    "coding_ide": base_agent["coding_ide"],
+                    "model": base_agent["model"],
+                    "role": "Coder"
+                }
+            ]
+            
+            print(f"[TaskService] Created sequential agents config from base: {base_agent}")
+        
+        print(f"[TaskService] Sequential agents: {sequential_agents}")
+        return sequential_agents
+
     async def _extract_pr_url(self, task_id: str, repo_owner: str, repo_name: str) -> Optional[str]:
         """Try to extract PR URL from execution output files or recent reports"""
         try:
