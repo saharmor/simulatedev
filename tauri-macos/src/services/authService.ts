@@ -16,9 +16,6 @@ export interface SessionResponse {
 }
 
 export class AuthService {
-  private readonly SESSION_TOKEN_KEY = 'session_token';
-  private readonly USER_DATA_KEY = 'user_data';
-
   async initiateGitHubOAuth(): Promise<void> {
     console.log('[AuthService] Initiating GitHub OAuth flow');
     try {
@@ -77,14 +74,8 @@ export class AuthService {
       console.log(`[AuthService] Successfully created session for user: ${sessionData.user.github_username}`);
       console.log(`[AuthService] Session expires at: ${sessionData.session_expires_at}`);
       
-      // Store session token and user data in localStorage
-      console.log(`[AuthService] Storing session token in localStorage (key: ${this.SESSION_TOKEN_KEY})`);
-      localStorage.setItem(this.SESSION_TOKEN_KEY, sessionCode);
-      
-      console.log(`[AuthService] Storing user data in localStorage (key: ${this.USER_DATA_KEY})`);
-      localStorage.setItem(this.USER_DATA_KEY, JSON.stringify(sessionData.user));
-      
-      console.log(`[AuthService] Successfully stored auth data for user: ${sessionData.user.github_username}`);
+      // ✅ Session established via HTTP-only cookie - no localStorage needed
+      console.log(`[AuthService] Session established via secure HTTP-only cookie for user: ${sessionData.user.github_username}`);
       return sessionData;
     } catch (error) {
       console.error("[AuthService] Session creation failed:", error);
@@ -95,15 +86,6 @@ export class AuthService {
   async getCurrentUser(): Promise<User | null> {
     console.log('[AuthService] Getting current user');
     try {
-      const sessionToken = localStorage.getItem(this.SESSION_TOKEN_KEY);
-      console.log(`[AuthService] Session token exists: ${!!sessionToken}`);
-      
-      if (!sessionToken) {
-        console.log('[AuthService] No session token found, user not authenticated');
-        return null;
-      }
-
-      console.log(`[AuthService] Found session token: ${sessionToken.substring(0, 8)}...`);
       console.log(`[AuthService] Making GET request to: ${API_BASE_URL}/api/auth/me`);
       
       const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
@@ -115,9 +97,7 @@ export class AuthService {
       console.log(`[AuthService] Current user response headers:`, Object.fromEntries(response.headers.entries()));
 
       if (!response.ok) {
-        console.warn(`[AuthService] Session validation failed with status ${response.status}, clearing auth data`);
-        // Session is invalid, clear local storage
-        this.clearAuthData();
+        console.log(`[AuthService] Session validation failed with status ${response.status}, user not authenticated`);
         return null;
       }
 
@@ -130,55 +110,43 @@ export class AuthService {
         has_avatar: !!user.avatar_url
       });
       
-      // Update stored user data
-      console.log('[AuthService] Updating stored user data in localStorage');
-      localStorage.setItem(this.USER_DATA_KEY, JSON.stringify(user));
-      
       return user;
     } catch (error) {
       console.error("[AuthService] Get current user failed:", error);
-      // Clear auth data on error
-      console.log('[AuthService] Clearing auth data due to error');
-      this.clearAuthData();
       return null;
     }
   }
 
-  getStoredUser(): User | null {
-    console.log('[AuthService] Getting stored user data');
+  async logout(): Promise<void> {
+    console.log('[AuthService] Logging out user');
     try {
-      const userData = localStorage.getItem(this.USER_DATA_KEY);
-      console.log(`[AuthService] Stored user data exists: ${!!userData}`);
-      
-      if (!userData) {
-        console.log('[AuthService] No stored user data found');
-        return null;
+      const response = await fetch(`${API_BASE_URL}/api/auth/logout`, {
+        method: 'POST',
+        credentials: 'include', // Include cookies for session authentication
+      });
+
+      if (response.ok) {
+        console.log('[AuthService] Successfully logged out user');
+      } else {
+        console.warn(`[AuthService] Logout request failed with status ${response.status}`);
       }
-      
-      const user = JSON.parse(userData);
-      console.log(`[AuthService] Retrieved stored user: ${user.github_username}`);
-      return user;
     } catch (error) {
-      console.error("[AuthService] Failed to parse stored user data:", error);
-      return null;
+      console.error("[AuthService] Logout failed:", error);
+      // Don't throw error for logout - user should still be considered logged out
     }
   }
 
-  isAuthenticated(): boolean {
-    const hasToken = !!localStorage.getItem(this.SESSION_TOKEN_KEY);
-    console.log(`[AuthService] Is authenticated: ${hasToken}`);
-    return hasToken;
-  }
-
-  clearAuthData(): void {
-    console.log('[AuthService] Clearing authentication data');
-    console.log(`[AuthService] Removing ${this.SESSION_TOKEN_KEY} from localStorage`);
-    localStorage.removeItem(this.SESSION_TOKEN_KEY);
-    
-    console.log(`[AuthService] Removing ${this.USER_DATA_KEY} from localStorage`);
-    localStorage.removeItem(this.USER_DATA_KEY);
-    
-    console.log('[AuthService] Authentication data cleared successfully');
+  async isAuthenticated(): Promise<boolean> {
+    console.log('[AuthService] Checking authentication status');
+    try {
+      const user = await this.getCurrentUser();
+      const isAuth = user !== null;
+      console.log(`[AuthService] Is authenticated: ${isAuth}`);
+      return isAuth;
+    } catch (error) {
+      console.error("[AuthService] Authentication check failed:", error);
+      return false;
+    }
   }
 }
 

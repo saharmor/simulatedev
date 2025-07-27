@@ -70,12 +70,20 @@ const Index = () => {
     setCurrentScreen("home");
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     console.log("[Index] User logout initiated");
     console.log(
-      `[Index] Clearing auth data for user: ${user?.github_username}`
+      `[Index] Logging out user: ${user?.github_username}`
     );
-    authService.clearAuthData();
+    
+    try {
+      await authService.logout();
+      console.log("[Index] Successfully logged out user");
+    } catch (error) {
+      console.error("[Index] Logout error:", error);
+      // Continue with logout even if API call fails
+    }
+    
     setUser(null);
     console.log("[Index] Navigating to login screen after logout");
     setCurrentScreen("login");
