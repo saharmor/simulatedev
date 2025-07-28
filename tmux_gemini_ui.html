@@ -401,6 +401,12 @@
             transform: scale(1.05);
         }
         
+        .status-premature_finish {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
         .input-required-badge {
             background: #dc3545;
             color: white;
@@ -826,8 +832,8 @@
             
             // Separate sessions by status
             const userInputSessions = list.filter(s => s.status === 'REQUIRES_USER_INPUT');
-            const activeSessions = list.filter(s => s.status !== 'STOPPED' && s.status !== 'DONE' && s.status !== 'REQUIRES_USER_INPUT');
-            const completedSessions = list.filter(s => s.status === 'DONE');
+                            const activeSessions = list.filter(s => s.status !== 'STOPPED' && s.status !== 'DONE' && s.status !== 'REQUIRES_USER_INPUT' && s.status !== 'PREMATURE_FINISH');
+                const completedSessions = list.filter(s => s.status === 'DONE' || s.status === 'PREMATURE_FINISH');
             const stoppedSessions = list.filter(s => s.status === 'STOPPED');
             
             ul.innerHTML = '';
@@ -928,7 +934,7 @@
         timer.style.cssText = 'font-size: 11px; color: #6c757d; margin-top: 2px;';
         
         // Show duration for completed sessions, elapsed time for active ones
-        if (s.status === 'DONE' || s.status === 'STOPPED') {
+                        if (s.status === 'DONE' || s.status === 'STOPPED' || s.status === 'PREMATURE_FINISH') {
             timer.textContent = formatDuration(s.start_time, s.end_time);
             // Don't set dataset.startTime for completed sessions so they won't update
         } else {
@@ -1393,8 +1399,8 @@
                 
                 const sessionInfo = await response.json();
                 
-                // If session is completed (DONE), load output from saved JSON file
-                if (sessionInfo.status === 'DONE') {
+                // If session is completed (DONE or PREMATURE_FINISH), load output from saved JSON file
+                if (sessionInfo.status === 'DONE' || sessionInfo.status === 'PREMATURE_FINISH') {
                     console.log(`Loading completed session ${id} from saved output`);
                     
                     try {
@@ -1529,26 +1535,26 @@
                 {
                     prompt: "Write a Python script that prints 'Hello Berlin!' every 5 seconds, exactly 10 times, with a counter showing which iteration it is",
                     agent_type: "gemini",
-                    yolo_mode: true,
+                    yolo_mode: false,
                     description: "Gemini: Berlin Greeter (YOLO)"
                 },
                 {
-                    prompt: "Write a Python script that displays the current time in Berlin, New York, and Tokyo every 3 seconds for 15 iterations",
+                    prompt: "Hey there!",
                     agent_type: "claude",
-                    yolo_mode: true,
-                    description: "Claude: World Clock (YOLO)"
+                    yolo_mode: false,
+                    description: "Claude: quick hey"
                 },
                 {
-                    prompt: "Write a Python script that creates a countdown timer from 30 seconds to 0, displaying each number with a 1-second delay",
+                    prompt: "well hello handsome",
                     agent_type: "gemini",
                     yolo_mode: false,
                     description: "Gemini: Countdown Timer"
                 },
                 {
-                    prompt: "Write a Python script that calculates and displays the first 20 numbers in the Fibonacci sequence, with a 2-second delay between each number",
+                    prompt: "Write a Python script that counts how many digits there are in 1000000",
                     agent_type: "claude",
                     yolo_mode: false,
-                    description: "Claude: Fibonacci Generator"
+                    description: "Claude: Digit Counter"
                 }
             ];
             
