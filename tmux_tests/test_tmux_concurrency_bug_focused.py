@@ -10,13 +10,13 @@ import time
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from tmux_operations_manager import TmuxAgentManager, AgentType
 
 class IsolatedTmuxTester:
     def __init__(self):
-        self.manager = TmuxAgentManager(max_sessions=5)
+        self.manager = TmuxAgentManager(max_sessions=10)  # Increased for stress test
         
     async def setup(self):
         """Setup test environment"""
@@ -55,6 +55,249 @@ class IsolatedTmuxTester:
         
         return result.stdout if result.returncode == 0 else ""
         
+    async def claude_check_prompt_pasting_stress_test(self):
+        """
+        STRESS TEST: Claude Prompt Pasting Under Concurrent Load
+        
+        This test spawns 5 Claude sessions simultaneously and pastes different prompts
+        to each one, then checks for:
+        1. Prompt duplication (same prompt appearing multiple times)
+        2. Cross-contamination (prompt from one session appearing in another)
+        3. Missing prompts (prompts that never appear)
+        4. Timing issues with concurrent pasting
+        
+        SUCCESS: All 5 prompts appear exactly once in their respective panes
+        FAILURE: Any duplication, cross-contamination, or missing prompts
+        """
+        print("="*80)
+        print("📊 STRESS TEST: CLAUDE PROMPT PASTING UNDER CONCURRENT LOAD")
+        print("="*80)
+        print("Goal: Test prompt pasting with 5 simultaneous Claude sessions")
+        print("Agent: Claude (5 sessions)")
+        print("Checking for: duplication, cross-contamination, missing prompts")
+        print("-"*80)
+        
+        # Define simple, fast prompts with unique IDs for easy detection
+        import random
+        test_prompts = [
+            f"Reply with COMPLETE A{random.randint(1000, 9999)}",
+            f"Reply with COMPLETE B{random.randint(1000, 9999)}", 
+            f"Reply with COMPLETE C{random.randint(1000, 9999)}",
+            f"Reply with COMPLETE D{random.randint(1000, 9999)}",
+            f"Reply with COMPLETE E{random.randint(1000, 9999)}"
+        ]
+        
+        print(f"📋 Test prompts (simple & fast for quick detection):")
+        for i, prompt in enumerate(test_prompts, 1):
+            print(f"  Session {i}: '{prompt}'")
+        print()
+        
+        # Create all sessions simultaneously
+        print("🚀 Creating 5 Claude sessions simultaneously...")
+        session_tasks = []
+        
+        for i, prompt in enumerate(test_prompts, 1):
+            task = asyncio.create_task(
+                self.create_claude_session_async(f"claude-{i}", prompt)
+            )
+            session_tasks.append(task)
+        
+        # Wait for all sessions to be created
+        session_results = await asyncio.gather(*session_tasks, return_exceptions=True)
+        
+        # Process results
+        sessions = []
+        for i, result in enumerate(session_results, 1):
+            if isinstance(result, dict) and result.get('session_id'):
+                sessions.append(result)
+                print(f"✅ Claude-{i} created: {result['session_id']}")
+            else:
+                print(f"❌ Claude-{i} failed: {result}")
+        
+        if len(sessions) == 0:
+            print("❌ FAILURE: No sessions were created successfully")
+            return False
+            
+        print(f"\n✅ Created {len(sessions)} sessions successfully")
+        
+        # Wait for sessions to be ready and prompts to be pasted
+        print("\n⏳ Waiting 10 seconds for sessions to initialize and prompts to be pasted...")
+        await asyncio.sleep(10)
+        
+        # Check each session for prompt pasting issues
+        print("\n🔍 ANALYZING PROMPT PASTING RESULTS:")
+        print("-"*60)
+        
+        all_session_contents = {}
+        issues_found = []
+        
+        # Collect all pane contents
+        for session in sessions:
+            sid = session['session_id']
+            content = self.get_pane_content(sid)
+            all_session_contents[sid] = {
+                'content': content,
+                'expected_prompt': session['prompt'],
+                'session_name': session['name']
+            }
+        
+        # Analyze each session
+        for session in sessions:
+            sid = session['session_id']
+            name = session['name']
+            expected_prompt = session['prompt']
+            content = all_session_contents[sid]['content']
+            
+            print(f"\n📊 {name} ({sid}):")
+            print(f"   Expected: '{expected_prompt}'")
+            
+            # Count occurrences of expected prompt in this session
+            expected_count = content.count(expected_prompt)
+            print(f"   Found expected prompt: {expected_count} time(s)")
+            
+            # Also check for the COMPLETE response (shows if prompt was processed)
+            complete_pattern = expected_prompt.split()[-1]  # e.g., "A1234" from "Reply with COMPLETE A1234"
+            response_count = content.count(complete_pattern)
+            print(f"   Found expected response pattern '{complete_pattern}': {response_count} time(s)")
+            
+            # Check for duplication
+            if expected_count > 1:
+                issues_found.append({
+                    'type': 'DUPLICATION',
+                    'session': name,
+                    'issue': f"Expected prompt appears {expected_count} times"
+                })
+                print(f"   ❌ DUPLICATION: Expected prompt appears {expected_count} times")
+            elif expected_count == 0:
+                issues_found.append({
+                    'type': 'MISSING',
+                    'session': name,
+                    'issue': f"Expected prompt never appeared"
+                })
+                print(f"   ❌ MISSING: Expected prompt never appeared")
+            else:
+                print(f"   ✅ Expected prompt appears exactly once")
+                
+                # If prompt appeared, check if it was processed (response received)
+                if response_count > 0:
+                    print(f"   ✅ Agent responded correctly ({response_count} response(s))")
+                else:
+                    print(f"   ⚠️  Prompt sent but no response yet (may still be processing)")
+            
+            # Check for cross-contamination (other session prompts in this session)
+            for other_session in sessions:
+                if other_session['session_id'] != sid:
+                    other_prompt = other_session['prompt']
+                    other_count = content.count(other_prompt)
+                    if other_count > 0:
+                        issues_found.append({
+                            'type': 'CROSS_CONTAMINATION',
+                            'session': name,
+                            'issue': f"Contains prompt from {other_session['name']}: '{other_prompt}' ({other_count} times)"
+                        })
+                        print(f"   ❌ CONTAMINATION: Contains prompt from {other_session['name']}")
+            
+            # Show last few lines for debugging
+            lines = [line for line in content.split('\n') if line.strip()]
+            print(f"   📄 Last 3 lines:")
+            for line in lines[-3:]:
+                print(f"      '{line}'")
+        
+        # Summary and analysis
+        print(f"\n{'='*80}")
+        print("📊 STRESS TEST RESULTS")
+        print("="*80)
+        
+        if not issues_found:
+            print("\n✅ SUCCESS: No issues detected!")
+            print(f"   - All {len(sessions)} sessions created successfully")
+            print("   - No prompt duplication detected")
+            print("   - No cross-contamination between sessions")
+            print("   - All prompts appeared exactly once in correct sessions")
+            
+            # Check how many got responses
+            response_count = 0
+            for session in sessions:
+                sid = session['session_id']
+                content = all_session_contents[sid]['content']
+                complete_pattern = session['prompt'].split()[-1]
+                if complete_pattern in content:
+                    response_count += 1
+            
+            print(f"   - {response_count}/{len(sessions)} sessions received responses")
+            
+            # Cleanup
+            print("\n🧹 Cleaning up sessions...")
+            for session in sessions:
+                self.manager.stop_session(session['session_id'])
+            
+            return True
+        else:
+            print(f"\n❌ FAILURE: {len(issues_found)} issues detected!")
+            
+            # Group issues by type
+            issue_types = {}
+            for issue in issues_found:
+                issue_type = issue['type']
+                if issue_type not in issue_types:
+                    issue_types[issue_type] = []
+                issue_types[issue_type].append(issue)
+            
+            for issue_type, type_issues in issue_types.items():
+                print(f"\n🔍 {issue_type} ISSUES ({len(type_issues)}):")
+                for issue in type_issues:
+                    print(f"   - {issue['session']}: {issue['issue']}")
+            
+            print(f"\n📊 SUMMARY:")
+            print(f"   - Total sessions: {len(sessions)}")
+            print(f"   - Sessions with issues: {len(set(issue['session'] for issue in issues_found))}")
+            print(f"   - Total issues: {len(issues_found)}")
+            
+            # Show detailed content for debugging if needed
+            if len(issues_found) <= 3:  # Only show details for small number of issues
+                print(f"\n📄 DETAILED PANE CONTENTS (for debugging):")
+                for session in sessions:
+                    sid = session['session_id']
+                    name = session['name']
+                    content = all_session_contents[sid]['content']
+                    
+                    # Only show sessions with issues
+                    session_has_issues = any(issue['session'] == name for issue in issues_found)
+                    if session_has_issues:
+                        print(f"\n--- {name} ({sid}) ---")
+                        for i, line in enumerate(content.split('\n'), 1):
+                            print(f"{i:2d}: {line}")
+            
+            # Cleanup
+            print("\n🧹 Cleaning up sessions...")
+            for session in sessions:
+                self.manager.stop_session(session['session_id'])
+            
+            return False
+    
+    async def create_claude_session_async(self, name: str, prompt: str):
+        """Create a Claude session asynchronously"""
+        try:
+            session_id = await asyncio.to_thread(
+                self.manager.create_session,
+                prompt=prompt,
+                agent_type=AgentType.CLAUDE,
+                yolo_mode=False  # Use regular mode for Claude
+            )
+            
+            return {
+                'name': name,
+                'session_id': session_id,
+                'prompt': prompt,
+                'created_at': time.time()
+            }
+        except Exception as e:
+            return {
+                'name': name,
+                'error': str(e),
+                'session_id': None
+            }
+
     async def test_1_prompt_sending(self):
         """
         TEST 1: Verify a prompt is being sent to the pane
@@ -401,6 +644,9 @@ async def run_test(test_num: int):
         elif test_num == 3:
             print("Running Test 3: Session Completion Detection\n")
             result = await tester.test_3_session_completion_detection()
+        elif test_num == 4:
+            print("Running Stress Test: Claude Prompt Pasting\n")
+            result = await tester.claude_check_prompt_pasting_stress_test()
         else:
             print(f"Invalid test number: {test_num}")
             return False
@@ -426,17 +672,18 @@ async def run_all_tests():
     print("1. Prompt Sending - Does text appear in pane?")
     print("2. Prompt Submission - Is Enter key sent after text?")
     print("3. Session Completion - Do we detect when agent finishes?")
+    print("4. Claude Stress Test - Concurrent prompt pasting")
     print("="*80)
     
     results = []
     
-    for test_num in [1, 2, 3]:
+    for test_num in [1, 2, 3, 4]:
         print(f"\n{'='*20} TEST {test_num} {'='*20}")
         result = await run_test(test_num)
         results.append(result)
         
         # Small delay between tests
-        if test_num < 3:
+        if test_num < 4:
             print("\n⏳ Pausing 2 seconds before next test...")
             await asyncio.sleep(2)
     
@@ -445,9 +692,9 @@ async def run_all_tests():
     print("📊 TEST SUMMARY")
     print("="*80)
     
+    test_names = ["Prompt Sending", "Prompt Submission", "Session Completion", "Claude Stress Test"]
     for i, result in enumerate(results, 1):
         status = "✅ PASS" if result else "❌ FAIL"
-        test_names = ["Prompt Sending", "Prompt Submission", "Session Completion"]
         print(f"Test {i} ({test_names[i-1]}): {status}")
     
     passed = sum(results)
@@ -462,8 +709,8 @@ async def run_all_tests():
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Run isolated tmux session tests")
-    parser.add_argument("test", nargs="?", type=int, choices=[1, 2, 3], 
-                       help="Run specific test (1=sending, 2=submission, 3=completion)")
+    parser.add_argument("test", nargs="?", type=int, choices=[1, 2, 3, 4], 
+                       help="Run specific test (1=sending, 2=submission, 3=completion, 4=claude-stress)")
     args = parser.parse_args()
     
     if args.test:
