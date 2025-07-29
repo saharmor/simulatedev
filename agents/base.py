@@ -18,9 +18,9 @@ class CodingAgentIdeType(Enum):
     """Enum for supported coding agents"""
     CURSOR = "cursor"
     WINDSURF = "windsurf"
-    CLAUDE_CODE = "claude_code"
     OPENAI_CODEX = "openai_codex"
     GEMINI_CLI = "gemini_cli"
+    CLAUDE_CLI = "claude_cli"
     TEST = "test"
 
 
@@ -210,6 +210,14 @@ class AgentContext:
         outputs = self.get_outputs_by_role(role)
         return outputs[-1] if outputs else None
 
+
+@dataclass
+class CLIAgentConfig:
+    """Configuration for CLI-based agents"""
+    command: List[str]
+    supports_yolo: bool
+    pre_commands: List[str]
+    ready_indicators: List[str]
 
 @dataclass
 class AgentResponse:
@@ -513,3 +521,103 @@ class CodingAgent(ABC):
         print(f"Cleaned up {self.output_file} from {found_file}")
         
         return content
+
+
+class CLIAgent(CodingAgent):
+    """Base class for CLI-based coding agents using tmux"""
+    
+    def __init__(self, computer_use_client):
+        super().__init__(computer_use_client)
+        # CLI agents don't use GUI elements
+        self._session_id = None
+        self._tmux_service = None
+    
+    @classmethod
+    @abstractmethod  
+    def get_config(cls) -> CLIAgentConfig:
+        """Get agent-specific configuration"""
+        pass
+    
+    # Override GUI-specific abstract methods with CLI-appropriate implementations
+    @property
+    def window_name(self) -> str:
+        """CLI agents don't have windows"""
+        return f"{self.agent_name}_cli"
+    
+    @property
+    def interface_state_prompt(self) -> str:
+        """CLI agents check state via tmux output"""
+        return f"Check if {self.agent_name} CLI is ready for input"
+    
+    @property
+    def resume_button_prompt(self) -> str:
+        """CLI agents don't have resume buttons"""
+        return f"No resume button for {self.agent_name} CLI"
+    
+    @property
+    def input_field_prompt(self) -> str:
+        """CLI agents use tmux input"""
+        return f"Send input to {self.agent_name} CLI via tmux"
+    
+    def set_tmux_service(self, tmux_service):
+        """Set the tmux service for this agent"""
+        self._tmux_service = tmux_service
+    
+    def set_session_id(self, session_id: str):
+        """Set the tmux session ID for this agent"""
+        self._session_id = session_id
+    
+    async def open_coding_interface(self) -> bool:
+        """CLI agents are opened via tmux service"""
+        if not self._tmux_service or not self._session_id:
+            return False
+        
+        # Session should already be created by the tmux service
+        session_status = await self._tmux_service.get_session_status(self._session_id)
+        return session_status is not None
+    
+    async def close_coding_interface(self) -> bool:
+        """CLI agents are closed via tmux service"""
+        if not self._tmux_service or not self._session_id:
+            return True
+        
+        try:
+            await self._tmux_service.cleanup_session(self._session_id)
+            return True
+        except Exception as e:
+            print(f"Error closing CLI agent session: {e}")
+            return False
+    
+    async def is_coding_agent_open(self) -> bool:
+        """Check if CLI agent is running via tmux"""
+        if not self._tmux_service or not self._session_id:
+            return False
+        
+        session_status = await self._tmux_service.get_session_status(self._session_id)
+        return session_status is not None
+    
+    async def _send_prompt_to_interface(self, prompt: str):
+        """Send prompt to CLI agent via tmux"""
+        if not self._tmux_service or not self._session_id:
+            raise Exception("Tmux service or session ID not set")
+        
+        await self._tmux_service.send_command_to_session(self._session_id, prompt)
+    
+    async def _wait_for_completion(self, timeout_seconds: int = None):
+        """Wait for CLI agent to complete via tmux output monitoring"""
+        # This would need to be implemented based on agent-specific completion indicators
+        # For now, use a simple timeout
+        import asyncio
+        from common.config import config
+        
+        if timeout_seconds is None:
+            timeout_seconds = config.agent_timeout_seconds
+        
+        await asyncio.sleep(timeout_seconds)
+    
+    async def _read_output_file(self) -> str:
+        """Read output from tmux session instead of file"""
+        if not self._tmux_service or not self._session_id:
+            return ""
+        
+        return await self._tmux_service.capture_session_output(self._session_id)

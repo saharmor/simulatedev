@@ -6,8 +6,9 @@ Agent Factory for creating coding agent instances
 from .base import CodingAgent, CodingAgentIdeType
 from .cursor_agent import CursorAgent
 from .windsurf_agent import WindsurfAgent
-from .claude_code_agent import ClaudeCodeAgent
 from .openai_codex_agent import OpenAICodexAgent
+from .gemini_cli_agent import GeminiCliAgent
+from .claude_cli_agent import ClaudeCliAgent
 from .test_agent import TestAgent
 
 
@@ -21,10 +22,12 @@ class AgentFactory:
             return CursorAgent(claude_computer_use)
         elif agent_type == CodingAgentIdeType.WINDSURF:
             return WindsurfAgent(claude_computer_use)
-        elif agent_type == CodingAgentIdeType.CLAUDE_CODE:
-            return ClaudeCodeAgent(claude_computer_use)
         elif agent_type == CodingAgentIdeType.OPENAI_CODEX:
             return OpenAICodexAgent(claude_computer_use)
+        elif agent_type == CodingAgentIdeType.GEMINI_CLI:
+            return GeminiCliAgent(claude_computer_use)
+        elif agent_type == CodingAgentIdeType.CLAUDE_CLI:
+            return ClaudeCliAgent(claude_computer_use)
         elif agent_type == CodingAgentIdeType.TEST:
             return TestAgent(claude_computer_use)
         else:
@@ -33,18 +36,19 @@ class AgentFactory:
     @staticmethod
     def create_agent_from_string(agent_name: str, claude_computer_use) -> CodingAgent:
         """Create an agent instance based on a string name (for backward compatibility)"""
-        agent_name = agent_name.lower()
+        agent_name = agent_name.lower().strip()
         
         if agent_name == "cursor":
             return CursorAgent(claude_computer_use)
         elif agent_name == "windsurf":
             return WindsurfAgent(claude_computer_use)
-        elif agent_name == "claude_code":
-            return ClaudeCodeAgent(claude_computer_use)
+
         elif agent_name == "openai_codex":
             return OpenAICodexAgent(claude_computer_use)
         elif agent_name == "gemini_cli":
             return GeminiCliAgent(claude_computer_use)
+        elif agent_name == "claude_cli":
+            return ClaudeCliAgent(claude_computer_use)
         elif agent_name == "test":
             return TestAgent(claude_computer_use)
         else:

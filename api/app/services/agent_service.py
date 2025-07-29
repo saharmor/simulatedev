@@ -42,8 +42,8 @@ class AgentService:
                 "default_model": "claude-sonnet-4",
                 "capabilities": ["code_completion", "refactoring", "debugging"]
             },
-            {
-                "id": "claude_code",
+                    {
+            "id": "claude_cli",
                 "name": "Claude Code",
                 "description": "Direct Claude API integration for coding tasks",
                 "supported_models": ["claude-sonnet-4", "claude-haiku", "claude-opus"],

@@ -34,7 +34,7 @@ This could happen for several reasons:
 
 You can try:
   • Running the command again (sometimes it works on retry)
-  • Using a different agent (cursor, windsurf, claude_code, etc.)
+  • Using a different agent (cursor, windsurf, claude_cli, etc.)
   • Breaking down the task into smaller parts
 """
 
@@ -62,7 +62,7 @@ This could happen for several reasons:
 
 You can try:
   • Running the workflow again (sometimes it works on retry)
-  • Using a different agent (cursor, windsurf, claude_code, etc.)
+  • Using a different agent (cursor, windsurf, claude_cli, etc.)
   • Breaking down the task into smaller parts
 """
 

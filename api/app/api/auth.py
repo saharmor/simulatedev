@@ -21,7 +21,7 @@ async def github_auth_redirect():
         raise HTTPException(status_code=500, detail="GitHub OAuth not configured")
     
     # Request repo scope for both public and private repository access
-    auth_url = f"https://github.com/login/oauth/authorize?client_id={settings.github_client_id}&scope=repo,user:email"
+    auth_url = f"https://github.com/login/oauth/authorize?client_id={settings.github_client_id}&redirect_uri={settings.github_oauth_redirect_uri}&scope=repo,user:email"
     return RedirectResponse(auth_url)
 
 

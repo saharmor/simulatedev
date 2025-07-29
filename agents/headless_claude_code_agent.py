@@ -11,7 +11,11 @@ from .base import CodingAgent, AgentResponse
 from common.exceptions import AgentTimeoutException
 from common.config import config
 
-class ClaudeCodeAgent(CodingAgent):
+'''
+Note, Sahar Jul 29th: this is a headless claude code agent that is used to run claude code in headless mode
+It's not used for now, but it's here for future use
+'''
+class HeadlessClaudeCodeAgent(CodingAgent):
     """Claude Code agent implementation using headless mode"""
     
     def __init__(self, claude_computer_use):
