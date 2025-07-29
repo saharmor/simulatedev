@@ -7,7 +7,9 @@ from app.database import get_db
 from app.models.task import Task, ExecutionHistory
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskResponse, TaskStatus
+from app.schemas.progress import TaskStepsPlan
 from app.services.task_service import TaskService
+from app.services.progress_monitor import ProgressMonitor
 from app.dependencies import require_authentication, get_user_github_token
 
 router = APIRouter()
@@ -195,6 +197,28 @@ async def get_task(
         pr_url=task.pr_url,
         error_message=task.error_message
     )
+
+
+@router.get("/{task_id}/steps")
+async def get_task_steps(
+    task_id: str, 
+    db: Session = Depends(get_db),
+    user: User = Depends(require_authentication)
+):
+    """Get pre-generated steps plan for a task"""
+    
+    # Verify task exists and belongs to user
+    task = db.query(Task).filter(
+        Task.id == task_id,
+        Task.user_id == user.id
+    ).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    if not task.steps_plan:
+        raise HTTPException(status_code=404, detail="Steps plan not found for this task")
+    
+    return task.steps_plan
 
 
 @router.post("/execute-sequential")

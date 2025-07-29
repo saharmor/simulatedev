@@ -13,6 +13,8 @@ import { healthCheckService, HealthCheckResult } from "../services/healthCheck";
 import { authService, User } from "../services/authService";
 import { apiService, TaskExecutionRequest } from "../services/apiService";
 import { websocketService, WebSocketCallbacks } from "../services/websocketService";
+import { stepsService } from "../services/stepsService";
+import { WebSocketProgressMessage } from "../types/progress";
 
 type Screen = "startup" | "connection-failed" | "login" | "home" | "task";
 
@@ -26,11 +28,11 @@ interface Task {
   issueId?: string;
   issueNumber?: number;
   createdAt: Date;
-  // Task execution phases
-  phase: "working" | "creating_pr" | "completed" | "failed";
-  workingCompletedAt?: Date;
-  prCreatedAt?: Date;
-  completedAt?: Date;
+  realTaskId?: string;
+  progress?: number;
+  prUrl?: string;
+  errorMessage?: string;
+  workflowType?: string;
   pr?: {
     title: string;
     branch: string;
@@ -40,19 +42,6 @@ interface Task {
     status: 'open' | 'merged' | 'closed';
     url?: string;
   };
-  // Real task properties
-  realTaskId?: string;
-  currentPhase?: string;
-  progress?: number;
-  prUrl?: string;
-  errorMessage?: string;
-  // Phase history for accumulating phases
-  phaseHistory?: Array<{
-    phase: string;
-    timestamp: Date;
-    completed?: boolean;
-    completedAt?: Date;
-  }>;
 }
 
 const Index = () => {
@@ -115,7 +104,7 @@ const Index = () => {
       issueId: issue.id,
       issueNumber: issue.number,
       createdAt: new Date(),
-      phase: "working"
+      workflowType: isSequential ? "sequential" : "custom"
     };
     
     // Add the task to the tasks array
@@ -154,11 +143,15 @@ const Index = () => {
         : await apiService.executeTask(taskRequest);
       console.log(`[Index] Task execution response:`, response);
       
-      // Update task with real task ID
+      // Update task with real task ID and workflow type
       setTasks(prevTasks => 
         prevTasks.map(task => 
           task.id === taskId 
-            ? { ...task, realTaskId: response.task_id }
+            ? { 
+                ...task, 
+                realTaskId: response.task_id,
+                workflowType: isSequential ? "sequential" : "custom"
+              }
             : task
         )
       );
@@ -176,7 +169,6 @@ const Index = () => {
                 ...task, 
                 isRunning: false, 
                 status: "failed" as const,
-                phase: "failed" as const,
                 errorMessage: error instanceof Error ? error.message : String(error)
               }
             : task
@@ -192,178 +184,70 @@ const Index = () => {
       onOpen: () => {
         console.log(`[Index] WebSocket connected for task: ${realTaskId}`);
       },
-      onProgress: (data) => {
-        console.log(`[Index] Received progress update for task ${realTaskId}:`, data);
-        console.log(`[Index] Progress data JSON:`, JSON.stringify(data, null, 2));
-        console.log(`[Index] Progress type: ${data.type}`);
-        console.log(`[Index] Progress task_id: ${data.task_id}`);
-        console.log(`[Index] Progress progress: ${data.progress}`);
-        console.log(`[Index] Progress current_phase: ${data.current_phase}`);
-        console.log(`[Index] Progress timestamp: ${data.timestamp}`);
-        console.log(`[Index] Progress message: ${data.message}`);
+      onProgress: (data: WebSocketProgressMessage) => {
+        console.log(`[Index] Received step progress update for task ${realTaskId}:`, data);
+        console.log(`[Index] Step ID: ${data.step_id}, Status: ${data.status}`);
+        console.log(`[Index] Phase: ${data.phase}, Step: ${data.step}`);
+        console.log(`[Index] Agent context:`, data.agent_context);
         
-        setTasks(prevTasks => 
-          prevTasks.map(task => {
-            if (task.id === frontendTaskId) {
-              console.log(`[Index] Updating task: ${task.id}`);
-              console.log(`[Index] Current task state:`, task);
-              
-              const updatedTask = { ...task };
-              
-              // Update progress
-              if (data.progress !== undefined) {
-                console.log(`[Index] Updating progress from ${updatedTask.progress} to ${data.progress}`);
-                updatedTask.progress = data.progress;
-              }
-              
-              // Update current phase and add to history
-              if (data.current_phase) {
-                console.log(`[Index] Processing current_phase: ${data.current_phase}`);
-                
-                // Initialize phase history if it doesn't exist
-                if (!updatedTask.phaseHistory) {
-                  console.log(`[Index] Initializing phase history for task`);
-                  updatedTask.phaseHistory = [];
-                  
-                  // Add "Connecting to server..." as the first phase if we're just starting
-                  if (updatedTask.phase === "working") {
-                    console.log(`[Index] Adding "Connecting to server..." as first phase`);
-                    updatedTask.phaseHistory.push({
-                      phase: "Connecting to server...",
-                      timestamp: updatedTask.createdAt,
-                      completed: true,
-                      completedAt: new Date()
-                    });
-                  }
-                }
-                
-                // Check if this phase is already in history
-                const existingPhaseIndex = updatedTask.phaseHistory.findIndex(p => p.phase === data.current_phase);
-                console.log(`[Index] Existing phase index: ${existingPhaseIndex}`);
-                
-                if (existingPhaseIndex === -1) {
-                  console.log(`[Index] Adding new phase to history: ${data.current_phase}`);
-                  
-                  // Mark the previous phase as completed (if any)
-                  if (updatedTask.phaseHistory.length > 0) {
-                    const lastPhase = updatedTask.phaseHistory[updatedTask.phaseHistory.length - 1];
-                    if (!lastPhase.completed) {
-                      console.log(`[Index] Marking previous phase as completed: ${lastPhase.phase}`);
-                      lastPhase.completed = true;
-                      lastPhase.completedAt = new Date();
-                    }
-                  }
-                  
-                  // Add new phase to history
-                  updatedTask.phaseHistory.push({
-                    phase: data.current_phase,
-                    timestamp: new Date(),
-                    completed: false
-                  });
-                }
-                
-                updatedTask.currentPhase = data.current_phase;
-                console.log(`[Index] Updated currentPhase to: ${updatedTask.currentPhase}`);
-                
-                // Map backend phases to frontend phases
-                if (data.current_phase.includes("Initializing") || data.current_phase.includes("Creating task request")) {
-                  console.log(`[Index] Mapping phase to "working"`);
-                  updatedTask.phase = "working";
-                } else if (data.current_phase.includes("Processing results") || data.current_phase.includes("completed")) {
-                  console.log(`[Index] Mapping phase to "completed"`);
-                  updatedTask.phase = "completed";
-                  updatedTask.isRunning = false;
-                  updatedTask.status = "pending_pr";
-                  updatedTask.completedAt = new Date();
-                  
-                  // Mark the last phase as completed
-                  if (updatedTask.phaseHistory.length > 0) {
-                    const lastPhase = updatedTask.phaseHistory[updatedTask.phaseHistory.length - 1];
-                    console.log(`[Index] Marking final phase as completed: ${lastPhase.phase}`);
-                    lastPhase.completed = true;
-                    lastPhase.completedAt = new Date();
-                  }
-                }
-              }
-              
-              console.log(`[Index] Updated task state:`, updatedTask);
-              console.log(`[Index] Phase history:`, updatedTask.phaseHistory);
-              
-              return updatedTask;
-            }
-            return task;
-          })
+        // Update step status using the steps service (timing handled automatically)
+        const updatedProgress = stepsService.updateStepStatus(
+          realTaskId,
+          data.step_id,
+          data.status
         );
         
-        // Close WebSocket connection when progress reaches 100%
-        if (data.progress === 100) {
-          console.log(`[Index] Progress reached 100%, closing WebSocket connection for task ${realTaskId}`);
-          websocketService.disconnect();
+        if (updatedProgress) {
+          // Update frontend task with new progress percentage
+          const progressPercentage = Math.round(
+            (updatedProgress.completedSteps / updatedProgress.totalSteps) * 100
+          );
           
-          // Mark the previous phase as completed
           setTasks(prevTasks => 
             prevTasks.map(task => {
               if (task.id === frontendTaskId) {
-                const updatedTask = { ...task };
+                console.log(`[Index] Updating task progress: ${progressPercentage}%`);
                 
-                if (updatedTask.phaseHistory && updatedTask.phaseHistory.length > 0) {
-                  const lastPhase = updatedTask.phaseHistory[updatedTask.phaseHistory.length - 1];
-                  if (!lastPhase.completed) {
-                    lastPhase.completed = true;
-                    lastPhase.completedAt = new Date();
-                  }
+                const updatedTask = { ...task, progress: progressPercentage };
+                
+                // Check if task is completed (all steps done)
+                if (progressPercentage === 100) {
+                  console.log(`[Index] Task completed, updating status`);
+                  updatedTask.isRunning = false;
+                  updatedTask.status = "pending_pr";
+                  
+                  // Fetch task completion details
+                  setTimeout(() => {
+                    fetchTaskCompletionDetails(realTaskId, frontendTaskId);
+                  }, 1000);
                 }
                 
-                console.log(`[Index] Marked final phase as completed for task ${frontendTaskId}`);
+                // Check for failed steps
+                if (updatedProgress.failedSteps > 0) {
+                  console.log(`[Index] Task has failed steps`);
+                  updatedTask.isRunning = false;
+                  updatedTask.status = "failed";
+                  updatedTask.errorMessage = data.error_message || "Step execution failed";
+                }
                 
                 return updatedTask;
               }
               return task;
             })
           );
-          
-          // Fetch task completion details
-          fetchTaskCompletionDetails(realTaskId, frontendTaskId);
         }
       },
       onError: (error) => {
         console.error(`[Index] WebSocket error for task ${realTaskId}:`, error);
+        
         // Update task status to failed
         setTasks(prevTasks => 
           prevTasks.map(task => {
             if (task.id === frontendTaskId) {
-              const updatedTask = { ...task };
-              
-              // Mark the current phase as completed (if any)
-              if (updatedTask.phaseHistory && updatedTask.phaseHistory.length > 0) {
-                const lastPhase = updatedTask.phaseHistory[updatedTask.phaseHistory.length - 1];
-                if (!lastPhase.completed) {
-                  lastPhase.completed = true;
-                  lastPhase.completedAt = new Date();
-                }
-              }
-              
-              // Add error as a new phase in history (only if it doesn't already exist)
-              if (!updatedTask.phaseHistory) {
-                updatedTask.phaseHistory = [];
-              }
-              
-              // Check if "Task execution failed" phase already exists
-              const failedPhaseExists = updatedTask.phaseHistory.some(p => p.phase === "Task execution failed");
-              
-              if (!failedPhaseExists) {
-                updatedTask.phaseHistory.push({
-                  phase: "Task execution failed",
-                  timestamp: new Date(),
-                  completed: false // Don't mark as completed so it doesn't show "Completed in"
-                });
-              }
-              
               return { 
-                ...updatedTask, 
+                ...task, 
                 isRunning: false, 
                 status: "failed" as const,
-                phase: "failed" as const,
                 errorMessage: error
               };
             }
@@ -453,6 +337,13 @@ const Index = () => {
 
   const handleDeleteTask = (taskId: string) => {
     console.log(`[Index] Deleting task: ${taskId}`);
+    
+    // Find the task to get real task ID for cleanup
+    const taskToDelete = tasks.find(t => t.id === taskId);
+    if (taskToDelete?.realTaskId) {
+      // Clear steps cache for this task
+      stepsService.clearTaskCache(taskToDelete.realTaskId);
+    }
     
     // Remove task from tasks array
     setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId));

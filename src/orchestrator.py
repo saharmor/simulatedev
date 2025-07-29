@@ -11,9 +11,28 @@ import os
 import json
 import time
 import webbrowser
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from dataclasses import dataclass
 from datetime import datetime
+
+# Import progress monitoring classes conditionally
+if TYPE_CHECKING:
+    from api.app.services.progress_monitor import ProgressMonitor
+    from api.app.schemas.progress import PhaseType, StepType, StepStatus, AgentContext as ProgressAgentContext
+
+# Try to import progress monitoring classes for runtime use
+try:
+    import sys
+    import os
+    api_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'api')
+    if api_path not in sys.path:
+        sys.path.insert(0, api_path)
+    
+    from app.services.progress_monitor import ProgressMonitor
+    from app.schemas.progress import PhaseType, StepType, StepStatus, AgentContext as ProgressAgentContext
+    PROGRESS_MONITORING_AVAILABLE = True
+except ImportError:
+    PROGRESS_MONITORING_AVAILABLE = False
 
 from utils.computer_use_utils import LLMComputerUse, close_ide_window_for_project
 from agents import (
@@ -437,7 +456,7 @@ class Orchestrator:
             print(f"WARNING: Failed to save agent response: {str(e)}")
             return None
 
-    async def execute_task(self, request: TaskRequest) -> MultiAgentResponse:
+    async def execute_task(self, request: TaskRequest, progress_monitor: Optional['ProgressMonitor'] = None) -> MultiAgentResponse:
         """Execute a task with one or more agents"""
         # Record start time for timing measurement
         start_time = time.time()
@@ -492,15 +511,83 @@ class Orchestrator:
                 print(f"Step {context.current_step}/{context.total_steps}: {agent_def.coding_ide} ({agent_def.role.value})")
                 print(f"{'='*60}")
                 
+                # Create agent context for progress reporting
+                agent_context = None
+                if progress_monitor and PROGRESS_MONITORING_AVAILABLE:
+                    # Generate agent_id matching the ProgressMonitor's generation logic
+                    agent_id = f"{agent_def.role.value.lower()}_{i+1}"
+                    agent_context = ProgressAgentContext(
+                        agent_id=agent_id,
+                        agent_ide=agent_def.coding_ide,
+                        agent_role=agent_def.role.value,
+                        agent_model=agent_def.model
+                    )
+                    
+                    # Report agent starting
+                    await progress_monitor.mark_step_in_progress(
+                        PhaseType.AGENT_EXECUTION, 
+                        StepType.AGENT_STARTING, 
+                        agent_context
+                    )
+                
                 # Create role-specific prompt with workflow context
                 prompt = self._create_role_specific_prompt(
                     agent_def.role, context, agent_def, request.workflow_type
                 )
                 
+                # Mark agent starting as completed
+                if progress_monitor and PROGRESS_MONITORING_AVAILABLE:
+                    await progress_monitor.mark_step_completed(
+                        PhaseType.AGENT_EXECUTION, 
+                        StepType.AGENT_STARTING, 
+                        agent_context
+                    )
+                
+                # Report agent working
+                if progress_monitor and PROGRESS_MONITORING_AVAILABLE:
+                    await progress_monitor.mark_step_in_progress(
+                        PhaseType.AGENT_EXECUTION, 
+                        StepType.AGENT_WORKING, 
+                        agent_context
+                    )
+                
                 # Execute agent
                 result = await self._execute_agent(
                     agent_def, prompt, context, work_directory
                 )
+                
+                # Report agent completion or failure
+                if progress_monitor and PROGRESS_MONITORING_AVAILABLE:
+                    if result["success"]:
+                        # Mark agent working as completed
+                        await progress_monitor.mark_step_completed(
+                            PhaseType.AGENT_EXECUTION,
+                            StepType.AGENT_WORKING,
+                            agent_context
+                        )
+                        
+                        # Mark agent finishing as in progress then completed
+                        await progress_monitor.mark_step_in_progress(
+                            PhaseType.AGENT_EXECUTION,
+                            StepType.AGENT_FINISHING,
+                            agent_context
+                        )
+                        
+                        await progress_monitor.mark_step_completed(
+                            PhaseType.AGENT_EXECUTION,
+                            StepType.AGENT_FINISHING,
+                            agent_context
+                        )
+                    else:
+                        # Report the specific agent failure
+                        error_message = result.get("error", "Agent execution failed")
+                        full_error = f"{agent_def.coding_ide} ({agent_def.role.value}) failed: {error_message}"
+                        await progress_monitor.mark_step_failed(
+                            PhaseType.AGENT_EXECUTION,
+                            StepType.AGENT_WORKING,
+                            full_error,
+                            agent_context
+                        )
                 
                 # Log execution
                 self.execution_log.append(result)

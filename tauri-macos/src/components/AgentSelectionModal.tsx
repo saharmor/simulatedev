@@ -125,16 +125,16 @@ export function AgentSelectionModal({ isOpen, onClose, onAgentSelect }: AgentSel
           onClick={() => onSelect(agent)}
           className={`w-full flex items-center gap-4 ${compact ? 'p-3' : 'p-4'} rounded-lg text-left border transition-colors ${
             selectedAgent?.id === agent.id 
-              ? 'border-blue-500 bg-blue-50' 
-              : 'border-gray-200 hover:bg-gray-50'
+              ? 'border-blue-500 bg-blue-50 dark:bg-blue-950 dark:border-blue-400' 
+              : 'border-border hover:bg-muted'
           }`}
         >
-          <div className={`${compact ? 'w-10 h-10' : 'w-12 h-12'} bg-gray-100 rounded-lg flex items-center justify-center ${compact ? 'text-sm' : 'text-lg'} font-bold text-gray-700`}>
+          <div className={`${compact ? 'w-10 h-10' : 'w-12 h-12'} bg-muted rounded-lg flex items-center justify-center ${compact ? 'text-sm' : 'text-lg'} font-bold text-muted-foreground`}>
             {agent.icon}
           </div>
           <div className="flex-1">
-            <h3 className={`font-semibold text-gray-900 ${compact ? 'text-sm mb-0.5' : 'mb-1'}`}>{agent.name}</h3>
-            <p className={`${compact ? 'text-xs' : 'text-sm'} text-gray-500`}>{agent.description}</p>
+            <h3 className={`font-semibold text-foreground ${compact ? 'text-sm mb-0.5' : 'mb-1'}`}>{agent.name}</h3>
+            <p className={`${compact ? 'text-xs' : 'text-sm'} text-muted-foreground`}>{agent.description}</p>
           </div>
         </button>
       ))}
@@ -161,7 +161,7 @@ export function AgentSelectionModal({ isOpen, onClose, onAgentSelect }: AgentSel
               {/* Sequential Execution Option */}
               {selectedAgent && (
                 <div className="w-full mb-6">
-                  <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-border cursor-pointer hover:bg-muted">
                     <input
                       type="checkbox"
                       checked={isSequential}
@@ -169,10 +169,10 @@ export function AgentSelectionModal({ isOpen, onClose, onAgentSelect }: AgentSel
                       className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                     />
                     <div className="flex-1">
-                      <div className="text-sm font-medium text-gray-900">
+                      <div className="text-sm font-medium text-foreground">
                         Sequential Agent Execution
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-muted-foreground">
                         Run Coder → Tester → Coder sequence with custom agents per stage
                       </div>
                     </div>
@@ -201,7 +201,7 @@ export function AgentSelectionModal({ isOpen, onClose, onAgentSelect }: AgentSel
               <div className="w-full grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
                 {/* Stage 1: First Coder */}
                 <div className="space-y-3">
-                  <h3 className="text-sm font-medium text-gray-900 mb-3 text-center">
+                  <h3 className="text-sm font-medium text-foreground mb-3 text-center">
                     Stage 1: Initial Coder
                   </h3>
                   {renderAgentGrid(availableAgents, sequentialAgents.coder1, (agent) => handleSequentialAgentClick('coder1', agent), true)}
@@ -209,7 +209,7 @@ export function AgentSelectionModal({ isOpen, onClose, onAgentSelect }: AgentSel
 
                 {/* Stage 2: Tester */}
                 <div className="space-y-3">
-                  <h3 className="text-sm font-medium text-gray-900 mb-3 text-center">
+                  <h3 className="text-sm font-medium text-foreground mb-3 text-center">
                     Stage 2: Tester
                   </h3>
                   {renderAgentGrid(availableAgents, sequentialAgents.tester, (agent) => handleSequentialAgentClick('tester', agent), true)}
@@ -217,7 +217,7 @@ export function AgentSelectionModal({ isOpen, onClose, onAgentSelect }: AgentSel
 
                 {/* Stage 3: Second Coder */}
                 <div className="space-y-3">
-                  <h3 className="text-sm font-medium text-gray-900 mb-3 text-center">
+                  <h3 className="text-sm font-medium text-foreground mb-3 text-center">
                     Stage 3: Final Coder
                   </h3>
                   {renderAgentGrid(availableAgents, sequentialAgents.coder2, (agent) => handleSequentialAgentClick('coder2', agent), true)}
@@ -225,16 +225,16 @@ export function AgentSelectionModal({ isOpen, onClose, onAgentSelect }: AgentSel
               </div>
 
               {/* Execution Flow Indicator */}
-              <div className="w-full mb-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
-                <span className={`${sequentialAgents.coder1 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
+              <div className="w-full mb-6 flex items-center justify-center space-x-4 text-sm text-muted-foreground">
+                <span className={`${sequentialAgents.coder1 ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
                   {sequentialAgents.coder1 ? sequentialAgents.coder1.name : 'Select Coder'}
                 </span>
                 <span>→</span>
-                <span className={`${sequentialAgents.tester ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
+                <span className={`${sequentialAgents.tester ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
                   {sequentialAgents.tester ? sequentialAgents.tester.name : 'Select Tester'}
                 </span>
                 <span>→</span>
-                <span className={`${sequentialAgents.coder2 ? 'text-blue-600 font-medium' : 'text-gray-400'}`}>
+                <span className={`${sequentialAgents.coder2 ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
                   {sequentialAgents.coder2 ? sequentialAgents.coder2.name : 'Select Coder'}
                 </span>
               </div>

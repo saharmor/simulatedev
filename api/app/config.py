@@ -8,12 +8,12 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./simulatedev.db"
     
     # GitHub OAuth
-    github_client_id: str = ""
-    github_client_secret: str = ""
+    github_client_id: str = "Ov23liz8BDMlzkAFWI22"
+    github_client_secret: str = "a14fcd914d71b0d1c106ec5d2d5f3396a4bf3293"
     github_oauth_redirect_uri: str = "http://localhost:8000/api/auth/github/callback"
     
     # Frontend URL (for OAuth redirects)
-    frontend_url: str = "http://localhost:8000"
+    frontend_url: str = "simulatedev:/"
     
     # SimulateDev paths
     simulatedev_root: str = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     # Security
     secret_key: str = secrets.token_urlsafe(32)
     session_expire_hours: int = 8
-    encryption_key: Optional[str] = None  # For encrypting GitHub tokens
+    encryption_key: Optional[str] = "hey"  # For encrypting GitHub tokens
     
     # Rate limiting
     rate_limit_requests_per_minute: int = 60
