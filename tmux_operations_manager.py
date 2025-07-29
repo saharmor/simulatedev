@@ -96,7 +96,7 @@ AGENT_CONFIGS = {
         completion_check_method="ready_prompt",
         output_format="text",
         pre_commands=[
-            "export GEMINI_API_KEY=\"AIzaSyDDq3LndW44_-5DQfPurgkB0HZJPe6R2x8\"",
+            "export GEMINI_API_KEY=\"AIzaSyBWo2eC9LE-RXerZb-Ik_vfOnr5MHqu6ps\"",
         ],
         busy_indicators=[],  # Gemini doesn't have specific busy indicators
         completion_timeout=10.0  # Default timeout for Gemini
@@ -127,8 +127,9 @@ class SessionInfo:
     start_time: float
     end_time: Optional[float] = None
     yolo_mode: bool = False
-    agent_type: AgentType = AgentType.GEMINI  # Agent type enum
+    agent_type: AgentType
     spawning_timeout: float = 30.0  # Maximum time to stay in SPAWNING state
+    last_state_change_time: Optional[float] = None  # Track when status last changed
     
     def copy(self):
         """Create a safe copy for external use"""
@@ -141,7 +142,8 @@ class SessionInfo:
             end_time=self.end_time,
             yolo_mode=self.yolo_mode,
             agent_type=self.agent_type,
-            spawning_timeout=self.spawning_timeout
+            spawning_timeout=self.spawning_timeout,
+            last_state_change_time=self.last_state_change_time
         )
     
     def to_dict(self):
@@ -184,6 +186,59 @@ class OutputBuffer:
             return changes
         return None
 
+@dataclass
+class Pane:
+    """Represents a tmux pane with its state and output tracking"""
+    pane_id: str  # The actual pane ID (e.g., "%1")
+    session_id: str  # The session this pane belongs to
+    full_target: str  # Full tmux target (e.g., "agent_manager:controller.%1")
+    last_read_line: int = 0  # Last line index that was read
+    output_lines: List[str] = field(default_factory=list)  # All captured output lines
+    created_at: float = field(default_factory=time.time)
+    
+    def get_recent_lines(self, count: int) -> List[str]:
+        """Get the last N lines of output"""
+        if count >= len(self.output_lines):
+            return self.output_lines.copy()
+        else:
+            return self.output_lines[-count:].copy()
+    
+    def get_full_output(self) -> str:
+        """Get all output as a single string"""
+        return '\n'.join(self.output_lines)
+    
+    def append_lines(self, new_lines: List[str]) -> int:
+        """Append new lines and return the count added"""
+        if not new_lines:
+            return 0
+        
+        self.output_lines.extend(new_lines)
+        
+        # Limit stored history to prevent unbounded growth (keep last 10000 lines)
+        if len(self.output_lines) > 10000:
+            lines_to_remove = len(self.output_lines) - 10000
+            self.output_lines = self.output_lines[lines_to_remove:]
+            # Adjust last_read_line if we removed lines from the beginning
+            self.last_read_line = max(0, self.last_read_line - lines_to_remove)
+        
+        return len(new_lines)
+    
+    def update_last_read_line(self, line_index: int):
+        """Update the last read line index"""
+        self.last_read_line = max(self.last_read_line, line_index)
+    
+    def get_lines_since(self, start_line: int, end_line: Optional[int] = None) -> List[str]:
+        """Get lines from start_line to end_line (or end if None)"""
+        if end_line is None:
+            return self.output_lines[start_line:].copy()
+        else:
+            return self.output_lines[start_line:end_line].copy()
+    
+    def clear_output(self):
+        """Clear all stored output"""
+        self.output_lines.clear()
+        self.last_read_line = 0
+
 # ---------------------------- Command Queue for Concurrency Control ----------
 class TmuxCommandQueue:
     """Serializes tmux commands per-pane to prevent interleaving while allowing parallel execution across panes"""
@@ -195,6 +250,8 @@ class TmuxCommandQueue:
         self._global_worker = None
         self._running = False
         self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+
     
     async def start(self):
         """Start the command workers"""
@@ -350,7 +407,7 @@ class TmuxCommandQueue:
 class TmuxAgentManager:
     """Thread-safe manager for multiple tmux sessions with support for different CLI agents."""
 
-    def __init__(self, max_sessions: int = 50, default_repo: str | None = None, global_pre_commands: List[str] | None = None, default_agent: AgentType = AgentType.GEMINI):
+    def __init__(self, max_sessions: int = 50, default_repo: str | None = None, global_pre_commands: List[str] | None = None, default_agent: AgentType = AgentType.GEMINI, monitor_interval: float = 5.0):
         self.max_sessions = max_sessions
         self.default_repo = default_repo or "https://github.com/saharmor/gemini-multimodal-playground"
         self.global_pre_commands = global_pre_commands or []  # Applied to all agents
@@ -375,7 +432,7 @@ class TmuxAgentManager:
         
         # Protected state (access only with _state_lock)
         self._sessions: Dict[str, SessionInfo] = {}
-        self._pane_mapping: Dict[str, str] = {}
+        self._panes: Dict[str, Pane] = {}  # session_id -> Pane object
         self._output_buffers: Dict[str, OutputBuffer] = {}
         self._session_prompts: Dict[str, str] = {}
         self._prompt_sent_time: Dict[str, float] = {}
@@ -386,7 +443,7 @@ class TmuxAgentManager:
         # Command queue for concurrency control
         self._tmux_queue = TmuxCommandQueue()
         self._session_locks = {}  # sid -> asyncio.Lock
-        self._adaptive_monitor_delay = 5.0
+        self._adaptive_monitor_delay = monitor_interval
         
         # Add session creation throttling
         self._creation_lock = asyncio.Lock()
@@ -394,7 +451,7 @@ class TmuxAgentManager:
         self._min_creation_interval = 5.0  # Minimum 5 seconds between session creations
         
         # Global concurrency control
-        self._global_tmux_semaphore = asyncio.Semaphore(5)  # Max 5 concurrent tmux operations
+        self._global_tmux_semaphore = asyncio.Semaphore(10)  # Max 10 concurrent tmux operations (increased for cleanup)
         
         # Setup logging
         self._setup_logging()
@@ -411,6 +468,34 @@ class TmuxAgentManager:
             raise ValueError(f"Unknown agent: {agent_name}")
         else:
             raise ValueError(f"Invalid agent type: {type(agent_name)}")
+
+    def _get_pane_by_session(self, session_id: str) -> Optional[Pane]:
+        """Get pane object by session ID"""
+        with self._state_lock:
+            return self._panes.get(session_id)
+    
+    def _get_pane_by_pane_id(self, pane_id: str) -> Optional[Pane]:
+        """Get pane object by pane ID (searches all panes)"""
+        # Extract just the pane ID if full reference provided
+        if "." in pane_id:
+            pane_id = pane_id.split(".")[-1]
+        
+        with self._state_lock:
+            for pane in self._panes.values():
+                if pane.pane_id == pane_id:
+                    return pane
+        return None
+    
+    def _create_pane(self, session_id: str, pane_id: str, full_target: str) -> Pane:
+        """Create and register a new pane"""
+        pane = Pane(
+            pane_id=pane_id,
+            session_id=session_id,
+            full_target=full_target
+        )
+        with self._state_lock:
+            self._panes[session_id] = pane
+        return pane
 
     def update_agent_config(self, agent_name, **kwargs):
         """Update configuration for a specific agent"""
@@ -470,11 +555,6 @@ class TmuxAgentManager:
         )
         self.logger = logging.getLogger(__name__)
         self.logger.info("🚀 TmuxAgentManager initialized (thread-safe version with multi-agent support)")
-        
-        # Test logging output
-        print("=" * 60)
-        print("🔍 LOGGING TEST - If you don't see this, logging is broken!")
-        print("=" * 60)
 
     # ---------- Context Managers for Safe Access ----------
     @contextmanager
@@ -556,8 +636,8 @@ class TmuxAgentManager:
             # Find the session associated with this pane
             with self._state_lock:
                 session_id = None
-                for sid, mapped_pane in self._pane_mapping.items():
-                    if mapped_pane == pane:
+                for sid, pane_obj in self._panes.items():
+                    if pane_obj.full_target == pane:
                         session_id = sid
                         break
                 
@@ -576,24 +656,126 @@ class TmuxAgentManager:
         self.logger.debug(f"Text prepared for tmux: '{text[:100]}{'...' if len(text) > 100 else ''}'")
         return escaped_text
 
+    async def _validate_pane_and_session(self, pane_target: str) -> tuple[bool, Optional[str]]:
+        """Validate that pane belongs to an active session and still exists.
+        
+        Returns:
+            tuple: (is_valid, session_id) where is_valid is True if pane is valid
+        """
+        # Find the pane object and session
+        with self._state_lock:
+            valid_pane = False
+            session_id = None
+            pane_obj = None
+            
+            for sid, pane in self._panes.items():
+                if pane.full_target == pane_target:
+                    session = self._sessions.get(sid)
+                    if session and session.status in (SessionStatus.RUNNING, SessionStatus.SPAWNING, SessionStatus.REQUIRES_USER_INPUT):
+                        valid_pane = True
+                        session_id = sid
+                        pane_obj = pane
+                        break
+            
+            if not valid_pane:
+                self.logger.error(f"Attempted to send text to invalid/inactive pane: {pane_target}")
+                return False, None
+                
+        # Check if pane still exists before attempting to send
+        try:
+            check_result = await self._run_async(
+                ["tmux", "list-panes", "-t", self.main_session, "-F", "#{pane_id}"],
+                check=False
+            )
+            if pane_obj.pane_id not in check_result.stdout:
+                self.logger.warning(f"Pane {pane_target} no longer exists, skipping text send")
+                return False, session_id
+        except Exception as e:
+            self.logger.error(f"Error checking pane existence: {e}")
+            return False, session_id
+            
+        return True, session_id
+
+    def _normalize_text_for_comparison(self, text: str) -> str:
+        """Normalize text by removing quotes, extra spaces, and special characters for comparison."""
+        if not text:
+            return ""
+        
+        # Remove quotes and normalize whitespace
+        normalized = text.strip()
+        # Remove single and double quotes
+        normalized = normalized.replace('"', '').replace("'", '')
+        # Normalize multiple spaces to single space
+        normalized = ' '.join(normalized.split())
+        # Remove common terminal artifacts that might interfere
+        normalized = normalized.replace('\r', '').replace('\x1b', '')
+        
+        return normalized.lower()  # Case-insensitive comparison
+
+    async def _verify_prompt_sent(self, pane_target: str, original_text: str) -> bool:
+        """Verify that the sent text appears in the pane output.
+        
+        Args:
+            pane_target: The tmux pane target
+            original_text: The original text that was sent
+            
+        Returns:
+            bool: True if text is found in output, False otherwise
+        """
+        # Find the session ID for this pane target
+        session_id = None
+        with self._state_lock:
+            for sid, pane in self._panes.items():
+                if pane.full_target == pane_target:
+                    session_id = sid
+                    break
+        
+        if not session_id:
+            return False
+        
+        # Get fresh output (force_refresh=True) to avoid race condition with update_sessions
+        output_lines = await self.get_pane_recent_lines(session_id, count=200, force_refresh=True)
+        output = '\n'.join(output_lines)
+        
+        if not output:
+            return False
+        
+        # Normalize both texts for comparison
+        normalized_output = self._normalize_text_for_comparison(output)
+        
+        # Try different portions of the text for verification
+        check_texts = []
+        
+        # Use the last 30 characters if text is long
+        if len(original_text) > 30:
+            check_texts.append(original_text[-30:])
+        else:
+            check_texts.append(original_text)
+            
+        # Also check middle portion for longer texts
+        if len(original_text) > 10:
+            mid_start = len(original_text) // 2
+            mid_text = original_text[mid_start:mid_start + 20]
+            check_texts.append(mid_text)
+        
+        # Check if any of the text portions appear in the output
+        for check_text in check_texts:
+            normalized_check = self._normalize_text_for_comparison(check_text)
+            if normalized_check and normalized_check in normalized_output:
+                self.logger.debug(f"Found text portion '{check_text[:20]}...' in fresh pane output")
+                return True
+        
+        self.logger.debug(f"Text not found in fresh pane output. Checking: {[t[:20] + '...' for t in check_texts]}")
+        return False
+
     async def _send_text_with_enter_async(self, pane: str, text: str) -> None:
         """Send text to pane followed by Enter key with proper synchronization and retry logic"""
         self.logger.info(f"_send_text_with_enter_async called for pane {pane} with text: {text[:50]}...")
         
-        # Add session context validation
-        with self._state_lock:
-            # Verify this pane belongs to an active session
-            valid_pane = False
-            for sid, mapped_pane in self._pane_mapping.items():
-                if mapped_pane == pane:
-                    session = self._sessions.get(sid)
-                    if session and session.status in (SessionStatus.RUNNING, SessionStatus.SPAWNING, SessionStatus.REQUIRES_USER_INPUT):
-                        valid_pane = True
-                        break
-            
-            if not valid_pane:
-                self.logger.error(f"Attempted to send text to invalid/inactive pane: {pane}")
-                return
+        # Validate pane and session context
+        is_valid, session_id = await self._validate_pane_and_session(pane)
+        if not is_valid:
+            return
             
         # Escape text for safe transmission to tmux
         escaped_text = self._escape_text_for_tmux(text, pane)
@@ -609,28 +791,21 @@ class TmuxAgentManager:
             try:
                 self.logger.debug(f"Attempt {attempt + 1}/{max_retries + 1} to send text to pane {pane}")
                 
-                # Method 1: Send text with literal flag
-                await self._run_async(["tmux", "send-keys", "-t", pane, "-l", escaped_text])
+                # Send text with literal flag
+                try:
+                    await self._run_async(["tmux", "send-keys", "-t", pane, "-l", escaped_text])
+                except subprocess.CalledProcessError as e:
+                    if "can't find pane" in str(e.stderr):
+                        self.logger.warning(f"Pane {pane} no longer exists, aborting send")
+                        return
+                    raise
                 
                 # Critical: Wait for tmux to process, longer for longer texts
                 wait_time = 0.5 + (len(escaped_text) / 1000) * 0.5  # Increased base wait time
                 await asyncio.sleep(wait_time)
                 
-                # Verify text was received by checking pane content
-                output = await self._capture_pane_output_async(pane)
-                text_found = False
-                if output:
-                    # Check if the original text appears in the output (look for a portion of it)
-                    # Use original text for verification since that's what should appear in the terminal
-                    check_text = text[-min(30, len(text)):] if len(text) > 30 else text
-                    if check_text in output:
-                        text_found = True
-                    else:
-                        # Also check if any significant portion of the text is there
-                        if len(text) > 10:
-                            mid_text = text[len(text)//2:len(text)//2+20]
-                            if mid_text in output:
-                                text_found = True
+                # Verify prompt was received in the right pane
+                text_found = await self._verify_prompt_sent(pane, text)
                 
                 if not text_found and attempt < max_retries:
                     self.logger.warning(f"Text not found in pane output on attempt {attempt + 1}, retrying...")
@@ -694,7 +869,7 @@ class TmuxAgentManager:
         
         with self._state_lock:
             session = self._sessions.get(sid)
-            pane = self._pane_mapping.get(sid)
+            pane = self._panes.get(sid)
             
         if not session or not pane:
             return False
@@ -704,7 +879,10 @@ class TmuxAgentManager:
             return False
         
         while time.time() - start_time < timeout:
-            output = await self._capture_pane_output_async(pane)
+            # Get fresh output to avoid race condition with update_sessions
+            output_lines = await self.get_pane_recent_lines(sid, count=300, force_refresh=True)
+            output = '\n'.join(output_lines)
+            
             if not output:
                 await asyncio.sleep(0.5)
                 continue
@@ -727,20 +905,7 @@ class TmuxAgentManager:
             await asyncio.sleep(0.5)
         
         return False
-
-    # Keep original method for backward compatibility in sync contexts
-    def _send_text_with_enter(self, pane: str, text: str) -> None:
-        """Send text to pane followed by Enter key, handling it robustly (legacy sync version)"""
-        try:
-            # Escape text for safe transmission to tmux
-            escaped_text = self._escape_text_for_tmux(text, pane)
-            # Use literal text method directly for better concurrency
-            self._run(["tmux", "send-keys", "-t", pane, "-l", escaped_text])
-            self._run(["tmux", "send-keys", "-t", pane, "C-m"])
-        except Exception as e:
-            self.logger.error(f"Failed to send text with enter: {e}")
-            raise
-
+    
     def _clean_terminal_output(self, text: str) -> str:
         """Clean terminal output by removing ANSI escape codes"""
         if not text:
@@ -931,14 +1096,28 @@ class TmuxAgentManager:
             
             # Create pane
             try:
-                self._run(["tmux", "split-window", "-t", f"{self.main_session}:controller", "-h"])
-                self._run(["tmux", "select-layout", "-t", f"{self.main_session}:controller", "tiled"])
-                pane_id = self._run([
-                    "tmux", "list-panes", "-t", f"{self.main_session}:controller", "-F", "#{pane_id}"
-                ]).stdout.strip().split("\n")[-1]
+                # Create new pane
+                result = self._run(["tmux", "split-window", "-t", f"{self.main_session}:controller", "-h", "-P", "-F", "#{pane_id}"])
+                pane_id = result.stdout.strip()
+                
+                if not pane_id:
+                    # Fallback: list all panes and get the newest one
+                    self._run(["tmux", "select-layout", "-t", f"{self.main_session}:controller", "tiled"])
+                    pane_list = self._run([
+                        "tmux", "list-panes", "-t", f"{self.main_session}:controller", "-F", "#{pane_id}"
+                    ]).stdout.strip().split("\n")
+                    pane_id = pane_list[-1] if pane_list else None
+                    
+                    if not pane_id:
+                        raise RuntimeError("Failed to get pane ID after creation")
+                else:
+                    self._run(["tmux", "select-layout", "-t", f"{self.main_session}:controller", "tiled"])
                 
                 target = f"{self.main_session}:controller.{pane_id}"
-                self._pane_mapping[sid] = target
+                
+                # Create and register the pane object
+                pane_obj = self._create_pane(sid, pane_id, target)
+                self.logger.debug(f"Created pane {pane_id} for session {sid}, target: {target}")
                 
                 # Set pane title
                 self._rename_pane(target, f"SPAWNING‑{sid}")
@@ -1013,8 +1192,8 @@ class TmuxAgentManager:
                 self.logger.error(f"Failed to create session {sid}: {e}")
                 del self._sessions[sid]
                 del self._output_buffers[sid]
-                if sid in self._pane_mapping:
-                    del self._pane_mapping[sid]
+                if sid in self._panes:
+                    del self._panes[sid]
                 return None
 
     async def _terminate_pane(self, sid: str, pane: str, force_kill: bool = False):
@@ -1042,8 +1221,8 @@ class TmuxAgentManager:
             
             # Remove pane mapping
             with self._state_lock:
-                if sid in self._pane_mapping:
-                    del self._pane_mapping[sid]
+                if sid in self._panes:
+                    del self._panes[sid]
                     
         except Exception as e:
             self.logger.warning(f"Pane termination error for {sid}: {e}")
@@ -1058,18 +1237,24 @@ class TmuxAgentManager:
             if info.status not in (SessionStatus.RUNNING, SessionStatus.REQUIRES_USER_INPUT, SessionStatus.SPAWNING, SessionStatus.PREMATURE_FINISH):
                 return False
             
-            pane = self._pane_mapping.get(sid)
+            # Update status immediately to prevent further operations
+            info.status = SessionStatus.STOPPED
+            info.end_time = time.time()
+            
+            pane = self._panes.get(sid)
             if pane:
+                # Clean up command queue for this pane immediately
+                pane_id = self._tmux_queue._extract_pane_id(["tmux", "-t", pane.full_target])
+                if pane_id:
+                    # Cancel any pending commands for this pane
+                    asyncio.create_task(self._tmux_queue.cleanup_pane(pane_id))
+                
                 # Use async termination in a task for consistency
                 async def _async_stop():
-                    await self._terminate_pane(sid, pane, force_kill=True)
+                    await self._terminate_pane(sid, pane.full_target, force_kill=True)
                 
                 # Schedule the async termination
                 asyncio.create_task(_async_stop())
-            
-            # Update status
-            info.status = SessionStatus.STOPPED
-            info.end_time = time.time()
             
             # Save output asynchronously
             asyncio.create_task(self._save_session_output_async(sid))
@@ -1081,49 +1266,139 @@ class TmuxAgentManager:
             self.logger.info(f"Stopped session {sid}")
             return True
 
-    # ---------- Output Management (Thread-Safe) ----------
-    def _capture_pane_output(self, pane: str) -> Optional[str]:
-        """Capture output from tmux pane"""
-        try:
-            # Add timeout to prevent hanging
-            result = subprocess.run(
-                ["tmux", "capture-pane", "-p", "-t", pane],
-                capture_output=True,
-                text=True,
-                timeout=5.0  # 5 second timeout
-            )
-            if result.returncode != 0:
-                # Don't log warnings for missing panes (normal after cleanup)
-                if "can't find pane" not in result.stderr:
-                    self.logger.warning(f"capture-pane failed for {pane}: {result.stderr}")
-                return None
-            return result.stdout
-        except subprocess.TimeoutExpired:
-            return None
-        except Exception as e:
-            self.logger.error(f"capture-pane error for {pane}: {e}")
-            return None
+    async def stop_session_async(self, sid: str) -> bool:
+        """Stop a session asynchronously and wait for completion"""
+        with self._atomic_state_update():
+            if sid not in self._sessions:
+                return False
+            
+            info = self._sessions[sid]
+            if info.status not in (SessionStatus.RUNNING, SessionStatus.REQUIRES_USER_INPUT, SessionStatus.SPAWNING, SessionStatus.PREMATURE_FINISH):
+                return False
+            
+            # Update status immediately to prevent further operations
+            info.status = SessionStatus.STOPPED
+            info.end_time = time.time()
+            
+            pane = self._panes.get(sid)
+            pane_target = pane.full_target if pane else None
+            
+        # Perform cleanup outside the lock to avoid blocking
+        if pane_target:
+            # Clean up command queue for this pane
+            pane_id = self._tmux_queue._extract_pane_id(["tmux", "-t", pane_target])
+            if pane_id:
+                await self._tmux_queue.cleanup_pane(pane_id)
+            
+            # Terminate the pane and wait for completion
+            await self._terminate_pane(sid, pane_target, force_kill=True)
+        
+        # Save output
+        await self._save_session_output_async(sid)
+        
+        # Clean up session lock
+        with self._state_lock:
+            if sid in self._session_locks:
+                del self._session_locks[sid]
+        
+        self.logger.info(f"Stopped session {sid} (async)")
+        return True
 
-    async def _capture_pane_output_async(self, pane: str) -> Optional[str]:
-        """Capture output from tmux pane asynchronously"""
+    # ---------- Output Management (Thread-Safe) ----------
+    async def _capture_pane_output_full(self, pane_obj: Pane) -> Optional[List[str]]:
+        """Capture complete output from tmux pane for CLI agents that update content inline.
+        
+        Args:
+            pane_obj: The Pane object to capture output for
+            
+        Returns:
+            List of all current lines, or None on error
+        """
         try:
+            # Capture all output from pane history
             result = await self._run_async(
-                ["tmux", "capture-pane", "-p", "-t", pane],
+                ["tmux", "capture-pane", "-p", "-t", pane_obj.full_target, "-S", "-", "-E", "-"],
                 check=False
             )
+            
             if result.returncode != 0:
                 if "can't find pane" not in result.stderr:
-                    self.logger.warning(f"capture-pane failed for {pane}: {result.stderr}")
+                    self.logger.warning(f"capture-pane full failed for {pane_obj.full_target}: {result.stderr}")
                 return None
-            return result.stdout
+            
+            # Split into lines and completely replace the pane's cached data
+            all_lines = result.stdout.splitlines()
+            
+            # Update pane object with complete fresh data
+            with self._state_lock:
+                pane_obj.output_lines = all_lines
+                pane_obj.last_read_line = len(all_lines)
+            
+            self.logger.debug(f"Full capture for {pane_obj.full_target}: {len(all_lines)} total lines")
+            return all_lines
+            
         except Exception as e:
-            self.logger.error(f"capture-pane error for {pane}: {e}")
+            self.logger.error(f"capture-pane full error for {pane_obj.full_target}: {e}")
+            return None
+
+    async def _capture_pane_output_incremental(self, pane_obj: Pane) -> Optional[List[str]]:
+        """Capture new output from tmux pane incrementally.
+        
+        Args:
+            pane_obj: The Pane object to capture output for
+            
+        Returns:
+            List of new lines since last read, or None on error
+        """
+        try:
+            # First, get the total number of lines in the pane's history
+            count_result = await self._run_async(
+                ["tmux", "capture-pane", "-p", "-t", pane_obj.full_target, "-S", "-", "-E", "-"],
+                check=False
+            )
+            
+            if count_result.returncode != 0:
+                if "can't find pane" not in count_result.stderr:
+                    self.logger.warning(f"capture-pane count failed for {pane_obj.full_target}: {count_result.stderr}")
+                return None
+                
+            total_lines = len(count_result.stdout.splitlines())
+            
+            # If we've already read all lines, return empty list
+            if pane_obj.last_read_line >= total_lines:
+                return []
+            
+            # Capture only new lines since last read
+            start_line = pane_obj.last_read_line
+            
+            # Capture from last read line to end
+            result = await self._run_async(
+                ["tmux", "capture-pane", "-p", "-t", pane_obj.full_target, "-S", str(start_line), "-E", "-"],
+                check=False
+            )
+            
+            if result.returncode != 0:
+                if "can't find pane" not in result.stderr:
+                    self.logger.warning(f"capture-pane incremental failed for {pane_obj.full_target}: {result.stderr}")
+                return None
+            
+            # Split into lines and update the pane object
+            new_lines = result.stdout.splitlines()
+            
+            if new_lines:
+                pane_obj.append_lines(new_lines)
+                pane_obj.update_last_read_line(total_lines)
+            
+            return new_lines
+            
+        except Exception as e:
+            self.logger.error(f"capture-pane incremental error for {pane_obj.full_target}: {e}")
             return None
 
     async def _update_session_output(self, sid: str) -> Optional[str]:
         """Update output buffer and return changes (thread-safe)"""
         with self._state_lock:
-            pane = self._pane_mapping.get(sid)
+            pane = self._panes.get(sid)
             buffer = self._output_buffers.get(sid)
             session = self._sessions.get(sid)
             
@@ -1134,13 +1409,24 @@ class TmuxAgentManager:
             if not agent_config:
                 return None
         
-        # Capture outside lock to avoid blocking
-        raw_output = await self._capture_pane_output_async(pane)
-        if not raw_output:
-            return None
+        # For CLI agents that update content inline (Gemini, Claude), use full capture
+        # For others, use incremental capture for efficiency
+        if agent_config.supports_interactive:
+            # CLI agents update content inline, need full capture to see all changes
+            result = await self._capture_pane_output_full(pane)
+            if result is None:
+                return None
+        else:
+            # Non-interactive agents typically append-only, incremental is fine
+            result = await self._capture_pane_output_incremental(pane)
+            if result is None:
+                return None
+        
+        # Get the full current output from the pane object
+        full_output = pane.get_full_output()
         
         # Clean output first
-        cleaned = self._clean_terminal_output(raw_output)
+        cleaned = self._clean_terminal_output(full_output)
         
         # Parse based on agent output format
         if agent_config.output_format == "json":
@@ -1150,11 +1436,13 @@ class TmuxAgentManager:
             # For Gemini and others, use cleaned text directly
             parsed = cleaned
         
-        # Update buffer atomically
+        # Update buffer atomically and get changes
         with self._state_lock:
             buffer = self._output_buffers.get(sid)
             if buffer:
-                return buffer.update_content(parsed)
+                # Use buffer's change detection - it handles both inline updates and new content
+                changes = buffer.update_content(parsed)
+                return changes
         
         return None
 
@@ -1208,11 +1496,11 @@ class TmuxAgentManager:
                     temp_path.unlink()
 
     # ---------- Status Checking (Thread-Safe) ----------
-    def _check_agent_ready(self, sid: str) -> bool:
-        """Check if agent is ready (thread-safe) with improved detection"""
+    async def _check_agent_ready(self, sid: str) -> bool:
+        """Check if agent is ready for input (thread-safe)"""
         with self._state_lock:
-            pane = self._pane_mapping.get(sid)
-            session = self._sessions.get(sid)
+            pane = self._panes.get(sid)
+            session = self._sessions.get(sid) 
         
         if not pane or not session:
             self.logger.debug(f"_check_agent_ready({sid}): No pane or session found")
@@ -1234,51 +1522,51 @@ class TmuxAgentManager:
             self.logger.warning(f"_check_agent_ready({sid}): Timeout fallback - been in SPAWNING for {time_in_spawning:.1f}s, assuming ready")
             return True
         
-        output = self._capture_pane_output(pane)
+        # Read output from pane
+        output_lines = pane.get_recent_lines(50)  # Last 50 lines should be enough
+        output = '\n'.join(output_lines)
+        
         if not output:
-            self.logger.debug(f"_check_agent_ready({sid}): No output captured from pane {pane}")
+            self.logger.debug(f"_check_agent_ready({sid}): No output captured from pane {pane.full_target}")
             # If no output after 10 seconds, assume ready (agent might have started)
             if time_in_spawning > 10.0:
                 self.logger.warning(f"_check_agent_ready({sid}): No output after {time_in_spawning:.1f}s, assuming ready")
                 return True
             return False
         
-        # Debug: Log the captured output and what we're looking for
         self.logger.debug(f"_check_agent_ready({sid}): Agent type = {session.agent_type}")
         self.logger.debug(f"_check_agent_ready({sid}): Ready indicator mode = {agent_config.ready_indicator_mode}")
         self.logger.debug(f"_check_agent_ready({sid}): Looking for indicators = {agent_config.ready_indicators}")
         
-        # Check for agent-specific ready indicators with improved logic
         if agent_config.ready_indicator_mode == ReadyIndicatorMode.INCLUSIVE:
-            # Look for ready indicators in the output
+            # Return True if ANY indicators are found
             ready_found = False
             for indicator in agent_config.ready_indicators:
                 if indicator in output:
-                    ready_found = True
                     self.logger.debug(f"_check_agent_ready({sid}): Found indicator '{indicator}'")
+                    ready_found = True
                     break
             
-            # Additional heuristics for Gemini
-            if not ready_found and session.agent_type == AgentType.GEMINI:
-                # Check if we see typical Gemini startup patterns
-                if any(pattern in output.lower() for pattern in ['gemini', 'model:', 'loading', 'ready']):
-                    if time_in_spawning > 8.0:  # Give it time to fully load
-                        self.logger.debug(f"_check_agent_ready({sid}): Gemini heuristic - assuming ready after {time_in_spawning:.1f}s")
-                        ready_found = True
+            # Special case for Gemini: also check if it's been running for a while
+            # (Gemini sometimes doesn't show clear ready indicators)
+            if not ready_found and session.agent_type == AgentType.GEMINI and time_in_spawning > 8.0:
+                self.logger.debug(f"_check_agent_ready({sid}): Gemini heuristic - assuming ready after {time_in_spawning:.1f}s")
+                ready_found = True
             
             self.logger.debug(f"_check_agent_ready({sid}): INCLUSIVE mode result = {ready_found}")
             return ready_found
-            
-        else: # ReadyIndicatorMode.EXCLUSIVE
+        else:  # exclusive mode - return True if NONE of the indicators are found
             result = not any(indicator in output for indicator in agent_config.ready_indicators)
             self.logger.debug(f"_check_agent_ready({sid}): EXCLUSIVE mode result = {result}")
             return result
 
-    def _check_requires_input(self, sid: str) -> bool:
+    async def _check_requires_input(self, sid: str) -> bool:
         """Check if session needs input (thread-safe)"""
         with self._state_lock:
-            pane = self._pane_mapping.get(sid)
+            pane = self._panes.get(sid)
             session = self._sessions.get(sid)
+            # If we're already in REQUIRES_USER_INPUT state, be more conservative about leaving it
+            already_in_input_state = session and session.status == SessionStatus.REQUIRES_USER_INPUT
         
         if not pane or not session:
             return False
@@ -1291,22 +1579,29 @@ class TmuxAgentManager:
         if not agent_config.supports_interactive:
             return False
         
-        output = self._capture_pane_output(pane)
-        if not output:
-            return False
+        # Read output from pane
+        output_lines = pane.get_recent_lines(30)  # Last 30 lines for input prompts
+        output = '\n'.join(output_lines)
         
-        return any(indicator in output for indicator in agent_config.input_indicators)
+        if not output:
+            return already_in_input_state  # If already waiting for input, stay in that state
+        
+        # Check for input indicators
+        has_input_indicator = any(indicator in output for indicator in agent_config.input_indicators)
+        
+        return has_input_indicator
 
-    def _check_agent_premature_finish(self, sid: str) -> bool:
-        """Check if agent process has finished prematurely (crashed or exited early)"""
+    async def _check_agent_premature_finish(self, sid: str) -> bool:
+        """Check if agent finished prematurely (thread-safe)"""
         with self._state_lock:
-            pane = self._pane_mapping.get(sid)
+            pane = self._panes.get(sid)
             session = self._sessions.get(sid)
+            prompt_sent_time = self._prompt_sent_time.get(sid, 0)
         
         if not pane or not session:
             return False
         
-        # Check if pane still exists
+        # Check if pane exists
         try:
             pane_exists_result = subprocess.run(
                 ["tmux", "list-panes", "-t", self.main_session, "-F", "#{pane_id}"],
@@ -1315,16 +1610,18 @@ class TmuxAgentManager:
                 timeout=1.0
             )
             
-            pane_id = pane.split(".")[-1]
-            if pane_id not in pane_exists_result.stdout:
-                self.logger.error(f"Session {sid}: Pane {pane_id} no longer exists")
+            if pane.pane_id not in pane_exists_result.stdout:
+                self.logger.error(f"Session {sid}: Pane {pane.pane_id} no longer exists")
                 return True
         except Exception as e:
             self.logger.error(f"Session {sid}: Error checking pane existence: {e}")
             return True
         
         # Check if there's a shell prompt at the end (indicates process exited)
-        output = self._capture_pane_output(pane)
+        # Read output from pane
+        output_lines = pane.get_recent_lines(50)  # Last 50 lines
+        output = '\n'.join(output_lines)
+        
         if not output:
             return False
         
@@ -1333,13 +1630,14 @@ class TmuxAgentManager:
         if not lines:
             return False
         
-        # Check for common shell prompts that indicate the process has exited
+        # Get timing information for context
+        time_since_prompt = time.time() - prompt_sent_time if prompt_sent_time > 0 else float('inf')
+        
+        # Check for immediate error conditions that are always premature
         last_lines = lines[-5:]  # Check last 5 lines
         for line in last_lines:
-            # Look for shell prompts
-            if (line.endswith('$') or line.endswith('%') or line.endswith('#') or 
-                line.endswith('> ') or line.startswith('bash-') or line.startswith('zsh-') or
-                'command not found' in line or 'No such file or directory' in line or
+            # Look for explicit error conditions (always premature)
+            if ('command not found' in line or 'No such file or directory' in line or
                 'Traceback (most recent call last)' in line or 'Error:' in line or
                 'error:' in line or 'ERROR:' in line or 'Fatal:' in line or
                 'fatal:' in line or 'FATAL:' in line or 'Segmentation fault' in line or
@@ -1348,13 +1646,41 @@ class TmuxAgentManager:
                 # Make sure it's not part of the agent's normal output
                 if ('gemini' not in line.lower() and 'claude' not in line.lower() and 
                     'Type your message' not in line and 'esc to interrupt' not in line):
-                    self.logger.warning(f"Session {sid}: Detected premature finish indicator: {line}")
+                    self.logger.warning(f"Session {sid}: Detected premature finish indicator (error): {line}")
                     return True
+            
+            # For shell prompts, be more careful and consider timing/context
+            if (line.endswith('$') or line.endswith('%') or line.endswith('#') or 
+                line.endswith('> ') or line.startswith('bash-') or line.startswith('zsh-')):
+                
+                # Make sure it's not part of the agent's normal output
+                if ('gemini' not in line.lower() and 'claude' not in line.lower() and 
+                    'Type your message' not in line and 'esc to interrupt' not in line):
+                    
+                    # For YOLO mode sessions with simple commands, shell prompts shortly after
+                    # sending a prompt are likely normal completion, not premature termination
+                    if session.yolo_mode and time_since_prompt < 30.0:
+                        # Check if this might be a simple command that completed normally
+                        # Simple commands like "echo", "ls", "pwd" should complete quickly
+                        prompt_lower = session.prompt.lower() if hasattr(session, 'prompt') else ""
+                        simple_commands = ['echo', 'ls', 'pwd', 'whoami', 'date', 'cat', 'head', 'tail']
+                        
+                        is_simple_command = any(cmd in prompt_lower for cmd in simple_commands)
+                        
+                        if is_simple_command and time_since_prompt < 10.0:
+                            # This is likely normal completion of a simple command
+                            self.logger.debug(f"Session {sid}: Shell prompt detected but appears to be normal completion of simple command after {time_since_prompt:.1f}s")
+                            continue
+                    
+                    # For non-YOLO or complex commands, shell prompts are still suspicious
+                    if time_since_prompt > 5.0:  # Only flag if some time has passed
+                        self.logger.warning(f"Session {sid}: Detected premature finish indicator (shell prompt): {line}")
+                        return True
         
         # For interactive agents, check if we're back at shell after sending prompt
-        if session.status == SessionStatus.RUNNING and sid in self._prompt_sent_time:
-            time_since_prompt = time.time() - self._prompt_sent_time[sid]
-            if time_since_prompt > 5.0:  # After 5 seconds
+        if session.status == SessionStatus.RUNNING and prompt_sent_time > 0:
+            time_since_prompt = time.time() - prompt_sent_time
+            if time_since_prompt > 10.0:  # Increased from 5.0 to 10.0 for more tolerance
                 # Check if we have a bare shell prompt without agent indicators
                 for line in last_lines:
                     if (line.endswith('$') or line.endswith('%')) and len(line) < 50:
@@ -1371,15 +1697,25 @@ class TmuxAgentManager:
                                     break
                             
                             if not has_agent_indicator:
-                                self.logger.warning(f"Session {sid}: Agent appears to have finished prematurely (shell prompt detected)")
+                                # Additional check: Don't flag if this is YOLO mode with simple command
+                                if session.yolo_mode:
+                                    prompt_lower = session.prompt.lower() if hasattr(session, 'prompt') else ""
+                                    simple_commands = ['echo', 'ls', 'pwd', 'whoami', 'date', 'cat', 'head', 'tail']
+                                    is_simple_command = any(cmd in prompt_lower for cmd in simple_commands)
+                                    
+                                    if is_simple_command:
+                                        self.logger.debug(f"Session {sid}: Shell prompt detected but this appears to be normal completion of simple YOLO command")
+                                        continue
+                                
+                                self.logger.warning(f"Session {sid}: Agent appears to have finished prematurely (shell prompt detected after {time_since_prompt:.1f}s)")
                                 return True
         
         return False
 
-    def _check_done(self, sid: str) -> bool:
+    async def _check_done(self, sid: str) -> bool:
         """Check if session is done (thread-safe)"""
         with self._state_lock:
-            pane = self._pane_mapping.get(sid)
+            pane = self._panes.get(sid)
             session = self._sessions.get(sid)
             prompt_sent = self._prompt_sent_time.get(sid, 0)
         
@@ -1391,7 +1727,7 @@ class TmuxAgentManager:
             return True
         
         # First check if agent process has finished prematurely
-        if self._check_agent_premature_finish(sid):
+        if await self._check_agent_premature_finish(sid):
             self.logger.warning(f"Session {sid}: Agent process has finished prematurely")
             # Update status to PREMATURE_FINISH if not already done/stopped
             if session.status not in (SessionStatus.DONE, SessionStatus.STOPPED, SessionStatus.PREMATURE_FINISH):
@@ -1409,16 +1745,17 @@ class TmuxAgentManager:
                 timeout=1.0
             )
             
-            # Also check if the pane still exists
-            pane_exists_result = subprocess.run(
-                ["tmux", "list-panes", "-t", self.main_session, "-F", "#{pane_id}"],
-                capture_output=True,
-                text=True
-            )
-            
-            pane_id = pane.split(".")[-1]
-            if pane_id not in pane_exists_result.stdout:
-                return True
+            # Check if we got any output back
+            if result.stdout:
+                # Check for explicit completion markers
+                last_lines = [line.strip() for line in result.stdout.split('\n')
+                            if line.strip()][-5:]
+                
+                for line in last_lines:
+                    if any(marker in line for marker in ['Execution completed', 
+                                                       'Process finished', 
+                                                       'Task completed']):
+                        return True
             
             # Check if pane still exists for process_exit method
             if result.returncode != 0:
@@ -1431,7 +1768,10 @@ class TmuxAgentManager:
             if time.time() - prompt_sent < agent_config.completion_timeout:
                 return False
             
-            output = self._capture_pane_output(pane)
+            # Read output from pane
+            output_lines = pane.get_recent_lines(20)  # Last 20 lines for completion check
+            output = '\n'.join(output_lines)
+            
             if not output:
                 return True
             
@@ -1439,7 +1779,7 @@ class TmuxAgentManager:
             lines = output.split('\n')[-10:]
             
             # Don't mark done if session requires input
-            if self._check_requires_input(sid):
+            if await self._check_requires_input(sid):
                 return False
             
             # First check busy indicators - if any are present, not done
@@ -1487,10 +1827,14 @@ class TmuxAgentManager:
                              if s.status not in (SessionStatus.DONE, SessionStatus.STOPPED, SessionStatus.PREMATURE_FINISH))
         
         # Adaptive monitoring - take more time between checks as the number of active sessions increases
-        if active_count > 10:
-            self._adaptive_monitor_delay = self._adaptive_monitor_delay * 1.5
-        elif active_count > 20:
-            self._adaptive_monitor_delay = self._adaptive_monitor_delay * 2.0
+        # Always reset to base delay first, then scale based on active sessions
+        base_delay = 5.0
+        if active_count > 20:
+            self._adaptive_monitor_delay = base_delay * 2.0
+        elif active_count > 10:
+            self._adaptive_monitor_delay = base_delay * 1.5
+        else:
+            self._adaptive_monitor_delay = base_delay
         
         # Limit concurrent operations
         semaphore = asyncio.Semaphore(5)
@@ -1531,16 +1875,16 @@ class TmuxAgentManager:
                 self.logger.debug(f"_handle_state_transition({sid}): Session not found or already finished")
                 return
             
-            pane = self._pane_mapping.get(sid)
+            pane = self._panes.get(sid)
             if not pane:
                 return
             
             # Check for premature finish first in any state
-            if self._check_agent_premature_finish(sid):
+            if await self._check_agent_premature_finish(sid):
                 session.status = SessionStatus.PREMATURE_FINISH
                 session.end_time = time.time()
                 self.logger.info(f"Session {sid}: PREMATURE_FINISH - Agent process finished earlier than expected")
-                await self._rename_pane_async(pane, f"PREMATURE‑{sid}")
+                await self._rename_pane_async(pane.full_target, f"PREMATURE‑{sid}")
                 # Schedule save in background
                 save_task = asyncio.create_task(self._save_session_output_async(sid))
                 save_task.add_done_callback(lambda t: None if not t.exception() else 
@@ -1572,13 +1916,14 @@ class TmuxAgentManager:
                         self.logger.warning(f"Session {sid}: Forced prompt send due to timeout")
                     return
                 
-                if self._check_requires_input(sid):
+                if await self._check_requires_input(sid):
                     session.status = SessionStatus.REQUIRES_USER_INPUT
+                    session.last_state_change_time = time.time()
                     self.logger.info(f"Session {sid}: SPAWNING -> REQUIRES_USER_INPUT")
-                    await self._rename_pane_async(pane, f"INPUT‑{sid}")
+                    await self._rename_pane_async(pane.full_target, f"INPUT‑{sid}")
                 elif agent_config.supports_interactive:
                     self.logger.debug(f"Session {sid}: Checking if interactive agent is ready...")
-                    is_ready = self._check_agent_ready(sid)
+                    is_ready = await self._check_agent_ready(sid)
                     self.logger.debug(f"Session {sid}: _check_agent_ready returned {is_ready}")
                     if is_ready:
                         session.status = SessionStatus.RUNNING
@@ -1596,8 +1941,8 @@ class TmuxAgentManager:
                                 
                                 try:
                                     # Send CTRL+Y using tmux standard notation
-                                    await self._run_async(["tmux", "send-keys", "-t", pane, "C-y"])
-                                    success_message = f"✅ Session {sid}: CTRL+Y sent successfully to pane {pane}"
+                                    await self._run_async(["tmux", "send-keys", "-t", pane.full_target, "C-y"])
+                                    success_message = f"✅ Session {sid}: CTRL+Y sent successfully to pane {pane.full_target}"
                                     self.logger.info(success_message)
                                     print(f"✅ {success_message}")
                                     
@@ -1629,21 +1974,21 @@ class TmuxAgentManager:
                             self.logger.info(f"Session {sid}: Sending prompt: {prompt[:50]}...")
                             
                             # Send prompt with new method
-                            await self._send_text_with_enter_async(pane, prompt)
+                            await self._send_text_with_enter_async(pane.full_target, prompt)
                             self._prompt_sent_time[sid] = time.time()
                             
                             # Verify submission
                             if await self._verify_prompt_submitted(sid, prompt):
                                 self.logger.info(f"Session {sid}: Prompt successfully submitted")
                                 del self._session_prompts[sid]
-                                await self._rename_pane_async(pane, f"RUNNING‑{sid}")
+                                await self._rename_pane_async(pane.full_target, f"RUNNING‑{sid}")
                             else:
                                 self.logger.error(f"Session {sid}: Prompt submission verification failed")
                                 # Retry once
                                 await asyncio.sleep(1.0)
-                                await self._send_text_with_enter_async(pane, prompt)
+                                await self._send_text_with_enter_async(pane.full_target, prompt)
                                 del self._session_prompts[sid]
-                                await self._rename_pane_async(pane, f"RUNNING‑{sid}")
+                                await self._rename_pane_async(pane.full_target, f"RUNNING‑{sid}")
                         else:
                             self.logger.warning(f"Session {sid}: No prompt found in _session_prompts!")
                     else:
@@ -1652,11 +1997,12 @@ class TmuxAgentManager:
 
             
             elif session.status == SessionStatus.RUNNING:
-                if self._check_requires_input(sid):
+                if await self._check_requires_input(sid):
                     session.status = SessionStatus.REQUIRES_USER_INPUT
+                    session.last_state_change_time = time.time()
                     self.logger.info(f"Session {sid}: RUNNING -> REQUIRES_USER_INPUT")
-                    await self._rename_pane_async(pane, f"INPUT‑{sid}")
-                elif self._check_done(sid):
+                    await self._rename_pane_async(pane.full_target, f"INPUT‑{sid}")
+                elif await self._check_done(sid):
                     try:
                         session.status = SessionStatus.DONE
                         session.end_time = time.time()
@@ -1665,13 +2011,18 @@ class TmuxAgentManager:
                         save_task.add_done_callback(lambda t: None if not t.exception() else 
                                                    self.logger.error(f"Background save failed for {sid}: {t.exception()}"))
                         self.logger.info(f"Session {sid}: RUNNING -> DONE")
-                        await self._rename_pane_async(pane, f"DONE‑{sid}")
+                        await self._rename_pane_async(pane.full_target, f"DONE‑{sid}")
                         await self._cleanup_session(sid)
                     except Exception as e:
                         self.logger.error(f"Exception in DONE transition for {sid}: {e}", exc_info=True)
             
             elif session.status == SessionStatus.REQUIRES_USER_INPUT:
-                if self._check_done(sid):
+                # Add minimum time in REQUIRES_USER_INPUT state to prevent rapid transitions
+                state_change_time = session.last_state_change_time or session.start_time
+                time_in_input_state = time.time() - state_change_time
+                min_input_state_time = 3.0  # Minimum 3 seconds in input state
+                
+                if await self._check_done(sid):
                     session.status = SessionStatus.DONE
                     session.end_time = time.time()
                     # Schedule save in background to avoid blocking state transition
@@ -1679,17 +2030,17 @@ class TmuxAgentManager:
                     save_task.add_done_callback(lambda t: None if not t.exception() else 
                                                self.logger.error(f"Background save failed for {sid}: {t.exception()}"))
                     self.logger.info(f"Session {sid}: REQUIRES_USER_INPUT -> DONE")
-                    await self._rename_pane_async(pane, f"DONE‑{sid}")
+                    await self._rename_pane_async(pane.full_target, f"DONE‑{sid}")
                     await self._cleanup_session(sid)
-                elif not self._check_requires_input(sid):
+                elif not await self._check_requires_input(sid) and time_in_input_state > min_input_state_time:
                     session.status = SessionStatus.RUNNING
-                    self.logger.info(f"Session {sid}: REQUIRES_USER_INPUT -> RUNNING")
+                    self.logger.info(f"Session {sid}: REQUIRES_USER_INPUT -> RUNNING after {time_in_input_state:.1f}s")
                     
                     # Send prompt if it hasn't been sent yet (this handles SPAWNING -> REQUIRES_USER_INPUT -> RUNNING path)
                     prompt = self._session_prompts.get(sid)
                     if prompt:
                         # Send prompt with verification
-                        await self._send_text_with_enter_async(pane, prompt)
+                        await self._send_text_with_enter_async(pane.full_target, prompt)
                         self._prompt_sent_time[sid] = time.time()
                         
                         # Verify submission
@@ -1700,19 +2051,20 @@ class TmuxAgentManager:
                             self.logger.error(f"Session {sid}: Delayed prompt submission verification failed")
                             # Retry once
                             await asyncio.sleep(1.0)
-                            await self._send_text_with_enter_async(pane, prompt)
+                            await self._send_text_with_enter_async(pane.full_target, prompt)
                             del self._session_prompts[sid]
                     
-                    await self._rename_pane_async(pane, f"RUNNING‑{sid}")
+                    await self._rename_pane_async(pane.full_target, f"RUNNING‑{sid}")
 
     async def _cleanup_session(self, sid: str):
         """Clean up completed session"""
         with self._state_lock:
-            pane = self._pane_mapping.get(sid)
+            pane = self._panes.get(sid)
+            pane_target = pane.full_target if pane else None
         
-        if pane:
+        if pane_target:
             # Use shared termination logic without force kill (gentler cleanup)
-            await self._terminate_pane(sid, pane, force_kill=False)
+            await self._terminate_pane(sid, pane_target, force_kill=False)
         
         # Clean up session lock
         with self._state_lock:
@@ -1774,23 +2126,120 @@ class TmuxAgentManager:
             return session.to_dict() if session else None
     
     def get_session_output(self, sid: str) -> Optional[str]:
-        """Get session output safely"""
+        """Get session output safely - first from memory, then from saved file"""
         with self._state_lock:
             buffer = self._output_buffers.get(sid)
-            return buffer.get_content() if buffer else None
+            if buffer:
+                return buffer.get_content()
+        
+        # If not in memory, try to load from saved file
+        json_path = self.logs_dir / f"{sid}_output.json"
+        if json_path.exists():
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    return data.get('output', '')
+            except Exception as e:
+                self.logger.warning(f"Failed to load saved output for session {sid}: {e}")
+        
+        return None
+    
+    def read_pane_output(self, pane_identifier: str, offset: int = 100) -> List[str]:
+        """Read the last N lines of output from a pane.
+        
+        Args:
+            pane_identifier: The pane identifier (can be session_id or pane_id)
+            offset: Number of lines to return from the end (default: 100)
+            
+        Returns:
+            List of output lines (most recent last)
+        """
+        # First try to get pane by session ID
+        pane = self._get_pane_by_session(pane_identifier)
+        
+        # If not found, try by pane ID
+        if not pane:
+            pane = self._get_pane_by_pane_id(pane_identifier)
+        
+        if not pane:
+            return []
+        
+        return pane.get_recent_lines(offset)
+    
+    async def get_pane_recent_lines(self, pane_identifier: str, count: int = 100, force_refresh: bool = False) -> List[str]:
+        """Get the last N lines of output from a pane with optional fresh data capture.
+        
+        Args:
+            pane_identifier: The pane identifier (can be session_id or pane_id)
+            count: Number of lines to return from the end (default: 100)
+            force_refresh: If True, capture fresh output from tmux before returning (default: False)
+            
+        Returns:
+            List of output lines (most recent last)
+        """
+        # First try to get pane by session ID
+        pane = self._get_pane_by_session(pane_identifier)
+        
+        # If not found, try by pane ID
+        if not pane:
+            pane = self._get_pane_by_pane_id(pane_identifier)
+        
+        if not pane:
+            return []
+        
+        if force_refresh:
+            # Use full capture for CLI agents that update content inline (Gemini, Claude)
+            all_lines = await self._capture_pane_output_full(pane)
+            if all_lines is not None:
+                self.logger.debug(f"Full refresh for pane {pane.full_target}: {len(all_lines)} total lines")
+            else:
+                self.logger.warning(f"Failed to capture fresh output for pane {pane.full_target}")
+        
+        # Return the requested number of recent lines
+        return pane.get_recent_lines(count)
+    
+    def get_pane_recent_lines_sync(self, pane_identifier: str, count: int = 100, force_refresh: bool = False) -> List[str]:
+        """Synchronous wrapper for get_pane_recent_lines - use sparingly.
+        
+        Args:
+            pane_identifier: The pane identifier (can be session_id or pane_id)
+            count: Number of lines to return from the end (default: 100)
+            force_refresh: If True, capture fresh output from tmux before returning (default: False)
+            
+        Returns:
+            List of output lines (most recent last)
+        """
+        if force_refresh:
+            # For sync calls with force_refresh, we need to warn about potential blocking
+            self.logger.warning("get_pane_recent_lines_sync with force_refresh=True can block - consider using async version")
+        
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            return loop.run_until_complete(self.get_pane_recent_lines(pane_identifier, count, force_refresh))
+        except RuntimeError:
+            # No event loop running, fall back to cached data
+            if force_refresh:
+                self.logger.error("force_refresh=True not available in sync context without event loop")
+            pane = self._get_pane_by_session(pane_identifier)
+            if not pane:
+                pane = self._get_pane_by_pane_id(pane_identifier)
+            return pane.get_recent_lines(count) if pane else []
     
     async def send_input(self, sid: str, response: str) -> bool:
         """Send input to session"""
         with self._state_lock:
             session = self._sessions.get(sid)
-            pane = self._pane_mapping.get(sid)
+            pane = self._panes.get(sid)
             
             if not session or session.status != SessionStatus.REQUIRES_USER_INPUT or not pane:
                 return False
+            
+            pane_target = pane.full_target
         
         try:
             # Use the robust helper method
-            await self._send_text_with_enter_async(pane, response)
+            await self._send_text_with_enter_async(pane_target, response)
             self.logger.debug(f"Successfully sent input to session {sid}: {response}")
             return True
         except Exception as e:
@@ -1812,21 +2261,20 @@ class TmuxAgentManager:
                     del self._sessions[sid]
                 if sid in self._output_buffers:
                     del self._output_buffers[sid]
-                if sid in self._pane_mapping:
-                    pane = self._pane_mapping[sid]
+                if sid in self._panes:
+                    pane = self._panes[sid]
                     try:
                         # Kill the pane if it still exists
-                        pane_id = pane.split(".")[-1]
-                        self._run(["tmux", "kill-pane", "-t", pane_id], check=False)
+                        self._run(["tmux", "kill-pane", "-t", pane.pane_id], check=False)
                         
                         # Clean up the pane's command queue
-                        queue_pane_id = self._tmux_queue._extract_pane_id(["tmux", "-t", pane])
+                        queue_pane_id = self._tmux_queue._extract_pane_id(["tmux", "-t", pane.full_target])
                         if queue_pane_id:
                             # Schedule async cleanup (can't await in sync context)
                             asyncio.create_task(self._tmux_queue.cleanup_pane(queue_pane_id))
                     except Exception:
                         pass
-                    del self._pane_mapping[sid]
+                    del self._panes[sid]
                 
                 # Clean up any remaining state
                 if sid in self._session_prompts:
@@ -1840,21 +2288,23 @@ class TmuxAgentManager:
     async def debug_pane_state(self, sid: str):
         """Debug helper to log current pane state"""
         with self._state_lock:
-            pane = self._pane_mapping.get(sid)
+            pane = self._panes.get(sid)
             session = self._sessions.get(sid)
         
         if pane and session:
-            output = await self._capture_pane_output_async(pane)
-            last_lines = output.split('\n')[-10:] if output else []
+            # Get fresh output for accurate debugging
+            output_lines = await self.get_pane_recent_lines(sid, count=100, force_refresh=True)
+            output = '\n'.join(output_lines)
+            last_lines = output_lines[-10:] if output_lines else []
             
             self.logger.debug(f"""
             Session {sid} Debug Info:
             - Status: {session.status}
             - Agent: {session.agent_type}
-            - Pane: {pane}
+            - Pane: {pane.full_target}
             - Last 10 lines: {last_lines}
-            - Ready indicators found: {self._check_agent_ready(sid)}
-            - Requires input: {self._check_requires_input(sid)}
+            - Ready indicators found: {await self._check_agent_ready(sid)}
+            - Requires input: {await self._check_requires_input(sid)}
             """)
 
     # ---------- Queue Management ----------

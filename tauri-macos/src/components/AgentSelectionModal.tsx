@@ -31,8 +31,8 @@ interface AgentSelectionModalProps {
 }
 
 const availableAgents: Agent[] = [
-  {
-    id: "claude_code",
+      {
+      id: "claude_cli",
     name: "Claude Code",
     description: "Advanced code generation and analysis",
     icon: "CC"

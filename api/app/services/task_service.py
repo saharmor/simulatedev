@@ -2,6 +2,8 @@ import sys
 import os
 import asyncio
 import uuid
+import time
+import logging
 from typing import Dict, Any, Optional, Callable, List
 from datetime import datetime
 import json
@@ -34,6 +36,12 @@ class TaskService:
         self.github_integration = GitHubIntegration() if GitHubIntegration else None
         self.running_tasks: Dict[str, asyncio.Task] = {}
         self.progress_callbacks: Dict[str, Callable] = {}
+        
+        # Initialize CLI agent services
+        self.tmux_service = TmuxService()
+        self.output_adapter = OutputStreamAdapter(self.tmux_service)
+        self._cli_services_started = False
+        self.logger = logging.getLogger(__name__)
     
     async def create_task(self, user_id: str, issue_url: str, agents_config: List[Dict], 
                          workflow_type: str = "custom", create_pr: bool = True,
@@ -260,7 +268,6 @@ class TaskService:
                     StepType.PROCESSING_RESULTS
                 )
                 
-                pr_url = getattr(response, 'pr_url', None)
                 if not pr_url:
                     # Try to extract PR URL from output or recent reports
                     pr_url = await self._extract_pr_url(task_id, task.repo_owner, task.repo_name)
@@ -282,10 +289,9 @@ class TaskService:
                 return {
                     'success': True,
                     'pr_url': pr_url,
-                    'final_output': response.final_output
+                    'final_output': final_output
                 }
             else:
-                error_msg = getattr(response, 'error_message', 'Task execution failed') if response else 'Task execution failed'
                 await self._update_task_status(task_id, "failed", error_message=error_msg)
                 return {'success': False, 'error': error_msg}
                 
@@ -429,7 +435,15 @@ class TaskService:
     
     def is_task_running(self, task_id: str) -> bool:
         """Check if a task is currently running"""
-        return task_id in self.running_tasks 
+        return task_id in self.running_tasks
+        
+    async def cleanup(self):
+        """Cleanup task service and CLI services"""
+        if self._cli_services_started:
+            await self.output_adapter.stop()
+            await self.tmux_service.stop()
+            self._cli_services_started = False
+            self.logger.info("CLI agent services stopped") 
 
     def _parse_repo_url_fallback(self, url: str) -> Dict[str, Any]:
         """Fallback repo URL parsing when GitHubIntegration is not available"""
@@ -606,4 +620,157 @@ Please analyze the issue, understand the requirements, and implement the necessa
             return None
         except Exception as e:
             await self._log_progress(task_id, "warning", f"Error extracting PR URL: {str(e)}")
-            return None 
+            return None
+            
+    def _is_cli_agent_task(self, agents_config: List[Dict]) -> bool:
+        """Check if the task uses CLI agents"""
+        cli_agent_types = {'claude_cli', 'gemini_cli'}
+        
+        for agent_config in agents_config:
+            coding_ide = agent_config.get('coding_ide', '').lower()
+            if coding_ide in cli_agent_types:
+                return True
+        return False
+        
+    async def _ensure_cli_services_started(self):
+        """Ensure CLI agent services are started"""
+        if not self._cli_services_started:
+            await self.tmux_service.start()
+            await self.output_adapter.start()
+            self._cli_services_started = True
+            self.logger.info("CLI agent services started")
+            
+    async def _execute_cli_agent(self, task_id: str, task: Task, github_token: str) -> Dict[str, Any]:
+        """Execute task using CLI agents through tmux"""
+        try:
+            # Ensure CLI services are running
+            await self._ensure_cli_services_started()
+            
+            # Get first CLI agent config (for now, support single agent)
+            cli_agent_config = None
+            for agent_config in task.agents_config:
+                coding_ide = agent_config.get('coding_ide', '').lower()
+                if coding_ide in {'claude_cli', 'gemini_cli'}:
+                    cli_agent_config = agent_config
+                    break
+                    
+            if not cli_agent_config:
+                raise Exception("No CLI agent configuration found")
+                
+            agent_type_str = cli_agent_config['coding_ide'].lower()
+            
+            # Map to AgentType enum
+            if agent_type_str == 'claude_cli':
+                agent_type = AgentType.CLAUDE
+            elif agent_type_str == 'gemini_cli':
+                agent_type = AgentType.GEMINI
+            else:
+                raise Exception(f"Unsupported CLI agent type: {agent_type_str}")
+                
+            await self._notify_progress(task_id, 20, f"Creating {agent_type.value} session...")
+            
+            # Create tmux session
+            session_id = f"task_{task_id}_{int(time.time())}"
+            yolo_mode = cli_agent_config.get('yolo_mode', False)
+            
+            await self.tmux_service.create_session(
+                session_id=session_id,
+                agent_type=agent_type,
+                prompt=task.task_description,
+                repo_url=task.repo_url,
+                yolo_mode=yolo_mode
+            )
+            
+            await self._notify_progress(task_id, 30, "Starting output streaming...")
+            
+            # Start output streaming
+            await self.output_adapter.start_streaming(task_id, session_id)
+            
+            # The prompt will be sent automatically by tmux_service monitoring task
+            # when the agent is ready (status changes from SPAWNING to RUNNING)
+            await self._notify_progress(task_id, 40, f"Waiting for {agent_type.value} agent to be ready...")
+            
+            await self._notify_progress(task_id, 60, "Agent is processing the task...")
+            
+            # Monitor session execution
+            result = await self._monitor_cli_agent_execution(task_id, session_id)
+            
+            # Stop streaming
+            await self.output_adapter.stop_streaming(task_id, "completed" if result['success'] else "failed")
+            
+            return result
+            
+        except Exception as e:
+            # Cleanup on error
+            if 'session_id' in locals():
+                try:
+                    await self.tmux_service.cleanup_session(session_id)
+                    await self.output_adapter.stop_streaming(task_id, "failed")
+                except:
+                    pass
+            raise e
+            
+    async def _monitor_cli_agent_execution(self, task_id: str, session_id: str) -> Dict[str, Any]:
+        """Monitor CLI agent execution until completion"""
+        start_time = time.time()
+        timeout_seconds = 1800  # 30 minutes
+        check_interval = 5.0  # Check every 5 seconds
+        last_progress = 60
+        
+        try:
+            while True:
+                elapsed = time.time() - start_time
+                
+                # Check timeout
+                if elapsed > timeout_seconds:
+                    await self._notify_progress(task_id, last_progress, "Task timed out")
+                    await self.tmux_service.cleanup_session(session_id)
+                    return {'success': False, 'error': 'Task execution timed out'}
+                
+                # Get session status
+                session_info = await self.tmux_service.get_session_status(session_id)
+                if not session_info:
+                    await self._notify_progress(task_id, last_progress, "Session ended unexpectedly")
+                    return {'success': False, 'error': 'Session ended unexpectedly'}
+                
+                # Update progress based on status and elapsed time
+                progress_percentage = min(90, 60 + int((elapsed / timeout_seconds) * 30))
+                
+                if progress_percentage > last_progress:
+                    if session_info.status.value == "RUNNING":
+                        await self._notify_progress(task_id, progress_percentage, f"Agent is actively working...")
+                    elif session_info.status.value == "REQUIRES_USER_INPUT":
+                        await self._notify_progress(task_id, progress_percentage, "Agent requires user input (handling automatically)")
+                    
+                    last_progress = progress_percentage
+                
+                # Check if session is complete
+                if session_info.status.value in ["DONE", "STOPPED"]:
+                    if session_info.status.value == "DONE":
+                        await self._notify_progress(task_id, 95, "Agent completed successfully")
+                        
+                        # Capture final output
+                        final_output = await self.tmux_service.capture_session_output(session_id)
+                        
+                        # Cleanup session
+                        await self.tmux_service.cleanup_session(session_id)
+                        
+                        return {
+                            'success': True,
+                            'final_output': final_output,
+                            'pr_url': None  # CLI agents don't directly create PRs yet
+                        }
+                    else:
+                        await self._notify_progress(task_id, last_progress, "Agent stopped unexpectedly")
+                        await self.tmux_service.cleanup_session(session_id)
+                        return {'success': False, 'error': 'Agent stopped unexpectedly'}
+                
+                await asyncio.sleep(check_interval)
+                
+        except Exception as e:
+            await self._notify_progress(task_id, last_progress, f"Error monitoring execution: {str(e)}")
+            try:
+                await self.tmux_service.cleanup_session(session_id)
+            except:
+                pass
+            return {'success': False, 'error': str(e)} 

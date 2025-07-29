@@ -511,3 +511,72 @@ async def cancel_task(
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to cancel task: {str(e)}") 
+
+
+@router.post("/test-cli-agent")
+async def test_cli_agent_execution(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """Test endpoint for CLI agent execution without authentication - FOR TESTING ONLY"""
+    
+    print("[API] Test CLI agent execution endpoint called")
+    
+    # Create test task data
+    test_task_data = {
+        "issue_url": "https://github.com/saharmor/factory-onboard",
+        "agents": [
+            {
+                "coding_ide": "gemini_cli",
+                "model": "gemini-pro",
+                "role": "Coder"
+            }
+        ],
+        "create_pr": True,
+        "workflow_type": "custom",
+        "task_prompt": "Create a simple hello world Python script with proper comments",
+        "options": {}
+    }
+    
+    try:
+        print(f"[API] Creating test task record")
+        # Create task without user authentication for testing
+        task_id = await task_service.create_task(
+            user_id="test-user-id",
+            issue_url=test_task_data["issue_url"],
+            agents_config=test_task_data["agents"],
+            workflow_type=test_task_data["workflow_type"],
+            create_pr=test_task_data["create_pr"],
+            options=test_task_data.get("options"),
+            task_prompt=test_task_data["task_prompt"],
+            github_token=None  # No GitHub token for test
+        )
+        
+        print(f"[API] Test task created with ID: {task_id}")
+        
+        # Get WebSocket manager
+        from app.services.websocket_manager import WebSocketManager
+        websocket_manager = WebSocketManager.get_instance()
+        print(f"[API] WebSocket manager obtained for test: {id(websocket_manager)}")
+        
+        # Start background task execution
+        background_tasks.add_task(
+            execute_task_with_error_handling,
+            task_id,
+            None,  # No GitHub token for test
+            websocket_manager
+        )
+        
+        print(f"[API] Test task {task_id} queued for execution")
+        
+        return {
+            "message": "Test task execution started",
+            "task_id": task_id,
+            "agent_type": "gemini_cli"
+        }
+        
+    except Exception as e:
+        print(f"[API] Error in test CLI agent execution: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to start test task: {str(e)}") 
