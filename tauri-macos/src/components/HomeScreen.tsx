@@ -1,16 +1,17 @@
 import { useState, useEffect } from "react";
 import {
-  ChevronDown,
   Circle,
   Rocket,
   GitPullRequest,
   ExternalLink,
   Loader2,
+  GitBranch,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { apiService, Repository } from "../services/apiService";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { AgentSelectionModal, AgentSelection } from "./AgentSelectionModal";
+import { RepositorySelectionModal } from "./RepositorySelectionModal";
 
 // Convert GitHub API types to frontend types for consistency
 interface Issue {
@@ -35,7 +36,11 @@ interface PullRequest {
 type TabType = "issues" | "prs";
 
 interface HomeScreenProps {
-  onTaskStart: (issue: Issue, agentSelection: AgentSelection, repository?: Repository) => void;
+  onTaskStart: (
+    issue: Issue,
+    agentSelection: AgentSelection,
+    repository?: Repository
+  ) => void;
   onCommandK: () => void;
 }
 
@@ -43,7 +48,7 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
   // Repository state
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null);
-  const [isRepoDropdownOpen, setIsRepoDropdownOpen] = useState(false);
+  const [isRepoModalOpen, setIsRepoModalOpen] = useState(false);
   const [isLoadingRepos, setIsLoadingRepos] = useState(true);
   const [repoError, setRepoError] = useState<string | null>(null);
 
@@ -199,13 +204,14 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
 
         {/* Repository Selection */}
         <div className="mb-8">
-          <div className="relative">
+          <div className="flex justify-center">
             <Button
-              onClick={() => setIsRepoDropdownOpen(!isRepoDropdownOpen)}
+              onClick={() => setIsRepoModalOpen(true)}
               variant="outline"
-              className="w-full max-w-md mx-auto flex items-center justify-between p-4 h-auto border-gray-300 hover:bg-gray-50"
+              className="flex items-center gap-3 px-6 py-4 h-auto border-gray-300 hover:bg-gray-50 font-mono font-semibold text-lg"
               disabled={isLoadingRepos}
             >
+              <GitBranch className="w-5 h-5" />
               <span className="text-gray-700">
                 {isLoadingRepos ? (
                   <span className="flex items-center gap-2">
@@ -217,58 +223,10 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                 ) : selectedRepo ? (
                   selectedRepo.full_name
                 ) : (
-                  "Select a repository to work on"
+                  "SELECT REPOSITORY"
                 )}
               </span>
-              <ChevronDown className="w-4 h-4 text-gray-500" />
             </Button>
-
-            {isRepoDropdownOpen && !isLoadingRepos && !repoError && (
-              <div className="absolute top-full left-0 right-0 max-w-md mx-auto mt-2 bg-card border border-gray-300 rounded-lg shadow-lg z-10 max-h-64 overflow-y-auto">
-                {repositories.length === 0 ? (
-                  <div className="px-4 py-3 text-gray-500 text-sm">
-                    No repositories found
-                  </div>
-                ) : (
-                  repositories.map((repo) => (
-                    <button
-                      key={repo.full_name}
-                      onClick={() => {
-                        console.log(
-                          `[HomeScreen] Selected repository: ${repo.full_name}`
-                        );
-                        setSelectedRepo(repo);
-                        setIsRepoDropdownOpen(false);
-                      }}
-                      className="w-full px-4 py-3 text-left hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg"
-                    >
-                      <div>
-                        <span className="font-mono text-sm font-medium">
-                          {repo.full_name}
-                        </span>
-                        {repo.description && (
-                          <p className="text-xs text-gray-500 mt-1 truncate">
-                            {repo.description}
-                          </p>
-                        )}
-                        <div className="flex items-center gap-3 mt-1">
-                          {repo.language && (
-                            <span className="text-xs text-gray-400">
-                              {repo.language}
-                            </span>
-                          )}
-                          {repo.private && (
-                            <span className="text-xs text-gray-400">
-                              Private
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
           </div>
         </div>
 
@@ -401,7 +359,7 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
                               number: pr.number,
                               timeAgo: pr.timeAgo,
                               htmlUrl: pr.htmlUrl,
-                              user: pr.user
+                              user: pr.user,
                             };
                             handleIssueClick(prAsIssue);
                           }}
@@ -476,6 +434,19 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
         isOpen={isAgentModalOpen}
         onClose={handleModalClose}
         onAgentSelect={handleAgentSelect}
+      />
+
+      {/* Repository Selection Modal */}
+      <RepositorySelectionModal
+        isOpen={isRepoModalOpen}
+        onClose={() => setIsRepoModalOpen(false)}
+        onRepositorySelect={(repo) => {
+          console.log(`[HomeScreen] Selected repository: ${repo.full_name}`);
+          setSelectedRepo(repo);
+        }}
+        repositories={repositories}
+        isLoading={isLoadingRepos}
+        error={repoError}
       />
     </div>
   );
