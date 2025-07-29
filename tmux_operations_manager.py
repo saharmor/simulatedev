@@ -228,20 +228,11 @@ class TmuxCommandQueue:
     
     def _extract_pane_id(self, cmd: List[str]) -> Optional[str]:
         """Extract pane ID from tmux command"""
-        # Look for -t flag followed by pane identifier
         for i, arg in enumerate(cmd):
             if arg == "-t" and i + 1 < len(cmd):
                 target = cmd[i + 1]
-                # Extract pane ID from various formats:
-                # - Direct pane ID: %0, %1, etc.
-                # - Session:window.pane format: main:0.%0
-                # - Full path: agent_manager:controller.%5
-                if "%" in target:
-                    # Extract just the pane ID part
-                    return target.split(".")[-1] if "." in target else target
-                else:
-                    # For commands targeting session/window, use full target as ID
-                    return target
+                # Return the full target as-is to maintain complete context
+                return target
         return None
     
     async def _pane_worker_loop(self, pane_id: str, queue: asyncio.Queue):
@@ -589,6 +580,21 @@ class TmuxAgentManager:
         """Send text to pane followed by Enter key with proper synchronization and retry logic"""
         self.logger.info(f"_send_text_with_enter_async called for pane {pane} with text: {text[:50]}...")
         
+        # Add session context validation
+        with self._state_lock:
+            # Verify this pane belongs to an active session
+            valid_pane = False
+            for sid, mapped_pane in self._pane_mapping.items():
+                if mapped_pane == pane:
+                    session = self._sessions.get(sid)
+                    if session and session.status in (SessionStatus.RUNNING, SessionStatus.SPAWNING, SessionStatus.REQUIRES_USER_INPUT):
+                        valid_pane = True
+                        break
+            
+            if not valid_pane:
+                self.logger.error(f"Attempted to send text to invalid/inactive pane: {pane}")
+                return
+            
         # Escape text for safe transmission to tmux
         escaped_text = self._escape_text_for_tmux(text, pane)
 
@@ -655,7 +661,8 @@ class TmuxAgentManager:
         """Handle long text using buffer method for reliability"""
         try:
             # Create unique buffer name to avoid conflicts
-            buffer_name = f"agent_buffer_{hashlib.md5(text.encode()).hexdigest()[:8]}"
+            buffer_name = f"agent_buffer_{pane.replace(':', '_').replace('.', '_')}_{int(time.time() * 1000)}"
+
             
             # Set buffer with unique name
             await self._run_async(["tmux", "set-buffer", "-b", buffer_name, "--", text])
