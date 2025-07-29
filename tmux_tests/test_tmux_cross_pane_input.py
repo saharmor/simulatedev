@@ -922,7 +922,7 @@ class CrossPaneInputTester:
         print("="*80)
         
         tests = [
-            # ("Basic Isolation", self.test_1_basic_isolation),
+            ("Basic Isolation", self.test_1_basic_isolation),
             ("Rapid Creation", self.test_2_rapid_session_creation),
             ("Buffer Uniqueness", self.test_3_buffer_uniqueness),
             ("Long Prompt Isolation", self.test_4_long_prompt_isolation),
