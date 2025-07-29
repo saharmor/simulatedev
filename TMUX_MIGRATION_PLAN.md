@@ -135,6 +135,17 @@ This document outlines the plan for integrating the standalone tmux-based CLI ag
 
 ## Migration Strategy
 
+> **⚠️ IMPORTANT: Incremental Migration Approach**
+> 
+> Before implementing any WebSocket streaming, API integration, or complex features, **first focus on getting the core tmux functionality working within the backend environment**. This means:
+> 
+> 1. **Start Simple**: Extract and adapt `tmux_operations_manager.py` to work as a backend service
+> 2. **Test Isolation**: Ensure tmux sessions can be created, managed, and cleaned up properly
+> 3. **Verify Core Logic**: Confirm the per-pane command queueing system works in the new environment
+> 4. **Basic CLI Agent Integration**: Get one CLI agent (e.g., Gemini) working through the tmux service
+> 
+> Only after confirming the tmux core works reliably in its new "home" should we proceed with WebSocket streaming, API endpoints, and full integration. This incremental approach reduces risk and makes debugging much easier.
+
 ### Phase 1: Core Integration (Week 1)
 
 #### 1.1 Create Tmux Service Module
@@ -519,7 +530,6 @@ simulatedev/
 │       ├── services/
 │       │   ├── tmux_service.py (new)
 │       │   ├── output_stream_adapter.py (new)
-│       │   ├── secret_manager.py (new)
 │       │   └── task_service.py (updated)
 │       └── api/
 │           └── health.py (updated)
@@ -534,60 +544,13 @@ simulatedev/
     └── cli_agents.py (new)
 ```
 
-## Rollback Strategy
-
-### Feature Flags
-```python
-# config/features.py
-FEATURE_FLAGS = {
-    "cli_agents_enabled": os.getenv("ENABLE_CLI_AGENTS", "false").lower() == "true",
-    "cli_agents_percentage": int(os.getenv("CLI_AGENTS_ROLLOUT_PERCENTAGE", "0"))
-}
-
-# Progressive rollout
-def should_use_cli_agent(user_id: str, agent_type: str) -> bool:
-    if not FEATURE_FLAGS["cli_agents_enabled"]:
-        return False
-    
-    # Percentage-based rollout
-    user_hash = hash(user_id) % 100
-    return user_hash < FEATURE_FLAGS["cli_agents_percentage"]
-```
-
-### Database Rollback
-```sql
--- Rollback migration
--- Down migration script
-ALTER TABLE execution_history DROP COLUMN output_buffer;
-ALTER TABLE execution_history DROP COLUMN agent_session_id;
-DROP TABLE cli_agent_configs;
-```
-
-### Quick Disable Switch
-1. **Environment Variable**: `ENABLE_CLI_AGENTS=false`
-2. **Database Flag**: Update feature flags table
-3. **Route Override**: Force all CLI agent requests to existing agents
-
-### Rollback Checklist
-- [ ] Disable feature flag immediately
-- [ ] Monitor existing agent performance
-- [ ] Capture all error logs from failed rollout
-- [ ] Run database rollback migration
-- [ ] Notify users of temporary CLI agent unavailability
-- [ ] Create incident report with lessons learned
-
 ## Migration Checklist
 
 ### Pre-Migration
 - [ ] Back up existing database
 - [ ] Document current API endpoints
-- [ ] Install tmux on dev/staging environments
-- [ ] Verify CLI agents installation
-- [ ] Review security implications
-- [ ] Benchmark current performance
 
 ### During Migration
-- [ ] Create feature branch: `feature/tmux-cli-agents`
 - [ ] Implement Phase 1 components
 - [ ] Write unit tests for new modules
 - [ ] Implement Phase 2 streaming
@@ -595,16 +558,9 @@ DROP TABLE cli_agent_configs;
 - [ ] Implement Phase 3 database changes
 - [ ] Create integration tests
 - [ ] Test with Tauri frontend
-- [ ] Document rollback procedures
 
 ### Post-Migration
-- [ ] Performance testing against benchmarks
-- [ ] Load testing with 50+ concurrent sessions
-- [ ] Security audit of API key handling
-- [ ] Update deployment scripts
-- [ ] Monitor error rates for 48 hours
-- [ ] Gather user feedback
-- [ ] Plan optimization iterations
+- [ ] Load testing with 20+ concurrent sessions
 
 ## Success Criteria
 
@@ -614,24 +570,11 @@ DROP TABLE cli_agent_configs;
    - Session isolation maintained
    - YOLO mode functional
 
-2. **Performance Requirements**
-   - Output latency < 100ms
-   - Support 20+ concurrent sessions
-   - Memory usage < 50MB per session
-   - 95th percentile response time < 2s
-
-3. **Quality Requirements**
+2. **Quality Requirements**
    - 95%+ test coverage for new code
    - No regression in existing functionality
    - Clean error handling and recovery
    - Zero data loss during migration
-
-## Timeline
-
-- **Week 1**: Core integration (Phase 1) + Start Phase 2
-- **Week 2**: Complete Phase 2 + Phase 3
-- **Week 3**: Testing + Bug fixes + Deployment preparation
-- **Week 4**: Buffer for unforeseen issues + Production deployment
 
 ## Implementation Tips & Common Pitfalls
 
@@ -646,7 +589,6 @@ DROP TABLE cli_agent_configs;
 1. **Don't Modify Core tmux Logic**: Keep the per-pane queueing system intact
 2. **Don't Store Secrets in Logs**: Ensure API keys are never logged
 3. **Don't Skip Cleanup**: Always clean up tmux sessions on errors
-4. **Don't Assume Tmux Exists**: Add proper checks and fallbacks
 5. **Don't Break Existing Agents**: Test desktop/web agents still work
 
 ### Common Pitfalls to Avoid
@@ -700,17 +642,13 @@ if time.time() - last_update > 0.1:  # 100ms throttle
 ### Debugging Tips
 1. **Enable Tmux Logging**: `tmux -L debug -f /dev/null`
 2. **Capture Pane History**: `tmux capture-pane -p -S -1000`
-3. **Monitor File Descriptors**: `lsof -p $(pgrep tmux)`
-4. **Check Queue Depths**: Log queue sizes periodically
 5. **Use Tmux Status Line**: Display session info for debugging
 
 ## Next Steps
 
 1. Review and approve this migration plan
-2. Set up development environment with tmux
-3. Create feature branch: `feature/tmux-cli-agents`
-4. Begin Phase 1 implementation
-5. Schedule daily progress check-ins
+2. Begin Phase 1 implementation and track progress in a new markdown file
+3. Continue with other steps after getting confirmation from your manager, which is me!
 
 ---
 
