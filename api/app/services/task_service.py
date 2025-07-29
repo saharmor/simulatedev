@@ -23,6 +23,8 @@ except ImportError as e:
 
 from app.database import SessionLocal
 from app.models.task import Task, ExecutionHistory
+from app.services.progress_monitor import ProgressMonitor
+from app.schemas.progress import PhaseType, StepType
 
 
 class TaskService:
@@ -85,8 +87,13 @@ class TaskService:
             if not final_task_prompt:
                 final_task_prompt = task_prompt or f"Complete the requested task for repository {repo_info['repo_url']}"
             
-            # Create task record
+            # Generate steps plan before creating task
+            from app.services.progress_monitor import ProgressMonitor
             task_id = str(uuid.uuid4())
+            progress_monitor = ProgressMonitor(task_id)
+            steps_plan = progress_monitor.generate_steps_plan(agents_config, workflow_type)
+            
+            # Create task record
             task = Task(
                 id=task_id,
                 user_id=user_id,
@@ -99,6 +106,7 @@ class TaskService:
                 task_description=final_task_prompt,
                 workflow_type=workflow_type,
                 agents_config=agents_config,
+                steps_plan=steps_plan.dict(),  # Store as JSON
                 status="pending",
                 estimated_duration=options.get('timeout_seconds', 1800) if options else 1800
             )
@@ -145,56 +153,130 @@ class TaskService:
                 del self.progress_callbacks[task_id]
 
     async def _execute_task_internal(self, task_id: str, github_token: str) -> Dict[str, Any]:
-        """Internal task execution using Orchestrator directly"""
+        """Internal task execution using Orchestrator in a separate thread"""
+        
+        # Get task from database to access steps plan
+        db = SessionLocal()
+        try:
+            task = db.query(Task).filter(Task.id == task_id).first()
+            if not task:
+                raise Exception(f"Task {task_id} not found")
+            
+            # Create steps lookup from stored steps plan
+            steps_lookup = {}
+            if task.steps_plan and task.steps_plan.get('steps'):
+                for step_data in task.steps_plan['steps']:
+                    from app.schemas.progress import PreGeneratedStep, PhaseType, StepType, AgentContext
+                    step = PreGeneratedStep(
+                        step_id=step_data['step_id'],
+                        phase=PhaseType(step_data['phase']),
+                        step=StepType(step_data['step']),
+                        agent_context=AgentContext(**step_data['agent_context']) if step_data.get('agent_context') else None,
+                        step_order=step_data['step_order'],
+                        description=step_data.get('description')
+                    )
+                    steps_lookup[step.step_id] = step
+                    
+        finally:
+            db.close()
+        
+        # Create progress monitor with WebSocket callback and steps plan
+        progress_monitor = ProgressMonitor(
+            task_id, 
+            self._create_websocket_callback(task_id),
+            steps_lookup
+        )
         
         try:
-            # Get task from database
-            db = SessionLocal()
-            try:
-                task = db.query(Task).filter(Task.id == task_id).first()
-                if not task:
-                    raise Exception(f"Task {task_id} not found")
-            finally:
-                db.close()
             
             # Update task status to running
             await self._update_task_status(task_id, "running")
-            await self._log_progress(task_id, "started", "Task execution started")
             
             # Brief pause for WebSocket connection establishment
             await asyncio.sleep(2)
             
-            await self._notify_progress(task_id, 5, "Initializing task execution...")
+            # Initialization steps
+            await progress_monitor.mark_step_in_progress(
+                PhaseType.INITIALIZATION, 
+                StepType.CONNECTING_SERVER
+            )
+            
+            await progress_monitor.mark_step_completed(
+                PhaseType.INITIALIZATION, 
+                StepType.CONNECTING_SERVER
+            )
+            
+            await progress_monitor.mark_step_in_progress(
+                PhaseType.INITIALIZATION, 
+                StepType.INITIALIZING_EXECUTION
+            )
             
             # Validate required modules are available
             if not Orchestrator or not TaskRequest or not AgentDefinition:
+                await progress_monitor.mark_step_failed(
+                    PhaseType.INITIALIZATION,
+                    StepType.INITIALIZING_EXECUTION,
+                    "SimulateDev core modules not available"
+                )
                 raise Exception("SimulateDev core modules not available")
             
-            await self._notify_progress(task_id, 10, "Creating task request...")
+            await progress_monitor.mark_step_completed(
+                PhaseType.INITIALIZATION, 
+                StepType.INITIALIZING_EXECUTION
+            )
+            
+            await progress_monitor.mark_step_in_progress(
+                PhaseType.INITIALIZATION, 
+                StepType.CREATING_REQUEST
+            )
+            
+            await progress_monitor.mark_step_completed(
+                PhaseType.INITIALIZATION, 
+                StepType.CREATING_REQUEST
+            )
             
             # Create TaskRequest from task data
             task_request = self._create_task_request(task)
             
-            await self._notify_progress(task_id, 15, "Starting orchestrator...")
-            
-            # Create and execute orchestrator
-            orchestrator = Orchestrator(github_token)
-            
-            # Execute with progress monitoring
-            response = await self._execute_with_progress_monitoring(
-                orchestrator, task_request, task_id, task.repo_name
+            # Execute orchestrator in a separate thread to avoid blocking the event loop
+            print(f"[TaskService] Starting orchestrator execution in separate thread for task: {task_id}")
+            response = await asyncio.get_event_loop().run_in_executor(
+                None,  # Use default thread pool
+                self._execute_orchestrator_sync,
+                task_request,
+                github_token,
+                progress_monitor
             )
             
             # Process results
             if response and response.success:
-                await self._notify_progress(task_id, 95, "Processing results...")
+                await progress_monitor.mark_step_in_progress(
+                    PhaseType.COMPLETION,
+                    StepType.PROCESSING_RESULTS
+                )
+                
+                await progress_monitor.mark_step_completed(
+                    PhaseType.COMPLETION,
+                    StepType.PROCESSING_RESULTS
+                )
                 
                 pr_url = getattr(response, 'pr_url', None)
                 if not pr_url:
                     # Try to extract PR URL from output or recent reports
                     pr_url = await self._extract_pr_url(task_id, task.repo_owner, task.repo_name)
                 
-                await self._notify_progress(task_id, 100, "Task completed successfully!")
+                if pr_url:
+                    await progress_monitor.mark_step_in_progress(
+                        PhaseType.COMPLETION,
+                        StepType.CREATING_PR
+                    )
+                    
+                    await progress_monitor.mark_step_completed(
+                        PhaseType.COMPLETION,
+                        StepType.CREATING_PR
+                    )
+                
+                # Mark task as completed
                 await self._update_task_status(task_id, "completed", progress=100, pr_url=pr_url)
                 
                 return {
@@ -210,7 +292,47 @@ class TaskService:
         except Exception as e:
             print(f"[TaskService] ERROR in task execution: {str(e)}")
             await self._update_task_status(task_id, "failed", error_message=str(e))
-            await self._log_progress(task_id, "failed", f"Task execution failed: {str(e)}")
+            
+            # Report task failure if we have a progress monitor
+            if 'progress_monitor' in locals():
+                await progress_monitor.mark_step_failed(
+                    PhaseType.INITIALIZATION,  # Assume failure during initialization if early
+                    StepType.INITIALIZING_EXECUTION,
+                    str(e)
+                )
+            
+            raise e
+
+    def _execute_orchestrator_sync(self, task_request: TaskRequest, github_token: str, progress_monitor) -> Any:
+        """Synchronous wrapper for orchestrator execution that runs in a separate thread"""
+        try:
+            print(f"[TaskService] Creating orchestrator in thread for task execution")
+            
+            # Create and execute orchestrator
+            orchestrator = Orchestrator(github_token)
+            
+            # Create a new event loop for this thread since we're in a separate thread
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                # No event loop in this thread, create a new one
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            # Execute orchestrator - it will handle AGENT_EXECUTION phase progress
+            print(f"[TaskService] Executing orchestrator in thread")
+            response = loop.run_until_complete(
+                orchestrator.execute_task(task_request, progress_monitor)
+            )
+            
+            print(f"[TaskService] Orchestrator execution completed in thread")
+            return response
+            
+        except Exception as e:
+            print(f"[TaskService] ERROR in orchestrator execution thread: {str(e)}")
+            import traceback
+            traceback.print_exc()
             raise e
     
     def _create_task_request(self, task: Task) -> TaskRequest:
@@ -235,57 +357,6 @@ class TaskService:
             delete_existing_repo_env=True  # Clean execution environment
         )
     
-    async def _execute_with_progress_monitoring(self, orchestrator: Orchestrator, 
-                                              task_request: TaskRequest, task_id: str, 
-                                              repo_name: str):
-        """Execute orchestrator with progress monitoring"""
-        try:
-            # Start execution in background
-            execution_task = asyncio.create_task(orchestrator.execute_task(task_request))
-            
-            # Monitor progress
-            last_progress = 15
-            check_interval = 10  # Check every 10 seconds
-            timeout_seconds = 1800  # 30 minutes max
-            start_time = asyncio.get_event_loop().time()
-            
-            while not execution_task.done():
-                elapsed = asyncio.get_event_loop().time() - start_time
-                
-                if elapsed > timeout_seconds:
-                    execution_task.cancel()
-                    await self._notify_progress(task_id, last_progress, "Execution timed out")
-                    raise asyncio.TimeoutError(f"Execution timed out after {timeout_seconds // 60} minutes")
-                
-                # Update progress based on elapsed time
-                progress_percentage = min(90, 15 + int((elapsed / timeout_seconds) * 75))
-                
-                if progress_percentage > last_progress:
-                    if progress_percentage >= 25 and last_progress < 25:
-                        await self._notify_progress(task_id, 25, f"Repository {repo_name} cloned successfully")
-                    elif progress_percentage >= 40 and last_progress < 40:
-                        await self._notify_progress(task_id, 40, "IDE agent initialized") 
-                    elif progress_percentage >= 55 and last_progress < 55:
-                        await self._notify_progress(task_id, 55, "Analyzing codebase and issue")
-                    elif progress_percentage >= 70 and last_progress < 70:
-                        await self._notify_progress(task_id, 70, "Implementing solution")
-                    elif progress_percentage >= 85 and last_progress < 85:
-                        await self._notify_progress(task_id, 85, "Finalizing changes")
-                    
-                    last_progress = progress_percentage
-                
-                await asyncio.sleep(check_interval)
-            
-            # Get the result
-            response = await execution_task
-            return response
-            
-        except asyncio.CancelledError:
-            await self._notify_progress(task_id, last_progress, "Execution was cancelled")
-            raise
-        except Exception as e:
-            await self._notify_progress(task_id, last_progress, f"Execution error: {str(e)}")
-            raise
 
     async def _update_task_status(self, task_id: str, status: Optional[str], progress: Optional[int] = None,
                                  error_message: Optional[str] = None, pr_url: Optional[str] = None):
@@ -329,27 +400,18 @@ class TaskService:
         finally:
             db.close()
     
-    async def _notify_progress(self, task_id: str, progress: int, phase: str):
-        """Notify progress via callback and log to database"""
-        # Update task progress in database
-        await self._update_task_status(task_id, None, progress=progress)
+    def _create_websocket_callback(self, task_id: str):
+        """Create WebSocket callback for progress monitoring"""
+        async def websocket_callback(progress_data: dict):
+            """Send progress update via WebSocket"""
+            if task_id in self.progress_callbacks:
+                try:
+                    callback = self.progress_callbacks[task_id]
+                    await callback(progress_data)
+                except Exception as e:
+                    print(f"[TaskService] ERROR in WebSocket callback for task {task_id}: {e}")
         
-        # Log the phase information to execution history
-        await self._log_progress(task_id, "progress", phase)
-        
-        # Notify via callback if available
-        if task_id in self.progress_callbacks:
-            try:
-                callback = self.progress_callbacks[task_id]
-                progress_data = {
-                    "task_id": task_id,
-                    "progress": progress,
-                    "current_phase": phase,
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-                await callback(progress_data)
-            except Exception as e:
-                print(f"[TaskService] ERROR in progress callback for task {task_id}: {e}")
+        return websocket_callback
     
     async def cancel_task(self, task_id: str) -> bool:
         """Cancel a running task"""
@@ -447,6 +509,68 @@ Please analyze the issue, understand the requirements, and implement the necessa
 5. Ensure the solution addresses all aspects of the issue"""
 
         return prompt
+
+    async def create_sequential_agents_config(self, base_agents_config: List[Dict], sequential_agents_config: Dict = None) -> List[Dict]:
+        """Create sequential agent configuration: Coder -> Tester -> Coder"""
+        if not base_agents_config:
+            raise ValueError("Base agent configuration is required for sequential execution")
+        
+        # If specific sequential agents are provided, use them
+        if sequential_agents_config and 'coder1' in sequential_agents_config:
+            sequential_agents = [
+                # First Coder agent
+                {
+                    "coding_ide": sequential_agents_config['coder1']['id'],
+                    "model": "claude-sonnet-4",  # Default model
+                    "role": "Coder"
+                },
+                # Tester agent
+                {
+                    "coding_ide": sequential_agents_config['tester']['id'],
+                    "model": "claude-sonnet-4",  # Default model
+                    "role": "Tester"
+                },
+                # Second Coder agent for iteration
+                {
+                    "coding_ide": sequential_agents_config['coder2']['id'],
+                    "model": "claude-sonnet-4",  # Default model
+                    "role": "Coder"
+                }
+            ]
+            
+            print(f"[TaskService] Created sequential agents config with custom agents:")
+            print(f"[TaskService] Coder1: {sequential_agents_config['coder1']['name']}")
+            print(f"[TaskService] Tester: {sequential_agents_config['tester']['name']}")
+            print(f"[TaskService] Coder2: {sequential_agents_config['coder2']['name']}")
+        else:
+            # Fallback to using the first agent for all stages
+            base_agent = base_agents_config[0]
+            
+            sequential_agents = [
+                # First Coder agent
+                {
+                    "coding_ide": base_agent["coding_ide"],
+                    "model": base_agent["model"],
+                    "role": "Coder"
+                },
+                # Tester agent with same IDE and model
+                {
+                    "coding_ide": base_agent["coding_ide"],
+                    "model": base_agent["model"],
+                    "role": "Tester"
+                },
+                # Second Coder agent for iteration
+                {
+                    "coding_ide": base_agent["coding_ide"],
+                    "model": base_agent["model"],
+                    "role": "Coder"
+                }
+            ]
+            
+            print(f"[TaskService] Created sequential agents config from base: {base_agent}")
+        
+        print(f"[TaskService] Sequential agents: {sequential_agents}")
+        return sequential_agents
 
     async def _extract_pr_url(self, task_id: str, repo_owner: str, repo_name: str) -> Optional[str]:
         """Try to extract PR URL from execution output files or recent reports"""

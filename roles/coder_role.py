@@ -81,7 +81,7 @@ Analyze the requirements carefully and design an appropriate solution.
                 status = "SUCCESS" if output['success'] else "FAILED"
                 prompt += f"""
 ### Attempt {i} by {output['coding_ide']} ({status})
-Output: {output['output'][:500]}...
+Output: {output['output']}
 """
                 if not output['success'] and output.get('error'):
                     prompt += f"Error: {output['error']}\n"
@@ -209,11 +209,44 @@ Analyze the requirements carefully and design an appropriate solution.
                 status = "SUCCESS" if output['success'] else "FAILED"
                 role_prompt += f"""
 ### Attempt {i} by {output['coding_ide']} ({status})
-Output: {output['output'][:500]}...
+Output: {output['output']}
 """
                 if not output['success'] and output.get('error'):
                     role_prompt += f"Error: {output['error']}\n"
             
+        # Include tester feedback if available
+        tester_outputs = context.get_outputs_by_role(AgentRole.TESTER)
+        if tester_outputs:
+            role_prompt += f"""
+## TESTER ANALYSIS & RECOMMENDATIONS
+The following testing analysis was performed on the previous implementation:
+
+"""
+            for output in tester_outputs:
+                role_prompt += f"""
+### Test Report by {output['coding_ide']}
+{output['output']}
+
+"""
+        
+        # Check if this is sequential workflow with tester feedback
+        is_sequential_workflow = workflow_type == "sequential"
+        
+        if is_sequential_workflow and tester_outputs:
+            role_prompt += """
+## YOUR TASK: IMPLEMENT TESTER RECOMMENDATIONS
+You are the FINAL implementation stage in a Coder→Tester→Coder workflow.
+Based on the test analysis above, your job is to:
+- Address all issues and bugs identified by the tester
+- Implement suggested improvements and enhancements  
+- Fix any failing tests or missing test coverage
+- Resolve performance, security, or architectural concerns
+- Complete any missing functionality highlighted by testing
+
+Focus on the tester's specific recommendations rather than starting from scratch.
+"""
+        else:
+            # Existing behavior for all other workflows
             role_prompt += """
 ## IMPROVEMENT INSTRUCTIONS
 Please improve upon or complete the previous work:

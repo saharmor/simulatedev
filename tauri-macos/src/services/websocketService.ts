@@ -1,16 +1,9 @@
-import { TaskProgressUpdate } from './apiService';
+import { WebSocketProgressMessage } from '../types/progress';
 
-export interface WebSocketMessage {
-  type: string;
-  task_id: string;
-  progress?: number;
-  current_phase?: string;
-  timestamp: string;
-  message?: string;
-}
+// WebSocketMessage is now imported from types/progress as WebSocketProgressMessage
 
 export interface WebSocketCallbacks {
-  onProgress?: (data: TaskProgressUpdate) => void;
+  onProgress?: (data: WebSocketProgressMessage) => void;
   onError?: (error: string) => void;
   onClose?: () => void;
   onOpen?: () => void;
@@ -61,22 +54,24 @@ export class WebSocketService {
       this.ws.onmessage = (event) => {
         try {
           console.log(`[WebSocketService] Raw message received: ${event.data}`);
-          const data: WebSocketMessage = JSON.parse(event.data);
+          const data: WebSocketProgressMessage = JSON.parse(event.data);
           console.log(`[WebSocketService] Parsed message data:`, data);
           console.log(`[WebSocketService] Message type: ${data.type}`);
           console.log(`[WebSocketService] Task ID: ${data.task_id}`);
-          console.log(`[WebSocketService] Progress: ${data.progress}`);
-          console.log(`[WebSocketService] Current phase: ${data.current_phase}`);
+          console.log(`[WebSocketService] Step ID: ${data.step_id}`);
+          console.log(`[WebSocketService] Status: ${data.status}`);
+          console.log(`[WebSocketService] Phase: ${data.phase}`);
+          console.log(`[WebSocketService] Step: ${data.step}`);
+          console.log(`[WebSocketService] Agent context:`, data.agent_context);
           console.log(`[WebSocketService] Timestamp: ${data.timestamp}`);
-          console.log(`[WebSocketService] Message: ${data.message}`);
           console.log(`[WebSocketService] Full message object:`, JSON.stringify(data, null, 2));
           
           if (data.type === "progress" && this.callbacks.onProgress) {
             console.log(`[WebSocketService] Calling progress callback with data:`, data);
-            this.callbacks.onProgress(data as TaskProgressUpdate);
+            this.callbacks.onProgress(data);
           } else if (data.type === "error" && this.callbacks.onError) {
-            console.log(`[WebSocketService] Calling error callback with message: ${data.message}`);
-            this.callbacks.onError(data.message || "Unknown error");
+            console.log(`[WebSocketService] Calling error callback with message: ${data.error_message}`);
+            this.callbacks.onError(data.error_message || "Unknown error");
           } else {
             console.log(`[WebSocketService] No callback found for message type: ${data.type}`);
           }

@@ -105,14 +105,7 @@ export interface TaskExecutionResponse {
   created_at: string;
 }
 
-export interface TaskProgressUpdate {
-  type: string;
-  task_id: string;
-  progress?: number;
-  current_phase?: string;
-  timestamp: string;
-  message?: string;
-}
+// TaskProgressUpdate moved to types/progress.ts as WebSocketProgressMessage
 
 export class ApiService {
   async getRepositories(): Promise<Repository[]> {
@@ -294,6 +287,41 @@ export class ApiService {
     }
   }
 
+  async executeSequentialTask(taskData: TaskExecutionRequest): Promise<TaskExecutionResponse> {
+    console.log("[ApiService] Executing sequential task with data:", taskData);
+    console.log("[ApiService] Sequential task data JSON:", JSON.stringify(taskData, null, 2));
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tasks/execute-sequential`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(taskData),
+      });
+
+      console.log(`[ApiService] Sequential task execution response status: ${response.status}`);
+      console.log(`[ApiService] Sequential task execution response headers:`, Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `[ApiService] Sequential task execution failed: ${response.status} - ${errorText}`
+        );
+        throw new Error(`Failed to execute sequential task: ${response.status}`);
+      }
+
+      const data: TaskExecutionResponse = await response.json();
+      console.log(`[ApiService] Sequential task execution successful: ${data.task_id}`);
+      console.log(`[ApiService] Full sequential task execution response:`, data);
+      console.log(`[ApiService] Sequential task execution response JSON:`, JSON.stringify(data, null, 2));
+      return data;
+    } catch (error) {
+      console.error("[ApiService] Error executing sequential task:", error);
+      throw error;
+    }
+  }
+
   async getTaskStatus(taskId: string): Promise<any> {
     console.log(`[ApiService] Fetching task status for: ${taskId}`);
     try {
@@ -356,6 +384,37 @@ export class ApiService {
       return data;
     } catch (error) {
       console.error(`[ApiService] Error fetching pull request:`, error);
+      throw error;
+    }
+  }
+
+  async getTaskStepsPlan(taskId: string): Promise<any> {
+    console.log(`[ApiService] Fetching steps plan for task: ${taskId}`);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tasks/${taskId}/steps`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+      });
+
+      console.log(`[ApiService] Steps plan response status: ${response.status}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `[ApiService] Steps plan request failed: ${response.status} - ${errorText}`
+        );
+        throw new Error(`Failed to fetch steps plan: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log(`[ApiService] Successfully fetched steps plan`);
+      console.log(`[ApiService] Steps plan response:`, data);
+      return data;
+    } catch (error) {
+      console.error(`[ApiService] Error fetching steps plan:`, error);
       throw error;
     }
   }

@@ -7,7 +7,9 @@ from app.database import get_db
 from app.models.task import Task, ExecutionHistory
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskResponse, TaskStatus
+from app.schemas.progress import TaskStepsPlan
 from app.services.task_service import TaskService
+from app.services.progress_monitor import ProgressMonitor
 from app.dependencies import require_authentication, get_user_github_token
 
 router = APIRouter()
@@ -195,6 +197,113 @@ async def get_task(
         pr_url=task.pr_url,
         error_message=task.error_message
     )
+
+
+@router.get("/{task_id}/steps")
+async def get_task_steps(
+    task_id: str, 
+    db: Session = Depends(get_db),
+    user: User = Depends(require_authentication)
+):
+    """Get pre-generated steps plan for a task"""
+    
+    # Verify task exists and belongs to user
+    task = db.query(Task).filter(
+        Task.id == task_id,
+        Task.user_id == user.id
+    ).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    if not task.steps_plan:
+        raise HTTPException(status_code=404, detail="Steps plan not found for this task")
+    
+    return task.steps_plan
+
+
+@router.post("/execute-sequential")
+async def execute_sequential_task(
+    task_data: TaskCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_authentication),
+    github_token: str = Depends(get_user_github_token)
+):
+    """Execute a sequential SimulateDev task: Coder -> Tester -> Coder"""
+    
+    print(f"[API] Received sequential task execution request from user: {user.github_username}")
+    print(f"[API] Task data: issue_url={task_data.issue_url}")
+    print(f"[API] Original agents: {[{'coding_ide': agent.coding_ide, 'model': agent.model, 'role': agent.role} for agent in task_data.agents]}")
+    
+    try:
+        print(f"[API] Creating sequential task record in database")
+        
+        # Convert single agent config to sequential agent config (Coder -> Tester -> Coder)
+        # Check if sequential agents are provided in options
+        sequential_agents = task_data.options.get('sequential_agents') if task_data.options else None
+        sequential_agents_config = await task_service.create_sequential_agents_config(
+            [agent.dict() for agent in task_data.agents],
+            sequential_agents
+        )
+        
+        print(f"[API] Sequential agents config: {sequential_agents_config}")
+        
+        # Create task record with sequential agents and workflow type
+        task_id = await task_service.create_task(
+            user_id=user.id,
+            issue_url=task_data.issue_url,
+            agents_config=sequential_agents_config,
+            workflow_type="sequential",  # Mark as sequential workflow
+            create_pr=task_data.create_pr,
+            options=task_data.options,
+            task_prompt=task_data.task_prompt,
+            issue_number=task_data.issue_number,
+            issue_title=task_data.issue_title,
+            github_token=github_token
+        )
+        
+        print(f"[API] Sequential task created with ID: {task_id}")
+        
+        # Get WebSocket manager singleton
+        print(f"[API] Getting WebSocket manager singleton")
+        from app.services.websocket_manager import WebSocketManager
+        websocket_manager = WebSocketManager.get_instance()
+        print(f"[API] WebSocket manager obtained: {websocket_manager}")
+        
+        # Start background task execution with user's GitHub token
+        print(f"[API] Adding sequential background task to queue")
+        background_tasks.add_task(
+            execute_task_with_error_handling,
+            task_id,
+            github_token,
+            websocket_manager
+        )
+        print(f"[API] Sequential background task added to queue successfully")
+        
+        # Get the created task for response
+        print(f"[API] Fetching sequential task from database for response")
+        task = db.query(Task).filter(Task.id == task_id).first()
+        
+        response_data = {
+            "task_id": task_id,
+            "status": "pending",
+            "repo_url": task.repo_url,
+            "issue_number": task.issue_number,
+            "estimated_duration": task.estimated_duration,
+            "created_at": task.created_at
+        }
+        
+        print(f"[API] Returning sequential response: {response_data}")
+        return response_data
+        
+    except ValueError as e:
+        print(f"[API] ValueError in sequential execution: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        print(f"[API] Unexpected error in sequential execution: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to create sequential task: {str(e)}")
 
 
 @router.post("/debug/test-websocket/{task_id}")

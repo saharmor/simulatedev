@@ -10,7 +10,7 @@ import {
 import { Button } from "./ui/button";
 import { apiService, Repository } from "../services/apiService";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { AgentSelectionModal } from "./AgentSelectionModal";
+import { AgentSelectionModal, AgentSelection } from "./AgentSelectionModal";
 
 // Convert GitHub API types to frontend types for consistency
 interface Issue {
@@ -34,15 +34,8 @@ interface PullRequest {
 
 type TabType = "issues" | "prs";
 
-interface Agent {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-}
-
 interface HomeScreenProps {
-  onTaskStart: (issue: Issue, agent: Agent, repository?: Repository) => void;
+  onTaskStart: (issue: Issue, agentSelection: AgentSelection, repository?: Repository) => void;
   onCommandK: () => void;
 }
 
@@ -177,12 +170,12 @@ export function HomeScreen({ onTaskStart, onCommandK }: HomeScreenProps) {
     setIsAgentModalOpen(true);
   };
 
-  const handleAgentSelect = (agent: Agent) => {
+  const handleAgentSelect = (agentSelection: AgentSelection) => {
     if (selectedIssue) {
       console.log(
-        `[HomeScreen] Starting task for issue: ${selectedIssue.number} with agent: ${agent.name}`
+        `[HomeScreen] Starting task for issue: ${selectedIssue.number} with agent: ${agentSelection.agent.name} (Sequential: ${agentSelection.isSequential})`
       );
-      onTaskStart(selectedIssue, agent, selectedRepo || undefined);
+      onTaskStart(selectedIssue, agentSelection, selectedRepo || undefined);
     }
     setIsAgentModalOpen(false);
     setSelectedIssue(null);

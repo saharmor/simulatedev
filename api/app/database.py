@@ -19,7 +19,7 @@ Base = declarative_base()
 def create_tables():
     """Create all database tables"""
     # Import models to register them with Base
-    from app.models import User, UserSession, Task, ExecutionHistory
+    from app.models import User, UserSession, Task, ExecutionHistory, TaskProgress
     Base.metadata.create_all(bind=engine)
 
 def get_db():

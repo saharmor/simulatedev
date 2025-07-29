@@ -20,6 +20,7 @@ class Task(Base):
     issue_url = Column(String(500))
     workflow_type = Column(String(50), nullable=False)
     agents_config = Column(JSON, nullable=False)
+    steps_plan = Column(JSON, nullable=True)  # Pre-generated steps plan (TaskStepsPlan)
     task_description = Column(Text)
     status = Column(String(50), nullable=False, default="pending")
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
@@ -34,6 +35,7 @@ class Task(Base):
     # Relationships
     user = relationship("User", back_populates="tasks")
     history = relationship("ExecutionHistory", back_populates="task", cascade="all, delete-orphan")
+    progress_updates = relationship("TaskProgress", back_populates="task", cascade="all, delete-orphan")
 
 
 class ExecutionHistory(Base):

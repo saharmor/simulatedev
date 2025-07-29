@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
-import { ExternalLink, FileText, Plus, Minus, GitPullRequest, GitMerge, X, Rocket, Trash2, Square } from "lucide-react";
+import { ExternalLink, FileText, Plus, Minus, GitPullRequest, GitMerge, X, Rocket, Trash2, Square, Check, Settings, Code, TestTube, Package } from "lucide-react";
 import { Button } from "./ui/button";
 import { useToast } from "./ui/use-toast";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { websocketService } from "../services/websocketService";
+import { stepsService } from "../services/stepsService";
+import { TaskProgress, PhaseDisplay, StepDisplay } from "../types/progress";
 
 interface TaskScreenProps {
   taskId: string;
@@ -17,25 +19,12 @@ interface TaskScreenProps {
     issueId?: string;
     issueNumber?: number;
     createdAt: Date;
-    // Task execution phases
-    phase?: "working" | "creating_pr" | "completed" | "failed";
-    workingCompletedAt?: Date;
-    prCreatedAt?: Date;
-    completedAt?: Date;
-    // Real task properties
     realTaskId?: string;
-    currentPhase?: string;
     progress?: number;
     prUrl?: string;
     errorMessage?: string;
+    workflowType?: string;
     pr?: PRData;
-    // Phase history for accumulating phases
-    phaseHistory?: Array<{
-      phase: string;
-      timestamp: Date;
-      completed?: boolean;
-      completedAt?: Date;
-    }>;
   };
   onDeleteTask?: (taskId: string) => void;
   onNavigateHome?: () => void;
@@ -60,11 +49,6 @@ function formatDuration(ms: number): string {
     return `${hours}h ${remainingMinutes}m`;
   }
   return `${minutes}m`;
-}
-
-function formatDurationInSeconds(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  return `${seconds}s`;
 }
 
 function getPRStatusIcon(status: PRData['status']) {
@@ -98,10 +82,10 @@ function PRComponent({ pr }: { pr: PRData }) {
         <div className="flex items-start gap-3 flex-1">
           {getPRStatusIcon(pr.status)}
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-medium text-gray-900 mb-1">
+            <h3 className="text-sm font-medium text-foreground mb-1">
               {pr.title}
             </h3>
-            <div className="flex items-center gap-4 text-xs text-gray-600">
+            <div className="flex items-center gap-4 text-xs text-gray-500">
               <span className="font-mono">{pr.branch}</span>
               <span className="flex items-center gap-1">
                 <FileText className="w-3 h-3" />
@@ -132,41 +116,126 @@ function PRComponent({ pr }: { pr: PRData }) {
   );
 }
 
-function LoadingDots() {
+
+function ExecutionStepComponent({ step }: { step: StepDisplay }) {
+
   return (
-    <div className="flex space-x-1">
-      <div
-        className="w-1 h-1 bg-gray-400 rounded-full animate-bounce"
-        style={{ animationDelay: "0ms" }}
-      ></div>
-      <div
-        className="w-1 h-1 bg-gray-400 rounded-full animate-bounce"
-        style={{ animationDelay: "150ms" }}
-      ></div>
-      <div
-        className="w-1 h-1 bg-gray-400 rounded-full animate-bounce"
-        style={{ animationDelay: "300ms" }}
-      ></div>
+    <div className="flex items-center gap-3 py-2">
+      <div className="flex-shrink-0">
+        {step.completed ? (
+          <div className="w-5 h-5 bg-foreground rounded-full flex items-center justify-center">
+            <Rocket className="w-3 h-3 text-background" />
+          </div>
+        ) : step.inProgress ? (
+          <div className="w-5 h-5 bg-foreground rounded-full flex items-center justify-center">
+            <Rocket className="w-3 h-3 text-background animate-pulse" />
+          </div>
+        ) : step.failed ? (
+          <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+            <X className="w-3 h-3 text-white" />
+          </div>
+        ) : (
+          <div className="w-5 h-5 border-2 border-border rounded-full" />
+        )}
+      </div>
+      
+      <div className="flex-1">
+        <span className={`text-sm ${step.failed ? 'text-red-500' : 'text-foreground'}`}>
+          {step.title}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PhaseComponent({ phase }: { phase: PhaseDisplay }) {
+  const getPhaseIcon = () => {
+    switch (phase.icon) {
+      case 'initialization':
+        return <Settings className="w-5 h-5 text-blue-600" />;
+      case 'code':
+        return <Code className="w-5 h-5 text-purple-600" />;
+      case 'test':
+        return <TestTube className="w-5 h-5 text-green-600" />;
+      case 'check':
+        return <Check className="w-5 h-5 text-orange-600" />;
+      case 'completion':
+        return <Package className="w-5 h-5 text-emerald-600" />;
+      default:
+        return <Rocket className="w-5 h-5 text-foreground" />;
+    }
+  };
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-center gap-2 mb-6">
+        {getPhaseIcon()}
+        <h2 className="text-lg font-medium text-foreground font-mono">{phase.name}</h2>
+      </div>
+      <div className="space-y-1">
+        {phase.steps.map((step) => (
+          <ExecutionStepComponent 
+            key={step.id} 
+            step={step} 
+          />
+        ))}
+      </div>
     </div>
   );
 }
 
 export function TaskScreen({ taskId, task: passedTask, onDeleteTask, onNavigateHome }: TaskScreenProps) {
-  const [currentTime, setCurrentTime] = useState(Date.now());
   const [isStopped, setIsStopped] = useState(false);
+  const [taskProgress, setTaskProgress] = useState<TaskProgress | null>(null);
+  const [isLoadingSteps, setIsLoadingSteps] = useState(true);
   const { toast } = useToast();
   
-  // Only use passed task data - no mock fallbacks
   const task = passedTask;
 
+  // Initialize steps when task loads
   useEffect(() => {
-    if (task?.isRunning && !isStopped) {
-      const interval = setInterval(() => {
-        setCurrentTime(Date.now());
-      }, 1000);
-      return () => clearInterval(interval);
+    const initializeSteps = async () => {
+      if (!task?.realTaskId) {
+        console.log(`[TaskScreen] No real task ID available yet for task ${taskId}`);
+        return;
+      }
+
+      try {
+        console.log(`[TaskScreen] Initializing steps for task ${task.realTaskId}`);
+        setIsLoadingSteps(true);
+        
+        const stepsPlan = await stepsService.fetchTaskStepsPlan(task.realTaskId);
+        const initialProgress = stepsService.initializeTaskProgress(stepsPlan, task.workflowType);
+        
+        console.log(`[TaskScreen] Initialized task progress:`, initialProgress);
+        setTaskProgress(initialProgress);
+        
+      } catch (error) {
+        console.error(`[TaskScreen] Failed to initialize steps:`, error);
+        toast({
+          title: "Failed to load task steps",
+          description: "Unable to fetch task execution plan",
+          variant: "destructive"
+        });
+      } finally {
+        setIsLoadingSteps(false);
+      }
+    };
+
+    initializeSteps();
+  }, [task?.realTaskId, task?.workflowType, taskId, toast]);
+
+  // Update task progress when steps change
+  useEffect(() => {
+    if (task?.realTaskId) {
+      const currentProgress = stepsService.getTaskProgress(task.realTaskId);
+      if (currentProgress && currentProgress !== taskProgress) {
+        console.log(`[TaskScreen] Updating task progress from steps service`);
+        setTaskProgress(currentProgress);
+      }
     }
-  }, [task?.isRunning, isStopped]);
+  }, [task?.realTaskId, taskProgress]);
+
 
   if (!task) {
     return (
@@ -176,7 +245,10 @@ export function TaskScreen({ taskId, task: passedTask, onDeleteTask, onNavigateH
     );
   }
 
-  const duration = task.createdAt ? currentTime - task.createdAt.getTime() : 0;
+  const duration = task.createdAt ? Date.now() - task.createdAt.getTime() : 0;
+  const progressPercentage = taskProgress ? 
+    Math.round((taskProgress.completedSteps / taskProgress.totalSteps) * 100) : 
+    (task.progress || 0);
 
   const handleStopTask = () => {
     console.log(`[TaskScreen] Stopping task: ${taskId}`);
@@ -190,6 +262,11 @@ export function TaskScreen({ taskId, task: passedTask, onDeleteTask, onNavigateH
 
   const handleDeleteTask = () => {
     if (onDeleteTask) {
+      // Clear task cache when deleting
+      if (task.realTaskId) {
+        stepsService.clearTaskCache(task.realTaskId);
+      }
+      
       onDeleteTask(taskId);
       if (onNavigateHome) {
         onNavigateHome();
@@ -207,10 +284,10 @@ export function TaskScreen({ taskId, task: passedTask, onDeleteTask, onNavigateH
         {/* Task Header */}
         <div className="mb-8">
           <div className="flex items-start justify-between mb-2">
-            <h1 className="text-2xl font-semibold text-gray-900">
+            <h1 className="text-2xl font-semibold text-foreground">
               {task.name}
             </h1>
-            {/* Stop/Delete Task Button - Integrated in header */}
+            {/* Stop/Delete Task Button */}
             {task.isRunning && (
               <div>
                 {!isStopped ? (
@@ -237,154 +314,79 @@ export function TaskScreen({ taskId, task: passedTask, onDeleteTask, onNavigateH
               </div>
             )}
           </div>
-          <div className="flex items-center gap-4 text-sm text-gray-600">
-            <span className="font-mono">{task.issueNumber ? `issue #${task.issueNumber}` : task.branch}</span>
+          <div className="flex items-center gap-4 text-sm text-gray-500">
+            <span className="font-mono">
+              {task.issueNumber ? `issue #${task.issueNumber}` : task.branch}
+            </span>
             <span>•</span>
             <span>
               {task.isRunning && !isStopped ? 'Running for' : 'Completed in'} {formatDuration(duration)}
             </span>
             <span>•</span>
-            <span>{task?.progress !== undefined ? `${task.progress}%` : '0%'} complete</span>
+            <span>{progressPercentage}% complete</span>
           </div>
         </div>
 
-        {/* Task Execution Phases */}
-        <div className="space-y-4">
-          {/* Phase History - Show all phases that have occurred */}
-          {task.phaseHistory && task.phaseHistory.length > 0 && (
-            <>
-              {task.phaseHistory.map((phaseEntry, index) => (
-                <div key={index} className={`flex items-center ${phaseEntry.phase === "Task execution failed" ? "justify-between" : "gap-3"}`}>
-                  <div className="flex items-center gap-3 flex-1">
-                    <Rocket className={`w-4 h-4 ${phaseEntry.phase === "Task execution failed" ? "text-red-500" : "text-foreground"} ${!phaseEntry.completed ? "animate-pulse" : ""}`} />
-                    <div className="flex items-center gap-4 flex-1">
-                      <span className={`text-sm ${phaseEntry.phase === "Task execution failed" ? "text-red-500 font-medium" : "text-foreground"}`}>
-                        {phaseEntry.completed ? phaseEntry.phase : phaseEntry.phase}
-                      </span>
-                      {phaseEntry.completed && phaseEntry.completedAt && phaseEntry.phase !== "Task execution failed" && phaseEntry.phase !== "Task completed successfully!" ? (
-                        <span className={`text-xs font-mono ${phaseEntry.phase === "Task execution failed" ? "text-red-600" : "text-gray-500"}`}>
-                          Completed in: {formatDurationInSeconds(phaseEntry.completedAt.getTime() - phaseEntry.timestamp.getTime())}
-                        </span>
-                      ) : !phaseEntry.completed && phaseEntry.phase !== "Task execution failed" && (
-                        <span className="text-xs text-gray-500 font-mono">
-                          Duration: {formatDurationInSeconds(currentTime - phaseEntry.timestamp.getTime())}
-                        </span>
-                      )}
-                    </div>
-                    {phaseEntry.phase === "Task execution failed" && task.errorMessage && (
-                      <p className="text-xs text-red-600">
-                        Error: {task.errorMessage}
-                      </p>
-                    )}
-                  </div>
-                  {phaseEntry.phase === "Task execution failed" && (
-                    <div className="flex items-center">
-                      <Button 
-                        variant="destructive" 
-                        onClick={handleDeleteTask}
-                        className="flex items-center gap-2"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        Delete Task
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </>
-          )}
-
-          {/* Current Active Phase (if not in history yet) */}
-          {task.phase !== "failed" && task?.currentPhase && !task.phaseHistory?.some(p => p.phase === task.currentPhase) && (
+        {/* Task Execution Steps */}
+        {isLoadingSteps ? (
+          <div className="flex items-center justify-center py-12">
             <div className="flex items-center gap-3">
-              <Rocket className={`w-4 h-4 text-foreground ${task.isRunning && !isStopped ? "animate-pulse" : ""}`} />
-              <div className="flex items-center gap-4 flex-1">
-                <span className="text-sm text-foreground">{task.currentPhase}</span>
-                {task?.isRunning && !isStopped && (
-                  <span className="text-xs text-gray-500 font-mono">
-                    Duration: {formatDurationInSeconds(currentTime - task.createdAt.getTime())}
-                  </span>
-                )}
+              <Rocket className="w-5 h-5 text-muted-foreground animate-pulse" />
+              <span className="text-gray-500">Loading execution plan...</span>
+            </div>
+          </div>
+        ) : taskProgress ? (
+          <div className="space-y-4">
+            {taskProgress.phases.map((phase, index) => (
+              <PhaseComponent 
+                key={`${phase.name}-${index}`}
+                phase={phase} 
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <X className="w-8 h-8 text-red-500 mx-auto mb-2" />
+              <p className="text-gray-500">Failed to load execution plan</p>
+              <p className="text-sm text-gray-500">Unable to fetch task steps</p>
+            </div>
+          </div>
+        )}
+
+        {/* Pull Request Section */}
+        {task.pr && (
+          <div className="mt-8">
+            <h2 className="text-lg font-medium text-foreground mb-4">Pull Request</h2>
+            <PRComponent pr={task.pr} />
+          </div>
+        )}
+
+        {/* Error State */}
+        {task.status === "failed" && task.errorMessage && (
+          <div className="mt-8">
+            <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <X className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="text-sm font-medium text-red-800 dark:text-red-200 mb-1">
+                    Task execution failed
+                  </h3>
+                  <p className="text-sm text-red-700 dark:text-red-300">
+                    {task.errorMessage}
+                  </p>
+                </div>
+                <Button 
+                  variant="destructive" 
+                  size="sm"
+                  onClick={handleDeleteTask}
+                  className="flex items-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete Task
+                </Button>
               </div>
             </div>
-          )}
-
-          {/* Legacy Phase Display for Backward Compatibility */}
-          {task.phase !== "failed" && !task?.currentPhase && !task.phaseHistory && (
-            <>
-              {/* Phase 1: Connecting to server */}
-              <div className="flex items-center gap-3">
-                <Rocket className={`w-4 h-4 text-foreground ${task.phase === "working" && !isStopped ? "animate-pulse" : ""}`} />
-                <div className="flex items-center gap-4 flex-1">
-                  <span className="text-sm text-foreground">Connecting to server...</span>
-                  {task.phase === "working" && !isStopped ? (
-                    <span className="text-xs text-gray-500 font-mono">
-                      Duration: {formatDurationInSeconds(currentTime - task.createdAt.getTime())}
-                    </span>
-                  ) : task?.workingCompletedAt ? (
-                    <span className="text-xs text-gray-500 font-mono">
-                      Completed in: {formatDurationInSeconds(task.workingCompletedAt.getTime() - task.createdAt.getTime())}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-
-              {/* Phase 2: Creating PR */}
-              {(task.phase === "creating_pr" || task.phase === "completed") && (
-                <div className="flex items-center gap-3">
-                  <Rocket className={`w-4 h-4 text-foreground ${task.phase === "creating_pr" && !isStopped ? "animate-pulse" : ""}`} />
-                  <div className="flex items-center gap-4 flex-1">
-                    <span className="text-sm text-foreground">Creating PR...</span>
-                    {task.phase === "creating_pr" && !isStopped ? (
-                      <span className="text-xs text-gray-500 font-mono">
-                        Duration: {formatDurationInSeconds(currentTime - (task.workingCompletedAt?.getTime() || task.createdAt.getTime()))}
-                      </span>
-                    ) : task?.prCreatedAt && task?.workingCompletedAt ? (
-                      <span className="text-xs text-gray-500 font-mono">
-                        Completed in: {formatDurationInSeconds(task.prCreatedAt.getTime() - task.workingCompletedAt.getTime())}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              )}
-
-              {/* Phase 3: PR Created */}
-              {task.phase === "completed" && (
-                <div className="flex items-center gap-3">
-                  <Rocket className="w-4 h-4 text-foreground" />
-                  <div className="flex items-center gap-4 flex-1">
-                    <span className="text-sm text-foreground">PR Created!</span>
-                    {task?.completedAt && task?.prCreatedAt && (
-                      <span className="text-xs text-gray-500 font-mono">
-                        Completed in: {formatDurationInSeconds(task.completedAt.getTime() - task.prCreatedAt.getTime())}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Show PR Component when completed or show Fetching PR with loading */}
-        {task.phase === "completed" && (
-          <div className="mt-8">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">Pull Request</h2>
-            {task?.pr ? (
-              <PRComponent pr={task.pr} />
-            ) : (
-              <div className="bg-card border border-gray-200 rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <Rocket className="w-4 h-4 text-foreground animate-pulse" />
-                  <div>
-                    <span className="text-sm text-foreground">Fetching PR...</span>
-                    <div className="mt-2">
-                      <LoadingDots />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>

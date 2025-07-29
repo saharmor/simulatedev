@@ -40,7 +40,7 @@ You are responsible for ensuring quality, functionality, and reliability of the 
         if planner_output:
             prompt += f"""
 ## ORIGINAL PLAN (for Reference)
-{planner_output['output'][:1000]}...
+{planner_output['output']}
 
 ### Testing Strategy from Plan:
 """
@@ -60,7 +60,7 @@ The following implementations were created and need to be tested:
                 status = "SUCCESS" if output['success'] else "FAILED"
                 prompt += f"""
 ### Implementation {i} by {output['coding_ide']} ({status})
-{output['output'][:1200]}...
+{output['output']}
 """
                 if 'implementation_info' in output:
                     info = output['implementation_info']
@@ -88,7 +88,7 @@ Please investigate why no implementation was created.
                 status = "SUCCESS" if output['success'] else "FAILED"
                 prompt += f"""
 ### Test {i} ({status})
-{output['output'][:600]}...
+{output['output']}
 """
             prompt += "\nPlease build upon previous testing efforts and address any remaining issues."
         
@@ -172,7 +172,7 @@ You are responsible for ensuring quality, functionality, and reliability of the 
         if planner_output:
             role_prompt += f"""
 ## ORIGINAL PLAN (for Reference)
-{planner_output['output'][:1000]}...
+{planner_output['output']}
 
 ### Testing Strategy from Plan:
 """
@@ -192,7 +192,7 @@ The following implementations were created and need to be tested:
                 status = "SUCCESS" if output['success'] else "FAILED"
                 role_prompt += f"""
 ### Implementation {i} by {output['coding_ide']} ({status})
-{output['output'][:1200]}...
+{output['output']}
 """
                 if 'implementation_info' in output:
                     info = output['implementation_info']
@@ -220,7 +220,7 @@ Please investigate why no implementation was created.
                 status = "SUCCESS" if output['success'] else "FAILED"
                 role_prompt += f"""
 ### Test {i} ({status})
-{output['output'][:600]}...
+{output['output']}
 """
             role_prompt += "\nPlease build upon previous testing efforts and address any remaining issues."
         
