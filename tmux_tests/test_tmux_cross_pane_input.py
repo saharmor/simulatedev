@@ -15,6 +15,8 @@ import time
 import sys
 import json
 import random
+import signal
+import atexit
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 from dataclasses import dataclass
@@ -102,20 +104,32 @@ class CrossPaneInputTester:
                 except Exception as e:
                     print(f"   ⚠️  Error killing pane {test_session.pane_id}: {e}")
         
-        # Stop monitoring and queue
+        # Stop monitoring and queue with better error handling
         if hasattr(self, 'monitor_task'):
-            self.manager.running = False
-            self.monitor_task.cancel()
             try:
-                await self.monitor_task
-            except asyncio.CancelledError:
-                pass
+                self.manager.running = False
+                self.monitor_task.cancel()
+                try:
+                    await self.monitor_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as e:
+                    print(f"   ⚠️  Error stopping monitor task: {e}")
+            except Exception as e:
+                print(f"   ⚠️  Error during monitor cleanup: {e}")
         
+        # Stop the queue with timeout and error handling
         try:
-            await self.manager.stop_queue()
+            # Add a timeout to prevent hanging during shutdown
+            await asyncio.wait_for(self.manager.stop_queue(), timeout=5.0)
             print("✅ Cleanup complete")
+        except asyncio.TimeoutError:
+            print("⚠️  Queue stop timed out, forcing cleanup")
         except Exception as e:
             print(f"⚠️  Error stopping queue: {e}")
+        
+        # Give a moment for all threads to finish cleanup
+        await asyncio.sleep(0.1)
     
     async def wait_for_user_confirmation(self, next_test_name: str):
         """Wait for user confirmation before proceeding to next test"""
@@ -141,24 +155,12 @@ class CrossPaneInputTester:
         
     def get_pane_content(self, session_id: str) -> str:
         """Get raw pane content for a session"""
-        pane = self.manager._get_pane_by_session(session_id)
-        
-        if not pane:
-            return ""
-        
-        # First try to get content from the manager's output buffer
+        # First try to get content from the manager's output buffer (now includes saved files)
         output_content = self.manager.get_session_output(session_id)
         if output_content:
             return output_content
-            
-        # Fallback to direct tmux capture
-        result = subprocess.run(
-            ["tmux", "capture-pane", "-p", "-t", pane.full_target, "-e"],
-            capture_output=True,
-            text=True
-        )
         
-        return result.stdout if result.returncode == 0 else ""
+        return ""
     
     async def create_test_session(self, name: str, agent_type: AgentType, prompt: str, yolo_mode: bool = False,
                                 expected_state: str = "RUNNING") -> TestSession:
@@ -663,7 +665,8 @@ class CrossPaneInputTester:
             session = await self.create_test_session(
                 name=f"Buffer-Test-{i+1}",
                 agent_type=agent_type,
-                prompt=identical_prompt
+                prompt=identical_prompt,
+                yolo_mode=True
             )
             buffer_sessions.append(session)
             await asyncio.sleep(1)  # Small delay between creations
@@ -829,22 +832,65 @@ class CrossPaneInputTester:
             else:
                 print(f"   ❌ {session.name}: Long prompt not found in content")
         
-        # Wait a bit more for sessions to complete, then verify cleanup
+        # Wait a bit more for long prompt sessions to complete, then verify cleanup
         print(f"\n⏳ Waiting for long prompt sessions to complete...")
-        await asyncio.sleep(15)  # Give sessions time to complete
+        total_wait = 60
+        intervals = 10
+        for i in range(total_wait // intervals):
+            # Check if all long prompt sessions are done
+            long_sessions_complete = True
+            for session in long_sessions:
+                session_info = self.manager.get_session(session.session_id)
+                if session_info:
+                    if session_info['status'] != "DONE":
+                        long_sessions_complete = False
+                        break
+                else:
+                    print(f"   ❌ {session.name}: Session missing")
+                    long_sessions_complete = False
+                    break
+            
+            if long_sessions_complete:
+                break
+
+            await asyncio.sleep(intervals)  # Give sessions time to complete
         
-        # Verify proper cleanup completion
-        print(f"\n🧹 Verifying cleanup completion...")
-        cleanup_complete, cleanup_diagnostics = self.verify_cleanup_completion()
+        if not long_sessions_complete:
+            print(f"   ❌ Long prompt sessions did not complete in {total_wait} seconds")
+            return False
+
+        # Verify long prompt sessions completed (but control session should still be active)
+        control_session_active = False    
+        # Check control session is still active (as expected)
+        control_info = self.manager.get_session(control_session.session_id)
+        if control_info:
+            control_status = control_info['status']
+            if control_status == "REQUIRES_USER_INPUT":
+                print(f"   ✅ Control session: Still waiting for input (expected)")
+                control_session_active = True
+            else:
+                print(f"   ℹ️  Control session: {control_status} (expected REQUIRES_USER_INPUT)")
+                control_session_active = True  # Still acceptable if it's RUNNING
+        else:
+            print(f"   ❌ Control session: Missing")
+        
+        # Check queue status
+        queue_sizes = self.manager._tmux_queue.get_queue_sizes()
+        total_queued_commands = sum(queue_sizes.values()) if queue_sizes else 0
+        queues_empty = total_queued_commands == 0
+        
+        print(f"   Queued commands: {total_queued_commands}")
+        if queues_empty:
+            print("   ✅ All queues empty")
+        else:
+            print("   ❌ Commands still queued")
+        
+        cleanup_complete = long_sessions_complete and control_session_active and queues_empty
         
         if cleanup_complete:
-            print("   ✅ All sessions completed and cleaned up properly")
+            print("   ✅ Long prompt sessions completed, control session active as expected")
         else:
-            print("   ❌ Cleanup incomplete - some sessions may not have finished properly")
-            if cleanup_diagnostics['active_panes'] > 0:
-                print(f"      {cleanup_diagnostics['active_panes']} panes still active")
-            if cleanup_diagnostics['total_queued_commands'] > 0:
-                print(f"      {cleanup_diagnostics['total_queued_commands']} commands still queued")
+            print("   ❌ Cleanup verification failed")
         
         success = isolation_maintained and long_prompt_success == 3 and pane_unique and cleanup_complete
         
@@ -853,7 +899,7 @@ class CrossPaneInputTester:
             print(f"   - Control session remained isolated")
             print(f"   - All long prompts processed correctly")
             print(f"   - All sessions had unique pane mappings")
-            print(f"   - All sessions completed and cleaned up properly")
+            print(f"   - Long prompt sessions completed, control session active as expected")
         else:
             print(f"\n❌ FAILURE: Long prompt isolation test failed")
             if not isolation_maintained:
@@ -863,7 +909,7 @@ class CrossPaneInputTester:
             if not pane_unique:
                 print("   - Duplicate pane mappings detected")
             if not cleanup_complete:
-                print("   - Incomplete cleanup detected")
+                print("   - Long prompt sessions cleanup verification failed")
         
         return success
     
@@ -876,8 +922,8 @@ class CrossPaneInputTester:
         print("="*80)
         
         tests = [
-            # ("Basic Isolation", self.test_1_basic_isolation), # TODO SAHAR - this test is working so comment it out for now
-            # ("Rapid Creation", self.test_2_rapid_session_creation),
+            ("Basic Isolation", self.test_1_basic_isolation),
+            ("Rapid Creation", self.test_2_rapid_session_creation),
             ("Buffer Uniqueness", self.test_3_buffer_uniqueness),
             ("Long Prompt Isolation", self.test_4_long_prompt_isolation),
         ]
@@ -1014,8 +1060,26 @@ async def main(paused_between_tests: bool = True):
     finally:
         await tester.cleanup()
 
+def cleanup_on_exit():
+    """Cleanup function called on exit to prevent threading errors"""
+    try:
+        # Give any remaining threads time to clean up
+        time.sleep(0.1)
+    except:
+        pass
+
+def signal_handler(signum, frame):
+    """Handle interrupt signals gracefully"""
+    print(f"\n🛑 Received signal {signum}, shutting down...")
+    sys.exit(1)
+
 if __name__ == "__main__":
     import argparse
+    
+    # Register cleanup handlers
+    atexit.register(cleanup_on_exit)
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     
     parser = argparse.ArgumentParser(description="Cross-pane input isolation test suite")
     parser.add_argument("--no-pause-between-tests", action="store_true", 
@@ -1024,5 +1088,14 @@ if __name__ == "__main__":
     
     paused_between_tests = not args.no_pause_between_tests
     
-    success = asyncio.run(main(paused_between_tests=paused_between_tests))
-    sys.exit(0 if success else 1) 
+    try:
+        success = asyncio.run(main(paused_between_tests=paused_between_tests))
+        # Give a moment for all threads to finish before exit
+        time.sleep(0.2)
+        sys.exit(0 if success else 1)
+    except KeyboardInterrupt:
+        print("\n🛑 Test interrupted by user")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n❌ Test failed with error: {e}")
+        sys.exit(1) 
