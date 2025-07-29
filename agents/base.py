@@ -13,6 +13,9 @@ from dataclasses import dataclass
 from enum import Enum
 from common.config import config
 
+# Import ReadyIndicatorMode from tmux operations manager
+from tmux_operations_manager import ReadyIndicatorMode
+
 
 class CodingAgentIdeType(Enum):
     """Enum for supported coding agents"""
@@ -218,6 +221,7 @@ class CLIAgentConfig:
     supports_yolo: bool
     pre_commands: List[str]
     ready_indicators: List[str]
+    ready_indicator_mode: ReadyIndicatorMode = ReadyIndicatorMode.INCLUSIVE
 
 @dataclass
 class AgentResponse:

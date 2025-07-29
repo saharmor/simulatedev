@@ -7,6 +7,7 @@ CLI-based Claude agent that runs in tmux sessions through the backend.
 
 from typing import Optional
 from .base import CLIAgent, CLIAgentConfig, AgentResponse
+from tmux_operations_manager import ReadyIndicatorMode
 
 
 class ClaudeCliAgent(CLIAgent):
@@ -19,7 +20,8 @@ class ClaudeCliAgent(CLIAgent):
             command=["claude", "--permission-mode", "acceptEdits", "2>&1"],
             supports_yolo=True,
             pre_commands=[], 
-            ready_indicators=["esc to interrupt"]  # Claude shows this when NOT ready, so we use exclusive mode
+            ready_indicators=["esc to interrupt"],  # Claude shows this when NOT ready
+            ready_indicator_mode=ReadyIndicatorMode.EXCLUSIVE  # Ready when indicators are NOT present
         )
     
     @property
@@ -74,7 +76,7 @@ class ClaudeCliAgent(CLIAgent):
             timeout_seconds = config.agent_timeout_seconds
         
         start_time = asyncio.get_event_loop().time()
-        check_interval = 2  # Check every 2 seconds
+        check_interval = 5  # Reduced frequency to minimize console spam
         
         while (asyncio.get_event_loop().time() - start_time) < timeout_seconds:
             try:

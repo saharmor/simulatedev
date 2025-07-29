@@ -8,8 +8,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./simulatedev.db"
     
     # GitHub OAuth
-    github_client_id: str = "Ov23liz8BDMlzkAFWI22"
-    github_client_secret: str = "a14fcd914d71b0d1c106ec5d2d5f3396a4bf3293"
+    github_client_id: str = ""
+    github_client_secret: str = ""
     github_oauth_redirect_uri: str = "http://localhost:8000/api/auth/github/callback"
     
     # Frontend URL (for OAuth redirects)
