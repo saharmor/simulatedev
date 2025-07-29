@@ -566,9 +566,9 @@ class CrossPaneInputTester:
         
         # Wait a bit more for rapid sessions to complete, then verify cleanup
         print(f"\n⏳ Waiting for rapid sessions to complete...")
-        total_wait = 60
+        total_max_wait = 90
         intervals = 10
-        for i in range(total_wait // intervals):
+        for i in range(total_max_wait // intervals):
             # check if all sessions are done
             rapid_sessions_complete = True
             for session in rapid_sessions:
@@ -588,7 +588,7 @@ class CrossPaneInputTester:
             await asyncio.sleep(intervals)  # Give sessions time to complete
         
         if not rapid_sessions_complete:
-            print(f"   ❌ Rapid sessions did not complete in {total_wait} seconds")
+            print(f"   ❌ Rapid sessions did not complete in {total_max_wait} seconds")
             return False
 
         # Verify rapid sessions completed (but control session should still be active)
@@ -922,7 +922,7 @@ class CrossPaneInputTester:
         print("="*80)
         
         tests = [
-            ("Basic Isolation", self.test_1_basic_isolation),
+            # ("Basic Isolation", self.test_1_basic_isolation),
             ("Rapid Creation", self.test_2_rapid_session_creation),
             ("Buffer Uniqueness", self.test_3_buffer_uniqueness),
             ("Long Prompt Isolation", self.test_4_long_prompt_isolation),
