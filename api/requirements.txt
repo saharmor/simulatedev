@@ -1,6 +1,6 @@
 # FastAPI and web framework
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
 python-multipart==0.0.6
 websockets==12.0
 
@@ -10,8 +10,8 @@ alembic>=1.13.0
 aiosqlite==0.19.0
 
 # Data validation and settings
-pydantic>=2.0.0,<3.0.0
-pydantic-settings>=2.0.0,<3.0.0
+pydantic>=2.10.0,<3.0.0
+pydantic-settings>=2.10.0,<3.0.0
 
 # Authentication and security
 cryptography==41.0.7
