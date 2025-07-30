@@ -90,6 +90,7 @@ export interface TaskExecutionRequest {
   }>;
   create_pr: boolean;
   workflow_type: string;
+  yolo_mode?: boolean;
   options?: Record<string, any>;
   task_prompt?: string;
   issue_number?: number;

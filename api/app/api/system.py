@@ -1,8 +1,11 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from typing import List
+import logging
 
 from app.config import settings
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/config")
@@ -19,11 +22,8 @@ async def get_system_config():
 
 @router.get("/health")
 async def health_check():
-    """Extended health check with system information"""
-    return {
-        "status": "healthy",
-        "version": "1.0.0",
-        "database": "connected",
-        "simulatedev": "available",
-        "timestamp": "2025-01-21T20:30:00Z"
-    } 
+    """Health check endpoint"""
+    import time
+    return {"status": "healthy", "timestamp": time.time()}
+
+ 

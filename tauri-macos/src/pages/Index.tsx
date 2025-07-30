@@ -87,8 +87,8 @@ const Index = () => {
   };
 
   const handleTaskStart = async (issue: { id: string; title: string; number: number; htmlUrl: string; user: string }, agentSelection: AgentSelection, repository?: { name: string; full_name: string }) => {
-    const { agent, isSequential } = agentSelection;
-    console.log(`[Index] Creating task for issue: ${issue.title} with agent: ${agent.name} (Sequential: ${isSequential})`);
+    const { agent, isSequential, yoloMode } = agentSelection; // Extract yoloMode from selection
+    console.log(`[Index] Creating task for issue: ${issue.title} with agent: ${agent.name} (Sequential: ${isSequential}, YOLO: ${yoloMode})`);
     
     // Generate a unique task ID for frontend tracking
     const taskId = `task-${Date.now()}-${issue.id}`;
@@ -127,6 +127,7 @@ const Index = () => {
         }],
         workflow_type: isSequential ? "sequential" : "custom",
         create_pr: true,
+        yolo_mode: yoloMode || false,
         task_prompt: "Find grammatical issues in the readme file and fix them",
         issue_number: issue.number,
         issue_title: issue.title,

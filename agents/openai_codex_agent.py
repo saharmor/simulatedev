@@ -10,7 +10,7 @@ import re
 import time
 from typing import Optional, Tuple
 from .web_agent import WebAgent, AgentResponse
-from web_automation_utils import wait_for_element, click_element, scroll_and_click, wait_for_loading_complete
+from utils.web_automation_utils import wait_for_element, click_element, scroll_and_click, wait_for_loading_complete
 
 
 # Selector constants for better maintainability

@@ -7,7 +7,7 @@ CLI-based Claude agent that runs in tmux sessions through the backend.
 
 from typing import Optional
 from .base import CLIAgent, CLIAgentConfig, AgentResponse
-from tmux_operations_manager import ReadyIndicatorMode
+from common.tmux_types import ReadyIndicatorMode
 
 
 class ClaudeCliAgent(CLIAgent):
@@ -97,27 +97,4 @@ class ClaudeCliAgent(CLIAgent):
             await asyncio.sleep(check_interval)
         
         print(f"Warning: {self.agent_name} completion monitoring timed out after {timeout_seconds} seconds")
-    
-    async def execute_prompt(self, prompt: str) -> AgentResponse:
-        """Execute prompt and return response from Claude CLI"""
-        try:
-            # Send the prompt
-            await self._send_prompt_to_interface(prompt)
-            
-            # Wait for completion with Claude-specific logic
-            await self._wait_for_completion()
-            
-            # Get the output
-            output = await self._read_output_file()
-            
-            return AgentResponse(
-                content=output,
-                success=True
-            )
-            
-        except Exception as e:
-            return AgentResponse(
-                content="",
-                success=False,
-                error_message=f"Failed to execute prompt: {str(e)}"
-            ) 
+ 

@@ -7,7 +7,7 @@ CLI-based Gemini agent that runs in tmux sessions through the backend.
 
 from typing import Optional
 from .base import CLIAgent, CLIAgentConfig, AgentResponse
-from tmux_operations_manager import ReadyIndicatorMode
+from common.tmux_types import ReadyIndicatorMode
 
 
 class GeminiCliAgent(CLIAgent):
@@ -112,27 +112,4 @@ class GeminiCliAgent(CLIAgent):
         else:
             print(f"Warning: No tmux service available for {self.agent_name}, using fallback delay")
             await asyncio.sleep(10)  # Fallback delay
-    
-    async def execute_prompt(self, prompt: str) -> AgentResponse:
-        """Execute prompt and return response from Gemini CLI"""
-        try:
-            # Send the prompt
-            await self._send_prompt_to_interface(prompt)
-            
-            # Wait for completion (this should be improved with proper completion detection)
-            await self._wait_for_completion()
-            
-            # Get the output
-            output = await self._read_output_file()
-            
-            return AgentResponse(
-                content=output,
-                success=True
-            )
-            
-        except Exception as e:
-            return AgentResponse(
-                content="",
-                success=False,
-                error_message=f"Failed to execute prompt: {str(e)}"
-            ) 
+ 

@@ -75,7 +75,7 @@ export class StepMessageGenerator {
         }
       } else {
         // For single agent workflows, just use "Coding Agent"
-        phase = 'Coding Agent';
+        phase = 'Coding';
       }
     }
     
@@ -84,58 +84,58 @@ export class StepMessageGenerator {
     switch (stepType) {
       // Initialization steps
       case StepType.CONNECTING_SERVER:
-        title = 'Initializing task execution environment...';
+        title = 'Initializing task execution environment';
         break;
       case StepType.INITIALIZING_EXECUTION:
-        title = 'Setting up task parameters and validation...';
+        title = 'Setting up task parameters and validation';
         break;
       case StepType.CREATING_REQUEST:
-        title = 'Preparing agent execution pipeline...';
+        title = 'Preparing agent execution pipeline';
         break;
         
       // Agent execution steps
       case StepType.AGENT_STARTING:
         if (isSequential && agentRole.toLowerCase().includes('review')) {
-          title = 'Starting code review process...';
+          title = 'Starting code review process';
         } else if (isSequential && agentRole.toLowerCase().includes('test')) {
-          title = 'Starting test execution...';
+          title = 'Starting test execution';
         } else if (isSequential && this.isSecondCoder(agentContext)) {
-          title = 'Starting implementation fixes based on review feedback...';
+          title = 'Starting implementation fixes based on review feedback';
         } else {
-          title = 'Starting initial implementation...';
+          title = 'Starting initial implementation';
         }
         break;
         
       case StepType.AGENT_WORKING:
         if (isSequential && agentRole.toLowerCase().includes('review')) {
-          title = 'Reviewing the implementation for quality and correctness...';
+          title = 'Reviewing the implementation for quality and correctness';
         } else if (isSequential && agentRole.toLowerCase().includes('test')) {
-          title = 'Running comprehensive tests and validation...';
+          title = 'Running comprehensive tests and validation';
         } else if (isSequential && this.isSecondCoder(agentContext)) {
-          title = 'Fixing issues and implementing improvements from review...';
+          title = 'Fixing issues and implementing improvements from review';
         } else {
-          title = 'Implementing the solution for the issue...';
+          title = 'Implementing the solution for the issue';
         }
         break;
         
       case StepType.AGENT_FINISHING:
         if (isSequential && agentRole.toLowerCase().includes('review')) {
-          title = 'Finalizing code review and providing feedback...';
+          title = 'Finalizing code review and providing feedback';
         } else if (isSequential && agentRole.toLowerCase().includes('test')) {
-          title = 'Finalizing test results and validation report...';
+          title = 'Finalizing test results and validation report';
         } else if (isSequential && this.isSecondCoder(agentContext)) {
-          title = 'Finalizing implementation fixes and improvements...';
+          title = 'Finalizing implementation fixes and improvements';
         } else {
-          title = 'Finalizing initial implementation...';
+          title = 'Finalizing initial implementation';
         }
         break;
         
       // Completion steps
       case StepType.PROCESSING_RESULTS:
-        title = 'Processing final results and creating output...';
+        title = 'Processing final results and creating output';
         break;
       case StepType.CREATING_PR:
-        title = 'Finalizing task completion...';
+        title = 'Finalizing task completion';
         break;
         
       default:

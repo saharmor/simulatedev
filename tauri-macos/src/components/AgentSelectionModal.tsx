@@ -17,6 +17,7 @@ interface Agent {
 export interface AgentSelection {
   agent: Agent;
   isSequential: boolean;
+  yoloMode?: boolean;
   sequentialAgents?: {
     coder1: Agent;
     tester: Agent;
@@ -29,6 +30,9 @@ interface AgentSelectionModalProps {
   onClose: () => void;
   onAgentSelect: (selection: AgentSelection) => void;
 }
+
+// Mapping to identify which agents are CLI agents
+const CLI_AGENTS = new Set(['claude_cli', 'gemini_cli']);
 
 const availableAgents: Agent[] = [
       {
@@ -54,6 +58,7 @@ const availableAgents: Agent[] = [
 export function AgentSelectionModal({ isOpen, onClose, onAgentSelect }: AgentSelectionModalProps) {
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [isSequential, setIsSequential] = useState(false);
+  const [yoloMode, setYoloMode] = useState(false);
   const [sequentialAgents, setSequentialAgents] = useState({
     coder1: null as Agent | null,
     tester: null as Agent | null,
@@ -64,8 +69,13 @@ export function AgentSelectionModal({ isOpen, onClose, onAgentSelect }: AgentSel
   const handleAgentClick = (agent: Agent) => {
     if (currentStage === 'main') {
       setSelectedAgent(agent);
+      // Reset YOLO mode when switching agents
+      setYoloMode(false);
     }
   };
+
+  // Check if the selected agent is a CLI agent
+  const isCliAgent = selectedAgent ? CLI_AGENTS.has(selectedAgent.id) : false;
 
   const handleSequentialAgentClick = (stage: 'coder1' | 'tester' | 'coder2', agent: Agent) => {
     setSequentialAgents(prev => ({
@@ -97,6 +107,7 @@ export function AgentSelectionModal({ isOpen, onClose, onAgentSelect }: AgentSel
         onAgentSelect({ 
           agent: selectedAgent, 
           isSequential, 
+          yoloMode,
           sequentialAgents: {
             coder1: sequentialAgents.coder1,
             tester: sequentialAgents.tester,
@@ -104,12 +115,13 @@ export function AgentSelectionModal({ isOpen, onClose, onAgentSelect }: AgentSel
           }
         });
       } else {
-        onAgentSelect({ agent: selectedAgent, isSequential });
+        onAgentSelect({ agent: selectedAgent, isSequential, yoloMode }); // Include YOLO mode
       }
       onClose();
       // Reset state for next time
       setSelectedAgent(null);
       setIsSequential(false);
+      setYoloMode(false); // Reset YOLO mode
       setSequentialAgents({ coder1: null, tester: null, coder2: null });
       setCurrentStage('main');
     }
@@ -160,7 +172,7 @@ export function AgentSelectionModal({ isOpen, onClose, onAgentSelect }: AgentSel
 
               {/* Sequential Execution Option */}
               {selectedAgent && (
-                <div className="w-full mb-6">
+                <div className="w-full mb-6 space-y-3">
                   <label className="flex items-center gap-3 p-3 rounded-lg border border-border cursor-pointer hover:bg-muted">
                     <input
                       type="checkbox"
@@ -177,6 +189,26 @@ export function AgentSelectionModal({ isOpen, onClose, onAgentSelect }: AgentSel
                       </div>
                     </div>
                   </label>
+
+                  {/* YOLO Mode Option - only show for CLI agents */}
+                  {isCliAgent && (
+                    <label className="flex items-center gap-3 p-3 rounded-lg border border-border cursor-pointer hover:bg-muted">
+                      <input
+                        type="checkbox"
+                        checked={yoloMode}
+                        onChange={(e) => setYoloMode(e.target.checked)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-foreground">
+                          YOLO Mode
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Enable automated execution without confirmation prompts
+                        </div>
+                      </div>
+                    </label>
+                  )}
                 </div>
               )}
 
