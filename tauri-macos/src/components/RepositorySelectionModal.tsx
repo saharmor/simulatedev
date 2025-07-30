@@ -11,42 +11,44 @@ interface RepositorySelectionModalProps {
   error: string | null;
 }
 
-export function RepositorySelectionModal({ 
-  isOpen, 
-  onClose, 
-  onRepositorySelect, 
-  repositories, 
-  isLoading, 
-  error 
+export function RepositorySelectionModal({
+  isOpen,
+  onClose,
+  onRepositorySelect,
+  repositories,
+  isLoading,
+  error,
 }: RepositorySelectionModalProps) {
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     if (isOpen) {
       const handleEscape = (e: KeyboardEvent) => {
-        if (e.key === 'Escape') {
+        if (e.key === "Escape") {
           onClose();
         }
       };
-      document.addEventListener('keydown', handleEscape);
-      return () => document.removeEventListener('keydown', handleEscape);
+      document.addEventListener("keydown", handleEscape);
+      return () => document.removeEventListener("keydown", handleEscape);
     }
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
   // Filter repositories based on search query
-  const filteredRepositories = repositories.filter(repo => {
+  const filteredRepositories = repositories.filter((repo) => {
     const searchLower = search.toLowerCase();
     const repoNameLower = repo.name.toLowerCase();
     const fullNameLower = repo.full_name.toLowerCase();
-    const descriptionLower = (repo.description || '').toLowerCase();
-    const languageLower = (repo.language || '').toLowerCase();
-    
-    return repoNameLower.includes(searchLower) || 
-           fullNameLower.includes(searchLower) || 
-           descriptionLower.includes(searchLower) ||
-           languageLower.includes(searchLower);
+    const descriptionLower = (repo.description || "").toLowerCase();
+    const languageLower = (repo.language || "").toLowerCase();
+
+    return (
+      repoNameLower.includes(searchLower) ||
+      fullNameLower.includes(searchLower) ||
+      descriptionLower.includes(searchLower) ||
+      languageLower.includes(searchLower)
+    );
   });
 
   const formatDate = (dateString: string) => {
@@ -54,8 +56,8 @@ export function RepositorySelectionModal({
     const now = new Date();
     const diffTime = Math.abs(now.getTime() - date.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 1) return 'yesterday';
+
+    if (diffDays === 1) return "yesterday";
     if (diffDays < 7) return `${diffDays} days ago`;
     if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
     if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
@@ -67,13 +69,25 @@ export function RepositorySelectionModal({
       <div className="bg-card border border-gray-300 rounded-lg shadow-2xl w-full max-w-2xl mx-4">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Select Repository</h2>
+          <h2 className="text-lg font-semibold text-gray-900">
+            Select Repository
+          </h2>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -88,6 +102,7 @@ export function RepositorySelectionModal({
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1 bg-transparent outline-none text-sm"
             autoFocus
+            autoComplete="off"
           />
         </div>
 
@@ -107,7 +122,9 @@ export function RepositorySelectionModal({
           ) : filteredRepositories.length === 0 ? (
             <div className="p-4 text-center">
               <div className="text-gray-500">
-                {search ? `No repositories found matching "${search}"` : 'No repositories found'}
+                {search
+                  ? `No repositories found matching "${search}"`
+                  : "No repositories found"}
               </div>
             </div>
           ) : (
@@ -157,4 +174,4 @@ export function RepositorySelectionModal({
       </div>
     </div>
   );
-} 
+}
