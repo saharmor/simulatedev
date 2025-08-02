@@ -33,16 +33,11 @@ const availableAgents: Agent[] = [
     icon: "CC",
   },
   {
-    id: "cursor",
-    name: "Cursor",
-    description: "AI-powered code editor with advanced completion",
-    icon: "CR",
-  },
-  {
-    id: "gemini_cli",
-    name: "Gemini CLI",
-    description: "Fast and efficient command-line focused AI",
-    icon: "GC",
+    id: "windsurf",
+    name: "Windsurf",
+    description:
+      "AI-native IDE with agentic code generation, debugging, and live previews",
+    icon: "WS",
   },
 ];
 
@@ -96,25 +91,29 @@ export function AgentSelectionModal({
   };
 
   const handleProceed = () => {
-    if (selectedAgent) {
-      if (
-        isSequential &&
-        sequentialAgents.coder1 &&
-        sequentialAgents.tester &&
-        sequentialAgents.coder2
-      ) {
-        onAgentSelect({
-          agent: selectedAgent,
-          isSequential,
-          sequentialAgents: {
-            coder1: sequentialAgents.coder1,
-            tester: sequentialAgents.tester,
-            coder2: sequentialAgents.coder2,
-          },
-        });
-      } else {
-        onAgentSelect({ agent: selectedAgent, isSequential });
-      }
+    if (
+      isSequential &&
+      sequentialAgents.coder1 &&
+      sequentialAgents.tester &&
+      sequentialAgents.coder2
+    ) {
+      onAgentSelect({
+        agent: sequentialAgents.coder1, // Use first coder as the main agent
+        isSequential,
+        sequentialAgents: {
+          coder1: sequentialAgents.coder1,
+          tester: sequentialAgents.tester,
+          coder2: sequentialAgents.coder2,
+        },
+      });
+      onClose();
+      // Reset state for next time
+      setSelectedAgent(null);
+      setIsSequential(false);
+      setSequentialAgents({ coder1: null, tester: null, coder2: null });
+      setCurrentStage("main");
+    } else if (selectedAgent) {
+      onAgentSelect({ agent: selectedAgent, isSequential });
       onClose();
       // Reset state for next time
       setSelectedAgent(null);
