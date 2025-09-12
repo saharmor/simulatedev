@@ -1,16 +1,26 @@
+<div align="center">
+
 # SimulateDev
 Run cutting-edge AI coding IDEs such as Cursor, Devin, and Claude Code via code.
 
 SimulateDev is an automation tool that runs AI coding agents (Cursor, Devin, Claude Code) on any GitHub repository with custom prompts and automatically creates pull requests with the changes. It supports both **single-agent** and **multi-agent collaborative workflows**. SimulateDev can also help you automatically address reviewer comments on existing PRs or completely resolve open GitHub issues.
 
-[How SimulateDev works](https://github.com/saharmor/simulatedev?tab=readme-ov-file#how-simulatedev-operates)
+[How SimulateDev works](https://github.com/saharmor/simulatedev?tab=readme-ov-file#how-simulatedev-operates) | [Run SimulateDev in less than a minute](https://github.com/saharmor/simulatedev?tab=readme-ov-file#run-simulatedev-in-1-min)
 
-[Run SimulateDev in less than a minute](https://github.com/saharmor/simulatedev?tab=readme-ov-file#run-simulatedev-in-1-min)
-
+<p>
+<a href="https://www.linkedin.com/in/sahar-mor/" target="_blank"><img src="https://img.shields.io/badge/LinkedIn-Connect-blue" alt="LinkedIn"></a>
+<a href="https://x.com/theaievangelist" target="_blank"><img src="https://img.shields.io/twitter/follow/:theaievangelist" alt="X"></a>
+<a href="http://aitidbits.ai/" target="_blank"><img src="https://github.com/saharmor/saharmor.github.io/blob/main/images/ai%20tidbits%20logo.png?raw=true" alt="Stay updated on AI" width="20" height="20" style="vertical-align: middle;"> Stay updated on AI</a>
+</p>
 
 https://github.com/user-attachments/assets/13b35289-3f38-4a46-a176-9c8e85892fe9
 
 👆 This video shows how SimulateDev addresses an [open issue](https://github.com/tavily-ai/tavily-python/issues/93) in Tavily's Python repository, submitting a [pull request](https://github.com/tavily-ai/tavily-python/pull/118) to solve it.
+
+</div>
+
+
+
 
 
 ## ⚠️ Important Notes
@@ -329,13 +339,19 @@ If tasks are timing out, adjust the timeout in your `.env` file:
 AGENT_TIMEOUT_SECONDS=3600  # 1 hour
 ```
 
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ## Roadmap
 
 - [ ] Add web agents (Devin, Factory, Codex)
 - [ ] Cloud execution (Daytona, E2B)
 - [ ] Live monitoring of coding task
 - [ ] Budgeting tools for better spend control
+
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+
+## Connect
+
+Built by [Sahar Mor](https://www.linkedin.com/in/sahar-mor/) • Follow [@theaievangelist](https://x.com/theaievangelist) • [Stay updated on AI](http://aitidbits.ai/)
