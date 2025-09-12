@@ -10,7 +10,7 @@ SimulateDev is an automation tool that runs AI coding agents (Cursor, Devin, Cla
 <p>
 <a href="https://www.linkedin.com/in/sahar-mor/" target="_blank"><img src="https://img.shields.io/badge/LinkedIn-Connect-blue" alt="LinkedIn"></a>
 <a href="https://x.com/theaievangelist" target="_blank"><img src="https://img.shields.io/twitter/follow/:theaievangelist" alt="X"></a>
-<a href="http://aitidbits.ai/" target="_blank"><img src="https://github.com/saharmor/saharmor.github.io/blob/main/images/ai%20tidbits%20logo.png?raw=true" alt="Stay updated on AI" width="20" height="20" style="vertical-align: middle;"> Stay updated on AI</a>
+<a href="http://aitidbits.ai/" target="_blank" style="text-decoration: none; vertical-align: middle;"><img src="https://github.com/saharmor/saharmor.github.io/blob/main/images/ai%20tidbits%20logo.png?raw=true" alt="Stay updated on AI" width="20" height="20" style="vertical-align: middle; margin-right: 5px;"><span style="vertical-align: middle;">Stay updated on AI</span></a>
 </p>
 
 https://github.com/user-attachments/assets/13b35289-3f38-4a46-a176-9c8e85892fe9
